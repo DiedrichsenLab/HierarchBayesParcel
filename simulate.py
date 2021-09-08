@@ -124,16 +124,18 @@ class PottsModel:
         """
             Samples a number of subjects from the prior
         """
-        U = np.zeros((num_subj,M.P))
+        U = np.zeros((num_subj,self.P))
         for i in range(num_subj):
-            Us = M.sample_gibbs(prior=True,iter=10)
+            Us = self.sample_gibbs(prior=True,iter=10)
             U[i,:]=Us[-1,:]
         return U
 
-    def generate_emission (self,U,V = None, N = 30, num_subj=10):
+    def generate_emission (self,U,V = None, N = 30, num_subj=10,theta_alpha = 2, theta_beta=0.5):
         """
             Generates a specific experimental data set
         """
+        num_subj = U.shape[0]
+
         if V is None:
             V = np.random.normal(0,1,(N,self.K))
             # Make zero mean, unit length
@@ -143,26 +145,28 @@ class PottsModel:
             N,K = V.shape
             if K != self.K:
                 raise(NameError('Number of columns in V need to match Model.K'))
+        Y = np.empty((num_subj,N,self.P))
+        signal = np.empty((num_subj,self.P))
         for s in range(num_subj):
-
+            # Draw the signal strength for each node from a Gamma distribution 
+            signal[s,:] = np.random.gamma(theta_alpha,theta_beta,(self.P,))    
+            # Generate mean signal 
+            # One -hot encoding could be done: 
+            # UI[U[0,:].astype('int'),np.arange(self.P)]=1
+            Y[s,:,:] = V[:,U[s,:].astype('int')] * signal[s,:]
+            # And add noise of variance 1
+            Y[s,:,:] = Y[s,:,:] + np.random.normal(0,1,(N,self.P))
+        param = {'theta_alpha':theta_alpha,
+                 'theta_beta':theta_beta,
+                 'V':V,
+                 'signal':signal}
+        return(Y,param)
 
 
 if __name__ == '__main__':
     M = PottsModel(5,30,30)
     M.define_mu(200)
     # plt.imshow(cluster.reshape(M.dim),cmap='tab10')
-    U = np.zeros((6,M.P))
-    U[-1,:] = np.argmax(M.mu,axis=0)
-    M.theta = 2.5
-    for i in range(5):
-        Us = M.sample_gibbs(prior=True,iter=15)
-        U[i,:]=Us[-1,:]
-    plt.figure(1)
-    M.plot_maps(Us,cmap='tab20')
-    plt.figure(2,figsize=(12,4))
-    plt.subplot(2,5,3)
-    M.plot_maps(U[-1,:],cmap='tab20')
-    for i in range(5):
-        plt.subplot(2,5,i+6)
-        M.plot_maps(U[i,:],cmap='tab20')
-    pass
+    U = M.generate_subjects(num_subj = 4)
+    [Y,param] = M.generate_emission(U)
+    pass 
