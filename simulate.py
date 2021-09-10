@@ -140,7 +140,7 @@ class PottsModel:
             V = np.random.normal(0,1,(N,self.K))
             # Make zero mean, unit length
             V = V - V.mean(axis=0)
-            V = V / np.sqrt(np.mean(V**2,axis=0))
+            V = V / np.sqrt(np.sum(V**2,axis=0))
         else:
             N,K = V.shape
             if K != self.K:
@@ -148,14 +148,14 @@ class PottsModel:
         Y = np.empty((num_subj,N,self.P))
         signal = np.empty((num_subj,self.P))
         for s in range(num_subj):
-            # Draw the signal strength for each node from a Gamma distribution 
-            signal[s,:] = np.random.gamma(theta_alpha,theta_beta,(self.P,))    
-            # Generate mean signal 
-            # One -hot encoding could be done: 
+            # Draw the signal strength for each node from a Gamma distribution
+            signal[s,:] = np.random.gamma(theta_alpha,theta_beta,(self.P,))
+            # Generate mean signal
+            # One -hot encoding could be done:
             # UI[U[0,:].astype('int'),np.arange(self.P)]=1
             Y[s,:,:] = V[:,U[s,:].astype('int')] * signal[s,:]
             # And add noise of variance 1
-            Y[s,:,:] = Y[s,:,:] + np.random.normal(0,1,(N,self.P))
+            Y[s,:,:] = Y[s,:,:] + np.random.normal(0,np.sqrt(1/N),(N,self.P))
         param = {'theta_alpha':theta_alpha,
                  'theta_beta':theta_beta,
                  'V':V,
@@ -169,4 +169,4 @@ if __name__ == '__main__':
     # plt.imshow(cluster.reshape(M.dim),cmap='tab10')
     U = M.generate_subjects(num_subj = 4)
     [Y,param] = M.generate_emission(U)
-    pass 
+    pass
