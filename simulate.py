@@ -1,8 +1,26 @@
 # Example Models
+import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
-# import seaborn as sns
+import nibabel as nb
+import surfAnalysisPy as surf
+
+def eucl_distance(coord):
+    """
+    Calculates euclediand distances over some cooordinates
+    Args:
+        coord (ndarray)
+            Nx3 array of x,y,z coordinates
+    Returns:
+        dist (ndarray)
+            NxN array pf distances
+    """
+    num_points = coord.shape[0]
+    D = np.zeros((num_points,num_points))
+    for i in range(3):
+        D = D + (coord[:,i].reshape(-1,1)-coord[:,i])**2
+    return np.sqrt(D)
 
 
 class PottsModel:
@@ -13,33 +31,20 @@ class PottsModel:
     parameterization is joint between all linkages, although it could be split
     into different parameter functions
     """
-    def __init__(self,K=3,width=5,height=5):
-        self.width = width
-        self.height = height
-        self.dim = (height,width)
+    def __init__(self,K=3,W = None):
+        self.W = W
         self.K = K # Number of states
-        # Get the grid and neighbourhood relationship
-        self.define_grid()
-        self.P = self.xx.shape[0]
+        self.P = W.shape[0]
         self.theta_w = 1 # Weight of the neighborhood relation - inverse temperature param
 
-    def define_grid(self):
-        """
-        Makes a connectivity matrix and a mappin matrix for a simple rectangular grid
-        """
-        XX, YY = np.meshgrid(range(self.width),range(self.height))
-        self.xx = XX.reshape(-1)
-        self.yy = YY.reshape(-1)
-        self.D = (self.xx - self.xx.reshape((-1,1)))**2 + (self.yy - self.yy.reshape((-1,1)))**2
-        self.W = np.double(self.D==1) # Nearest neighbour connectivity
-
-    def define_mu(self, theta_mu=1):
+    def define_mu(self, theta_mu=1,centroids=None):
         """
             Defines pi (prior over parcels) using a Ising model with K centroids
+            Needs the Distance matrix to define the prior probability
         """
-        mx = np.random.uniform(0, self.width,(self.K,))
-        my = np.random.uniform(0, self.width,(self.K,))
-        d2 = (self.xx-mx.reshape(-1,1))**2 + (self.yy-my.reshape(-1,1))**2
+        if centroids is None:
+            centroids = np.random.choice(self.P,(self.K,))
+        d2 = self.Dist[centroids,:]**2
         self.mu = np.exp(-d2/theta_mu)
         self.mu = self.mu / self.mu.sum(axis=0)
         self.logMu = np.log(self.mu)
@@ -162,11 +167,110 @@ class PottsModel:
                  'signal':signal}
         return(Y,param)
 
+class PottsModelGrid(PottsModel):
+    """
+        Potts model defined on a regular grid
+    """
+    def __init__(self,K=3,width=5,height=5):
+        self.width = width
+        self.height = height
+        self.dim = (height,width)
+        # Get the grid and neighbourhood relationship
+        W = self.define_grid()
+        super().__init__(K,W)
+
+    def define_grid(self):
+        """
+        Makes a connectivity matrix and a mappin matrix for a simple rectangular grid
+        """
+        XX, YY = np.meshgrid(range(self.width),range(self.height))
+        self.xx = XX.reshape(-1)
+        self.yy = YY.reshape(-1)
+        self.Dist = np.sqrt((self.xx - self.xx.reshape((-1,1)))**2 + (self.yy - self.yy.reshape((-1,1)))**2)
+        W = np.double(self.Dist==1) # Nearest neighbour connectivity
+        return W
+
+
+baseDir = '/Users/jdiedrichsen/Data/fs_LR_32'
+hemN = ['L','R']
+hem_name = ['CortexLeft','CortexRight']
+
+class PottsModelCortex(PottsModel):
+    """
+        Potts models on a single hemisphere on an isocahedron Grid
+    """
+    def __init__(self,K=3,hem=[0], roi_name='Icosahedron-162'):
+        self.flatsurf = []
+        self.inflsurf = []
+        self.roi_label = []
+        self.hem = hem
+        self.roi_name = roi_name
+        self.P = 0
+        vertex = []
+        for i,h in enumerate(hem):
+            flatname = os.path.join(baseDir,'fs_LR.32k.' + hemN[h] + '.flat.surf.gii')
+            inflname = os.path.join(baseDir,'fs_LR.32k.' + hemN[h] + '.inflated.surf.gii')
+            labname = os.path.join(baseDir,roi_name + '.32k.' + hemN[h] + '.label.gii')
+            sphere_name = os.path.join(baseDir,'fs_LR.32k.' + hemN[h] + '.sphere.surf.gii')
+
+            # Get the inflate and flat surfaces and stor for later use
+            self.flatsurf.append(nb.load(flatname))
+            self.inflsurf.append(nb.load(inflname))
+
+            # Get the labels and append
+            roi_gifti = nb.load(labname)
+            L = roi_gifti.agg_data()
+            num_roi = L.max()
+            L[L>0]=L[L>0]+self.P # Add the number of parcels from other hemisphere - but not to zero
+            self.roi_label.append(L)
+            self.P = self.P + num_roi
+
+            # Get the vertices for the sphere for distance matrix
+            sphere = nb.load(sphere_name)
+            vertex.append(sphere.darrays[0].data)
+            vertex[i][:,0] = vertex[i][:,0]+(h*2-1)*500
+
+        self.coord = np.zeros((self.P,3))
+        for i,h in enumerate(hem):
+            for p in np.unique(self.roi_label[i]):
+                if p > 0:
+                    self.coord[p-1,:]= vertex[i][self.roi_label[i]==p,:].mean(axis=0)
+
+        self.Dist = eucl_distance(self.coord)
+        thresh = 1
+        self.W = np.logical_and(self.Dist>0,self.Dist< thresh)
+        while np.all(self.W.sum(axis=1)<=6):
+            thresh = thresh+1
+            self.W = np.logical_and(self.Dist>0,self.Dist< thresh)
+        thresh = thresh-1
+        W = np.logical_and(self.Dist>0,self.Dist< thresh)
+        super().__init__(K,W)
+
+
+        def to_gifti(self,data):
+            """
+                Args:
+                    data (np-arrray): 1d-array
+                Returns:
+                    gifti-img (left hemisphere)
+            """
+            labels = self.label.agg_data(0)
+
+            # Fill the corresponding vertices
+            # Fastest way: prepend a NaN for ROI 0 (medial wall)
+            data = np.insert(data,0,np.nan)
+            mapped_data = data[labels]
+            # Make the gifti imae   gifti img
+            gifti = surf.make_func_gifti_cortex(data=mapped_data[:,None], anatomical_struct=hem_name[h])
+        return gifti
+
+
+
+
 
 if __name__ == '__main__':
-    M = PottsModel(5,30,30)
+    M = PottsModelCortex(5,roi_name='Icosahedron-1442')
     M.define_mu(200)
-    # plt.imshow(cluster.reshape(M.dim),cmap='tab10')
     U = M.generate_subjects(num_subj = 4)
     [Y,param] = M.generate_emission(U)
     pass
