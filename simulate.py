@@ -18,7 +18,7 @@ def eucl_distance(coord):
     """
     num_points = coord.shape[0]
     D = np.zeros((num_points,num_points))
-    for i in range(2):
+    for i in range(3):
         D = D + (coord[:,i].reshape(-1,1)-coord[:,i])**2
     return np.sqrt(D)
 
@@ -237,9 +237,13 @@ class PottsModelCortex(PottsModel):
                     self.coord[p-1,:]= vertex[i][self.roi_label[i]==p,:].mean(axis=0)
 
         self.Dist = eucl_distance(self.coord)
-        W = self.Dist < 30
-        return W
-
+        thresh = 1
+        self.W = np.logical_and(self.Dist>0,self.Dist< thresh)
+        while np.all(self.W.sum(axis=1)<=6):
+            thresh = thresh+1
+            self.W = np.logical_and(self.Dist>0,self.Dist< thresh)
+        thresh = thresh-1
+        W = np.logical_and(self.Dist>0,self.Dist< thresh)
         super().__init__(K,W)
 
 
@@ -265,7 +269,7 @@ class PottsModelCortex(PottsModel):
 
 
 if __name__ == '__main__':
-    M = PottsModelCortex(5)
+    M = PottsModelCortex(5,roi_name='Icosahedron-1442')
     M.define_mu(200)
     U = M.generate_subjects(num_subj = 4)
     [Y,param] = M.generate_emission(U)
