@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import nibabel as nb
+from nilearn import plotting
 import surfAnalysisPy as surf
 
 def eucl_distance(coord):
@@ -104,27 +105,6 @@ class PottsModel:
                 U[i+1,p]=np.random.choice(self.K,p=prob)
         return(U)
 
-    def plot_maps(self,Y,cmap='tab20',vmin=0,vmax=19,grid=None):
-        """
-            Plots a set of map samples as an image grid
-            N X P
-        """
-        if Y.ndim == 1:
-            ax = plt.imshow(Y.reshape(self.dim),cmap=cmap,interpolation='nearest',vmin=vmin,vmax=vmax)
-            ax.axes.yaxis.set_visible(False)
-            ax.axes.xaxis.set_visible(False)
-        else:
-            N,P = Y.shape
-            if grid is None:
-                grid = np.zeros((2,),np.int32)
-                grid[0] = np.ceil(np.sqrt(N))
-                grid[1] = np.ceil(N/grid[0])
-            for n in range(N):
-                ax = plt.subplot(grid[0],grid[1],n+1)
-                ax.imshow(Y[n,:].reshape(self.dim),cmap=cmap,interpolation='nearest',vmin=vmin,vmax=vmax)
-                ax.axes.xaxis.set_visible(False)
-                ax.axes.yaxis.set_visible(False)
-
     def generate_subjects(self,num_subj = 10):
         """
             Samples a number of subjects from the prior
@@ -190,6 +170,27 @@ class PottsModelGrid(PottsModel):
         W = np.double(self.Dist==1) # Nearest neighbour connectivity
         return W
 
+    def plot_maps(self,Y,cmap='tab20',vmin=0,vmax=19,grid=None):
+        """
+            Plots a set of map samples as an image grid
+            N X P
+        """
+        if Y.ndim == 1:
+            ax = plt.imshow(Y.reshape(self.dim),cmap=cmap,interpolation='nearest',vmin=vmin,vmax=vmax)
+            ax.axes.yaxis.set_visible(False)
+            ax.axes.xaxis.set_visible(False)
+        else:
+            N,P = Y.shape
+            if grid is None:
+                grid = np.zeros((2,),np.int32)
+                grid[0] = np.ceil(np.sqrt(N))
+                grid[1] = np.ceil(N/grid[0])
+            for n in range(N):
+                ax = plt.subplot(grid[0],grid[1],n+1)
+                ax.imshow(Y[n,:].reshape(self.dim),cmap=cmap,interpolation='nearest',vmin=vmin,vmax=vmax)
+                ax.axes.xaxis.set_visible(False)
+                ax.axes.yaxis.set_visible(False)
+
 
 baseDir = '/Users/jdiedrichsen/Data/fs_LR_32'
 hemN = ['L','R']
@@ -246,31 +247,51 @@ class PottsModelCortex(PottsModel):
         W = np.logical_and(self.Dist>0,self.Dist< thresh)
         super().__init__(K,W)
 
+    def map_data(self,data,out_value=0):
+        """
+            Args:
+                data (np-arrray): 1d-array
+                out_value = 0(default) or np.nan
+            Returns:
+                List of 1-d np-arrays (per hemisphere)
+        """
+        data = np.insert(data,0,out_value)
+        mapped_data = []
+        for i,h in enumerate(self.hem):
+            mapped_data.append(data[self.roi_label[i]])
+        return mapped_data
 
-        def to_gifti(self,data):
-            """
-                Args:
-                    data (np-arrray): 1d-array
-                Returns:
-                    gifti-img (left hemisphere)
-            """
-            labels = self.label.agg_data(0)
-
-            # Fill the corresponding vertices
-            # Fastest way: prepend a NaN for ROI 0 (medial wall)
-            data = np.insert(data,0,np.nan)
-            mapped_data = data[labels]
-            # Make the gifti imae   gifti img
-            gifti = surf.make_func_gifti_cortex(data=mapped_data[:,None], anatomical_struct=hem_name[h])
-        return gifti
-
-
-
-
+    def plot_map(self,data,cmap='tab20',vmin=0,vmax=19,grid=None):
+        """
+        """
+        d = self.map_data(data)
+        coords = self.inflsurf[0].agg_data('pointset')
+        faces = self.inflsurf[0].agg_data('triangle')
+        view = plotting.view_surf([coords,faces],d[0],
+                cmap=cmap,vmin=vmin,vmax=vmax,symmetric_cmap = False,
+                colorbar=False)
+        # plotting.plot_surf([coords,faces],data[0],darkness=0.3,hemi='left')
+        return view
 
 if __name__ == '__main__':
-    M = PottsModelCortex(5,roi_name='Icosahedron-1442')
-    M.define_mu(200)
-    U = M.generate_subjects(num_subj = 4)
-    [Y,param] = M.generate_emission(U)
-    pass
+    M = PottsModelCortex(17,roi_name='Icosahedron-1442')
+    M.define_mu(2000)
+    cluster = np.argmax(M.mu,axis=0)+1
+    cl = M.map_data(cluster)
+    data = cl[0]
+    # U = M.generate_subjects(num_subj = 4)
+    # [Y,param] = M.generate_emission(U)
+    # pass
+    num_subj = 3 
+    U = np.zeros((num_subj,M.P))
+    for i in range(num_subj):
+        Us = M.sample_gibbs(prior=True,iter=10)
+        U[i,:]=Us[-1,:]
+    for i in range(num_subj):
+        s = M.map_data(U[i,:]+1)
+        data = np.c_[data,s[0]]
+    # surf.map.make_label_gifti()
+    MAP = plt.get_cmap('tab20')
+    RGBA = MAP(np.arange(18))
+    G = surf.map.make_label_gifti(data,label_RGBA=RGBA)
+    nb.save(G,'indivmaps.label.gii')
