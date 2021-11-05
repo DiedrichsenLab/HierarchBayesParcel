@@ -9,6 +9,9 @@ Author: DZHI
 
 # Example Models
 import os # to handle path information
+import sys
+sys.path.insert(0, "D:/python_workspace/")
+
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import rbf_kernel
@@ -16,8 +19,6 @@ from sklearn.mixture import GaussianMixture
 import scipy.stats as spst
 import scipy as sp
 from simulate import PottsModel, PottsModelGrid
-import sys
-sys.path.insert(0, "D:/python_workspace/")
 
 
 def eucl_distance(coord):
@@ -197,7 +198,7 @@ class HopfieldModelGrid(PottsModel):
             return U[np.append(0, np.arange(1, iter+1, interval)), :]
 
     def plot_maps(self, Y, cmap='tab20', vmin=0, vmax=19, grid=None):
-        '''
+        """
         Plots a set of map samples as an image grid, N X P
         :param Y: The data on the y-axis
         :param cmap: color map that being chosen
@@ -205,7 +206,7 @@ class HopfieldModelGrid(PottsModel):
         :param vmax: the vmax parameter passed to imshow function
         :param grid: if None, there will be no grid applied to the plot
         :return: no return, show the plot
-        '''
+        """
         if Y.ndim == 1:
             ax = plt.imshow(Y.reshape(self.dim),cmap=cmap,interpolation='nearest',vmin=vmin,vmax=vmax)
             ax.axes.yaxis.set_visible(False)
@@ -244,13 +245,6 @@ if __name__ == '__main__':
     # Show the prior probabilities for the different parcels
     plt.figure(figsize=(10, 2))
     M.plot_maps(M.mu, cmap='jet', vmax=1, grid=[1, 5])
-
-    # Gibbs sampling
-    # Demostrate a single Gibbs sample, starting from a random start (drawn indpendentlu from mu)
-    M.theta_w = 5  # inverse temperature parameter
-    Us = M.sample_gibbs(prior=True, iter=19)
-    plt.figure()
-    M.plot_maps(Us, cmap='tab20', grid=[4, 5])
     plt.show()
 
     # Generate a data set for a specific experiment
@@ -264,11 +258,7 @@ if __name__ == '__main__':
     H = HopfieldModelGrid(5, 30, 30, 2, 0.5)
     # Define the parcellation + Prior Probability
     H.define_mu(200)
-    # Show the clustering
-    plt.figure(figsize=(2, 2))
     cluster = np.argmax(H.mu, axis=0)
-    H.plot_maps(cluster)
-    plt.show()
 
     # Gibbs sampling
     # Demonstrate a single Gibbs sample, starting from a random start (drawn independently from mu)
