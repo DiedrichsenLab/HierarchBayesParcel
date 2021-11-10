@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 
+from numpy.lib.index_tricks import RClass
+
 
 
 class MixGaussianExponential:
@@ -14,10 +16,10 @@ class MixGaussianExponential:
     def __init__(self,K=4,N=10,P=20):
         self.K = K # Number of states
         self.N = N
-        self.P = P 
+        self.P = P
         self.alpha = 1
         self.beta = 1
-        self.sigma = 1
+        self.sigma2 = 1
 
     def initialize(self, data):
         """
@@ -25,23 +27,42 @@ class MixGaussianExponential:
         """
         self.Y = data # This is assumed to be (num_sub,N,P)
         self.num_subj = data.shape[0]
+        self.s = np.empty((self.num_subj,self.K,self.P))
+        self.rss = np.empty((self.num_subj,self.K,self.P))
 
-    def loglike(self,Y,sub = None):
+    def Estep(self,sub = None):
         """
-            Returns log p(Y|U) for each value of U, up to a constant
+            Estep: Returns log p(Y|U) for each value of U, up to a constant
+            Collects the sufficient statistics for the M-step
         """
         if sub is None:
             sub = range(self.num_subj)
-        L = np.empty((self.num_subj,self.P))
+        LL = np.empty((self.num_subj,self.K,self.P))
         uVVu = np.sum(self.V**2,axis=0) # This is u.T V.T V u for each u
         for i in sub:
             YV = self.Y[i,:,:].T @ self.V
-            self.s[i]=YV/uVVu-self.beta*self.sigma2  # Maximized g
+            self.s[i,:,:]=(YV/uVVu-self.beta*self.sigma2).T  # Maximized g
+            self.s[i][self.s[i]<0]=0  # Limit to 0
             YY = np.sum(self.Y[i,:,:]**2,axis=0)
-            self.res[i] = YY - 2 *YV + uVVu
-            LL = -1/(2*self.sigma)*self.res[i]+ self.beta*self.s[i]
+            self.rss[i,:,:] = YY - 2 *YV.T * self.s[i,:,:] + self.s[i,:,:]**2 * uVVu.reshape((self.K,1))
+            LL[i,:,:] = -0.5*self.sigma2 * self.rss[i,:,:] + self.beta * self.s[i,:,:]
+        return LL
 
-    def random_V(self): 
+    def Mstep(self,U_hat):
+        """
+            Performs the M-step on a specific U-hat
+        """
+        SU = self.s * U_hat
+        YU = np.zeros((self.N,self.K))
+        UU = np.zeros((self.K,self.K))
+        for i in range(self.num_subj):
+            YU = YU + self.Y[i,:,:] @ SU[i,:,:].T
+            UU = UU + SU[i,:,:] @ SU[i,:,:].T
+        self.V = np.linalg.solve(UU,YU.T).T
+        ERSS = np.sum(U_hat * self.rss)
+        self.sigma2 = ERSS/(self.N*self.P)
+
+    def random_V(self):
         V = np.random.normal(0,1,(self.N,self.K))
         # Make zero mean, unit length
         V = V - V.mean(axis=0)
@@ -57,17 +78,27 @@ class MixGaussianExponential:
             signal[s,:] = np.random.gamma(self.alpha,self.beta,(self.P,))
             Y[s,:,:] = self.V @ U [s,:,:] * signal[s,:]
             # And add noise of variance 1
-            Y[s,:,:] = Y[s,:,:] + np.random.normal(0,self.sigma,(self.N,self.P))
+            Y[s,:,:] = Y[s,:,:] + np.random.normal(0,np.sqrt(self.sigma2),(self.N,self.P))
         return(Y,signal)
 
-def test_MixGaussian(K=5,N=10,P=25): 
+def test_MixGaussian(K=5,N=10,P=25):
+    # Generate a simple iid emission model
+    Mtrue = MixGaussianExponential(K,N,P)
+    Mtrue.V  = Mtrue.random_V()
+    Utrue = np.kron(np.eye(K),np.ones(np.int(P/K),))
+    Utrue = Utrue.reshape((1,K,P))
+
+    Y, s = Mtrue.generate_data(Utrue)
+
+    # Estimate the model back
     M = MixGaussianExponential(K,N,P)
-    V = M.random_V()
-    U = np.kron(np.eye(K),np.ones(np.int(P/K),))
-    U = U.reshape((1,K,P))    
-    M.V = V
-    Y, s = M.generate_data(U)
-    M.initialize
+    M.V = M.random_V()
+    M.initialize(Y)
+    LL = M.Estep()
+    Uhat = np.exp(LL)
+    Uhat = Uhat / np.sum(Uhat,axis=1)
+    M.Mstep(Uhat)       # Update the parameters
+    pass
 
 if __name__ == '__main__':
     test_MixGaussian()
