@@ -265,7 +265,7 @@ if __name__ == '__main__':
     H.theta_w = 5  # inverse temperature parameter
     toPlot = np.zeros((1, H.P))
     for i in range(N):
-        Us = H.sample_gibbs(U0=cluster, prior=True, iter=50, evidence=Y[i, :, :].transpose(), alpha=0.5, interval=5)
+        Us = H.sample_gibbs(U0=None, prior=True, iter=50, evidence=Y[i, :, :].transpose(), alpha=0.5, interval=5)
         Us = np.vstack((Us, sub_par[i]))
         toPlot = np.vstack((toPlot, Us))
 
