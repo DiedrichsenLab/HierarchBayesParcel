@@ -104,8 +104,6 @@ Now, with the above expected log likelihood by hand, we can update the parameter
    \pi_{k}^{(t)} = \frac{1}{\mathbf{U}}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}
    $$
 
-4. 
-
 The updated parameters $\theta_{k}^{(t)}\sim(\mu_{k}^{(t)},{\sigma^{2}_{k}}^{(t)},\pi_{k}^{(t)})$ from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
 
 ### Emission model2: Van Mises Distribution
