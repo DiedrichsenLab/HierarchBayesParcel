@@ -37,24 +37,24 @@ class MixGaussianExponential:
         """
         if sub is None:
             sub = range(self.num_subj)
-        LL = np.empty((self.num_subj,self.K,self.P))
-        uVVu = np.sum(self.V**2,axis=0) # This is u.T V.T V u for each u
+        LL = np.empty((self.num_subj, self.K, self.P))
+        uVVu = np.sum(self.V**2, axis=0)  # This is u.T V.T V u for each u
         for i in sub:
-            YV = self.Y[i,:,:].T @ self.V
+            YV = self.Y[i, :, :].T @ self.V
             self.s[i,:,:]=(YV/uVVu-self.beta*self.sigma2).T  # Maximized g
             self.s[i][self.s[i]<0]=0  # Limit to 0
-            YY = np.sum(self.Y[i,:,:]**2,axis=0)
-            self.rss[i,:,:] = YY - 2 *YV.T * self.s[i,:,:] + self.s[i,:,:]**2 * uVVu.reshape((self.K,1))
+            YY = np.sum(self.Y[i,:,:]**2, axis=0)
+            self.rss[i, :, :] = YY - 2 *YV.T * self.s[i,:,:] + self.s[i,:,:]**2 * uVVu.reshape((self.K,1))
             LL[i,:,:] = -0.5*self.sigma2 * self.rss[i,:,:] + self.beta * self.s[i,:,:]
         return LL
 
-    def Mstep(self,U_hat):
+    def Mstep(self, U_hat):
         """
             Performs the M-step on a specific U-hat
         """
         SU = self.s * U_hat
-        YU = np.zeros((self.N,self.K))
-        UU = np.zeros((self.K,self.K))
+        YU = np.zeros((self.N, self.K))
+        UU = np.zeros((self.K, self.K))
         for i in range(self.num_subj):
             YU = YU + self.Y[i,:,:] @ SU[i,:,:].T
             UU = UU + SU[i,:,:] @ SU[i,:,:].T
@@ -69,29 +69,30 @@ class MixGaussianExponential:
         V = V / np.sqrt(np.sum(V**2,axis=0))
         return V
 
-    def generate_data(self,U):
+    def generate_data(self, U):
         num_subj = U.shape[0]
-        Y = np.empty((num_subj,self.N,self.P))
-        signal = np.empty((num_subj,self.P))
+        Y = np.empty((num_subj, self.N, self.P))
+        signal = np.empty((num_subj, self.P))
         for s in range(num_subj):
             # Draw the signal strength for each node from a Gamma distribution
-            signal[s,:] = np.random.gamma(self.alpha,self.beta,(self.P,))
-            Y[s,:,:] = self.V @ U [s,:,:] * signal[s,:]
+            signal[s, :] = np.random.gamma(self.alpha, self.beta, (self.P,))
+            Y[s, :, :] = self.V @ U[s, :, :] * signal[s, :]
             # And add noise of variance 1
-            Y[s,:,:] = Y[s,:,:] + np.random.normal(0,np.sqrt(self.sigma2),(self.N,self.P))
-        return(Y,signal)
+            Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
+        return Y, signal
 
-def test_MixGaussian(K=5,N=10,P=25):
+
+def MixGaussian(K=5,N=10,P=25):
     # Generate a simple iid emission model
-    Mtrue = MixGaussianExponential(K,N,P)
-    Mtrue.V  = Mtrue.random_V()
+    Mtrue = MixGaussianExponential(K, N, P)
+    Mtrue.V = Mtrue.random_V()
     Utrue = np.kron(np.eye(K),np.ones(np.int(P/K),))
-    Utrue = Utrue.reshape((1,K,P))
+    Utrue = Utrue.reshape((1, K, P))
 
     Y, s = Mtrue.generate_data(Utrue)
 
     # Estimate the model back
-    M = MixGaussianExponential(K,N,P)
+    M = MixGaussianExponential(K, N, P)
     M.V = M.random_V()
     M.initialize(Y)
     LL = M.Estep()
@@ -100,5 +101,6 @@ def test_MixGaussian(K=5,N=10,P=25):
     M.Mstep(Uhat)       # Update the parameters
     pass
 
+
 if __name__ == '__main__':
-    test_MixGaussian()
+    MixGaussian()

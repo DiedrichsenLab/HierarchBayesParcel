@@ -2,7 +2,7 @@
 Collection of functions to play around with different Markov random field models as generative processes for brain activity data.
 
 ## Generative Potts Model
-This is a generative Potts model of brain activity data. The main idea is that the brain consists of $K$ regions, each with a specific activity profile $\mathbf{v}_k$ for a specific task set. The model consists of a arrangement model that tells us how the $K$ regions are arranged in a specific subject $s$, and an emmision model that provides a probabitility of the measured data, given the individual arrangement of regions.
+This is a generative Potts model of brain activity data. The main idea is that the brain consists of $K$ regions, each with a specific activity profile $\mathbf{v}_k$ for a specific task set. The model consists of a arrangement model that tells us how the $K$ regions are arranged in a specific subject $s$, and an emission model that provides a probability of the measured data, given the individual arrangement of regions.
 
 ### Arrangement model
 The brain is sampled in $P$ vertices (or voxels). Individual maps are aligned using anatomical normalization, such that each vertex refers to a (roughly) corresponding region in each individual brain. The assignment of each brain location to a specific parcel in subject $s$ is expressed as the random variable $u_i^{(s)}$.
@@ -45,8 +45,72 @@ l(u_i|u_{j\neq i}) \propto \rm{log}\mu_{u_i,i}+ \theta_{w}\sum_{i\neq j}{\mathbf
 $$
 
 ### Emission model1: Mixture of Gaussians
+
+We first try the Gaussian Mixtures as our emission probability model. The original probability model for a $N$-dimensional multivariate Gaussian mixture is as follow:
+$$
+p(x|\theta) = \sum_{i}{\pi_{i}}\frac{1}{(2\pi)^{N/2}|\sum_{i}|^{1/2}}\rm{exp}\{-\frac{1}{2}(x-\mu_{i})^T\Sigma_{i}^{-1}(x-\mu_{i})\}
+$$
+In our emission model, for all $i$ voxel and the associated $N$-dimensional data vector $y_{i}$, the above equation can be re-written as:
+$$
+p(\mathbf{y}, u^{(k)}|\theta) = \sum_{i}\sum_{k}u_{i}^{(k)}\pi_{i}^{(k)}\frac{1}{(2\pi)^{N/2}|\sum_{i}|^{1/2}}\rm{exp}\{-\frac{1}{2}(y_{i}-\mu_{i})^T\Sigma_{i}^{-1}(y_{i}-\mu_{i})\}
+$$
+Since we define $p(y_{i}|u_{i}^{(k)}) \triangleq \mathcal{N}(\mathbf{v}_k,\,I\sigma^{2})$, where $\mathbf{v}_k$ is the averaged expected response for each of the parcels. Then we plug back these parameters back to the model and get:
+$$
+p(\mathbf{y}, u^{(k)}|\theta) = \sum_{i}\sum_{k}u_{i}^{(k)}\pi_{i}^{(k)}\frac{1}{(2\pi)^{N/2}(\sigma^{2})^{1/2}}\rm{exp}\{-\frac{1}{2\sigma^{2}}(y_{i}-\mathbf{v}_k)^T(y_{i}-\mathbf{v}_k)\}
+$$
+Therefore, by using the Jensen's inequality, the complete log likelihood $\mathcal{L}$ for this model is defined as:
+$$
+\begin{align*}
+\mathcal{L} = \log p(\mathbf{y},u | \theta)
+&=\sum_{i}\log \sum_{k}p(\mathbf{y}_{i},u_{i}^{(k)}|\theta) \\ 
+&=\sum_{i}\log\sum_{k}q(u^{(k)}|\mathbf{y}_{i})\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u^{(k)}|\mathbf{y}_{i})}\\
+&\geqslant\sum_{i}\sum_{k}q(u^{(k)}|\mathbf{y}_{i})\log\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u^{(k)}|\mathbf{y}_{i})} \triangleq \mathcal{L}(q, \theta)
+\end{align*}
+$$
+Thus, the maximization of the complete log likelihood is equivalent to maximize its lower bound: the *expected log likelihood* with respect to the expectation $q$. Here, we use $\langle u_{i}^{(k)}\rangle_{q}$ to represent the expected distribution $q(u^{(k)}|\mathbf{y}_{i})$. Thus, the *expected log likelihood* $\mathcal{L}(q, \theta)$ is defined as following:
+$$
+\begin{align*}
+\mathcal{L}(q, \theta) &= \langle\log p(\mathbf{y}, u|\theta)\rangle_{q}\\
+&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[-\frac{N}{2}\log(2\pi)-\frac{1}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})]+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}\pi_{i}^{(k)}
+\end{align*}
+$$
+Now, with the above expected log likelihood by hand, we can update the parameters $\theta$ of the Gaussians mixture in the $\Mu$ step. There are three parameters in Gaussians mixture $\theta_{k}\sim(\mu_{k},\sigma^{2}_{k},\pi_{k})$. Now, we start with updating the $\mu$. (Note: the updates only consider a single subject)
+
+1. Updating $\mu$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\mu_{k}$ ( $\mathbf{v}_{k}$ in this case) and make it equals to 0 as following:
+   $$
+   \frac{\mathcal{L}}{\partial \mathbf{v}_{k}} =\frac{1}{\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}(\mathbf{y}_{i}-\mathbf{v}_{k}) = 0
+   $$
+   Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
+   $$
+   \mathbf{v}_{k}^{(t)} = \frac{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}}
+   $$
+
+2. Updating $\sigma^{2}$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\sigma^{2}$ ( $I\sigma^{2}$ in this case) and make it equals to 0 as following:
+   $$
+   \frac{\mathcal{L}}{\partial \sigma^{2}} =\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[-\frac{N}{2\sigma^{2}}+\frac{1}{2\sigma^{4}}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})] = 0
+   $$
+   Thus, we get the updated $\sigma^{2}$ in the current $\Mu$ step as,
+   $$
+   \mathbf{\sigma^{2}}^{(t)} = \frac{1}{\mathbf{UK}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}^{(t)}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})
+   $$
+   where $\mathbf{U}$ is the total number of voxels $i$.
+
+3. Updating $\pi$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\pi$ and make it equals to 0 as following:
+   $$
+   \frac{\mathcal{L}}{\partial \pi_{k}} =\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}= 0
+   $$
+   Thus, we get the updated $\pi_{k}$ in current $\Mu$ step as, 
+   $$
+   \pi_{k}^{(t)} = \frac{1}{\mathbf{U}}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}
+   $$
+
+4. 
+
+The updated parameters $\theta_{k}^{(t)}\sim(\mu_{k}^{(t)},{\sigma^{2}_{k}}^{(t)},\pi_{k}^{(t)})$ from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
+
 ### Emission model2: Van Mises Distribution
-### Emssion model3: Mixture ofs Gaussians with signal strength
+
+### Emission model3: Mixture ofs Gaussians with signal strength
 
 The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $Nx1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as 
 $$
@@ -68,11 +132,11 @@ l(\mathbf{y}_i|\mathbf{u}_i)=-\frac{K}{2}\rm{log}(2\pi\theta_{\sigma})-\frac{1}{
 $$
 
 ### Sampling from the prior or posterior distribution
-The problem with determing the overall prior or posterior distribution of the model (for purposes of data generation or inference) cannot be easily be computed. We can evaluate the prior probability of a parcellation $p(\mathbf{U})$ or the posterior distribition $p(\mathbf{U}|\mathbf{Y})$ up to a constant of proprotionality, with for example 
+The problem with determine the overall prior or posterior distribution of the model (for purposes of data generation or inference) cannot be easily be computed. We can evaluate the prior probability of a parcellation $p(\mathbf{U})$ or the posterior distribution $p(\mathbf{U}|\mathbf{Y})$ up to a constant of proportionality, with for example 
 $$
 p(\mathbf{U}|\mathbf{Y};\theta) = \frac{1}{Z(\theta)}\prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }\prod_{i}p(\mathbf{y}_i|u_i)
 $$
-Calulating the normalization constant $Z(\theta)$ (partition function, Zustandssumme, or sum over states) would involve summing this probability over all possible states, which for $P$ brain locations and $K$ parcels is $K^P$, which is intractable. 
+Calculating the normalization constant $Z(\theta)$ (partition function, Zustandssumme, or sum over states) would involve summing this probability over all possible states, which for $P$ brain locations and $K$ parcels is $K^P$, which is intractable. 
 
 However, the conditional probability for each node, given all the other nodes, can be easily computed. Here the normalizaton constant is just the sum of the potential functions over the $K$ possible states for this node
 
