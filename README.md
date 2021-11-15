@@ -44,7 +44,7 @@ $$
 l(u_i|u_{j\neq i}) \propto \rm{log}\mu_{u_i,i}+ \theta_{w}\sum_{i\neq j}{\mathbf{u}_i^T\mathbf{u}_j w_{ij}}
 $$
 
-### Emission model1: Mixture of Gaussians
+### Emission model 1: Mixture of Gaussians
 
 We first try the Gaussian Mixtures as our emission probability model. The original probability model for a $N$-dimensional multivariate Gaussian mixture is as follow:
 $$
@@ -63,11 +63,11 @@ $$
 \begin{align*}
 \mathcal{L} = \log p(\mathbf{y},u | \theta)
 &=\sum_{i}\log \sum_{k}p(\mathbf{y}_{i},u_{i}^{(k)}|\theta) \\ 
-&=\sum_{i}\log\sum_{k}q(u^{(k)}|\mathbf{y}_{i})\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u^{(k)}|\mathbf{y}_{i})}\\
-&\geqslant\sum_{i}\sum_{k}q(u^{(k)}|\mathbf{y}_{i})\log\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u^{(k)}|\mathbf{y}_{i})} \triangleq \mathcal{L}(q, \theta)
+&=\sum_{i}\log\sum_{k}q(u_{i}^{(k)}|\mathbf{y}_{i})\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u_{i}^{(k)}|\mathbf{y}_{i})}\\
+&\geqslant\sum_{i}\sum_{k}q(u_{i}^{(k)}|\mathbf{y}_{i})\log\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u_{i}^{(k)}|\mathbf{y}_{i})} \triangleq \mathcal{L}(q, \theta)
 \end{align*}
 $$
-Thus, the maximization of the complete log likelihood is equivalent to maximize its lower bound: the *expected log likelihood* with respect to the expectation $q$. Here, we use $\langle u_{i}^{(k)}\rangle_{q}$ to represent the expected distribution $q(u^{(k)}|\mathbf{y}_{i})$. Thus, the *expected log likelihood* $\mathcal{L}(q, \theta)$ is defined as following:
+Thus, the maximization of the complete log likelihood is equivalent to maximize its lower bound: the *expected log likelihood* with respect to the expectation $q$. Here, we use $\langle u_{i}^{(k)}\rangle_{q}$ to represent the expected distribution $q(u_{i}^{(k)}|\mathbf{y}_{i})$. Thus, the *expected log likelihood* $\mathcal{L}(q, \theta)$ is defined as following:
 $$
 \begin{align*}
 \mathcal{L}(q, \theta) &= \langle\log p(\mathbf{y}, u|\theta)\rangle_{q}\\
@@ -78,7 +78,7 @@ Now, with the above expected log likelihood by hand, we can update the parameter
 
 1. Updating $\mu$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\mu_{k}$ ( $\mathbf{v}_{k}$ in this case) and make it equals to 0 as following:
    $$
-   \frac{\mathcal{L}}{\partial \mathbf{v}_{k}} =\frac{1}{\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}(\mathbf{y}_{i}-\mathbf{v}_{k}) = 0
+   \frac{\partial \mathcal{L}}{\partial \mathbf{v}_{k}} =\frac{1}{\sigma^{2}}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}(\mathbf{y}_{i}-\mathbf{v}_{k}) = 0
    $$
    Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
@@ -87,17 +87,17 @@ Now, with the above expected log likelihood by hand, we can update the parameter
 
 2. Updating $\sigma^{2}$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\sigma^{2}$ ( $I\sigma^{2}$ in this case) and make it equals to 0 as following:
    $$
-   \frac{\mathcal{L}}{\partial \sigma^{2}} =\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[-\frac{N}{2\sigma^{2}}+\frac{1}{2\sigma^{4}}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})] = 0
+   \frac{\partial \mathcal{L}}{\partial \sigma^{2}} =\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[-\frac{N}{2\sigma^{2}}+\frac{1}{2\sigma^{4}}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})] = 0
    $$
-   Thus, we get the updated $\sigma^{2}$ in the current $\Mu$ step as,
+   Thus, we get the updated $\sigma^{2}$ for parcel $k$ in the current $\Mu$ step as,
    $$
-   \mathbf{\sigma^{2}}^{(t)} = \frac{1}{\mathbf{UK}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}^{(t)}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})
+   {\sigma_{k}^{2}}^{(t)} = \frac{1}{\mathbf{U}}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})
    $$
    where $\mathbf{U}$ is the total number of voxels $i$.
 
-3. Updating $\pi$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\pi$ and make it equals to 0 as following:
+3. Updating $\pi_{k}$ for parcel $k$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\pi$ and make it equals to 0 as following:
    $$
-   \frac{\mathcal{L}}{\partial \pi_{k}} =\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}= 0
+   \frac{\partial \mathcal{L}}{\partial \pi_{k}} =\sum_{i}\langle u_{i}^{(k)}\rangle_{q}= 0
    $$
    Thus, we get the updated $\pi_{k}$ in current $\Mu$ step as, 
    $$
@@ -106,13 +106,13 @@ Now, with the above expected log likelihood by hand, we can update the parameter
 
 The updated parameters $\theta_{k}^{(t)}\sim(\mu_{k}^{(t)},{\sigma^{2}_{k}}^{(t)},\pi_{k}^{(t)})$ from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
 
-### Emission model2: Van Mises Distribution
+### Emission model 2: Van Mises Distribution
 
-### Emission model3: Mixture of Gaussians with signal strength
+### Emission model 3: Mixture of Gaussians with signal strength
 
-The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $Nx1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as 
+The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $N\times1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as $s_i \sim Gamma(\theta_\alpha,\theta_{\beta s})$. Therefore the probability model for gamma is defined as:
 $$
-s_i \sim Gamma(\theta_\alpha,\theta_{\beta s}).
+p(x|\theta) = \frac{\beta^{\alpha}x^{\alpha-1}e^{-\beta x}}{\Gamma(\alpha)}
 $$
 Overall, the expected signal at each brain location is then 
 $$
@@ -129,7 +129,73 @@ $$
 l(\mathbf{y}_i|\mathbf{u}_i)=-\frac{K}{2}\rm{log}(2\pi\theta_{\sigma})-\frac{1}{2\theta_{\sigma}}\|\mathbf{y}_i-\mathbf{u}_i^T \mathbf{V}s_i\|^2
 $$
 
+Here, we use $\langle u_{i}^{(k)},s_{i}\rangle_{q}$ to represent the expected distribution $q(u_{i}^{(k)},s_{i}|\mathbf{y}_{i})$. Thus, the *expected log likelihood* $\mathcal{L}(q, \theta)$ is defined as following:
+$$
+\begin{align*}
+\mathcal{L}(q, \theta) &= \langle\log p(\mathbf{y}, u, s|\theta)\rangle_{q}\\
+&=\sum_{i}\sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}[-\frac{N}{2}\log(2\pi)-\frac{1}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}^T\mathbf{y}_{i}-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)},s_{i}^2\rangle_{q}))]+\sum_{i}\sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\pi_{i}^{(k)}
+\end{align*}
+$$
+Now, we can update the parameters $\theta$ of the Gaussians/Gamma mixture in the $\Mu$ step. There are total five parameters in this Gaussians/Gamma mixture $\theta_{k}\sim(\mu_{k},\sigma^{2}_{k},\pi_{k},\alpha_{k},\beta_{k})$ for each parcel $k$. Now, we start with updating the $\mu$ ($\mathbf{v}_k$ in our case). (Note: the updates only consider a single subject)
+
+1. Updating $\mathbf{v}_k$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\mathbf{v}_{k}$ and make it equals to 0 as following:
+   $$
+   \frac{\partial \mathcal{L}}{\partial \mathbf{v}_{k}} =-\frac{1}{\sigma^{2}}\sum_{i}-\mathbf{y}_{i}^{T}\langle u_{i}^{(k)},s_{i}\rangle_{q}+\mathbf{v}_{k}^T\langle u_{i}^{(k)},s_{i}^{2}\rangle_{q} = 0
+   $$
+   Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
+   $$
+   \mathbf{v}_{k}^{(t)} = \frac{\sum_{i}\langle u_{i}^{(k)},s_{i}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)},s_{i}^{2}\rangle_{q}^{(t)}}
+   $$
+
+2. Updating $\sigma_{k}^{2}$ for parcel $k$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\sigma^{2}$ ( $I\sigma^{2}$ in this case) and make it equals to 0 as following:
+   $$
+   \frac{\partial \mathcal{L}}{\partial \sigma_{k}^{2}} =\sum_{i}\langle u_{i}^{(k)},s_{i}\rangle_{q}[-\frac{N}{2\sigma^{2}}+\frac{1}{2\sigma^{4}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})] = 0
+   $$
+   Thus, we get the updated $\sigma^{2}$ for parcel $k$ in the current $\Mu$ step as,
+   $$
+   {\sigma_{k}^{2}}^{(t)} = \frac{1}{\mathbf{U}}\sum_{i}\langle u_{i}^{(k)},s_{i}\rangle_{q}^{(t)}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})
+   $$
+
+3. Updating $\pi_{k}$ for parcel $k$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\pi$ and make it equals to 0 as following:
+   $$
+   \frac{\partial \mathcal{L}}{\partial \pi_{k}} =\sum_{i}\langle u_{i}^{(k)},s_{i}\rangle_{q}= 0
+   $$
+   Thus, we get the updated $\pi_{k}$ in current $\Mu$ step as, 
+   $$
+   \pi_{k}^{(t)} = \frac{1}{\mathbf{U}}\sum_{i}\langle u_{i}^{(k)},s_{i}\rangle_{q}^{(t)}
+   $$
+
+4. Updating $\alpha_{i}$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\alpha$​ and make it equals to 0 as following:
+   $$
+   \begin{align*}
+   \frac{\partial \mathcal{L}}{\partial \alpha_{i}} &=\sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\frac{\mathbf{v}_{k}}{\sigma_{k}^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T\frac{\partial \log s_{i}}{\partial \alpha_{i}} \tag{Chain rule}\\
+   &= \sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\frac{\mathbf{v}_{k}}{\sigma_{k}^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T\frac{\partial[(\alpha-1)\log s_{i}-\beta s_{i}]}{\partial \alpha_{i}} \\
+   &= \sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\frac{\mathbf{v}_{k}}{\sigma_{k}^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T\log s_{i} =0\\
+   \end{align*}
+   $$
+   Thus, we get the updated $\alpha_{i}$ in current $\Mu$ step as, 
+   $$
+   \alpha_{i}^{(t)} =
+   $$
+
+5. Updating $\beta_{i}$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\beta$​ and make it equals to 0 as following:
+
+$$
+\begin{align*}
+\frac{\partial \mathcal{L}}{\partial \beta_{i}} &=\sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\frac{\mathbf{v}_{k}}{\sigma_{k}^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T\frac{\partial \log s_{i}}{\partial \beta_{i}} \tag{Chain rule}\\
+&= \sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\frac{\mathbf{v}_{k}}{\sigma_{k}^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T\frac{\partial[(\alpha-1)\log s_{i}-\beta s_{i}]}{\partial \beta_{i}} \\
+&= \sum_{k}\langle u_{i}^{(k)},s_{i}\rangle_{q}\frac{\mathbf{v}_{k}}{\sigma_{k}^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k}s_{i})^T s_{i} =0\\
+\end{align*}
+$$
+
+​		Thus, we get the updated $\beta_{i}$ in current $\Mu$ step as, 
+$$
+\beta_{i}^{(t)} =
+$$
+
+
 ### Sampling from the prior or posterior distribution
+
 The problem with determine the overall prior or posterior distribution of the model (for purposes of data generation or inference) cannot be easily be computed. We can evaluate the prior probability of a parcellation $p(\mathbf{U})$ or the posterior distribution $p(\mathbf{U}|\mathbf{Y})$ up to a constant of proportionality, with for example 
 $$
 p(\mathbf{U}|\mathbf{Y};\theta) = \frac{1}{Z(\theta)}\prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }\prod_{i}p(\mathbf{y}_i|u_i)
