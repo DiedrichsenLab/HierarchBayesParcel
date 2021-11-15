@@ -108,7 +108,7 @@ The updated parameters $\theta_{k}^{(t)}\sim(\mu_{k}^{(t)},{\sigma^{2}_{k}}^{(t)
 
 ### Emission model2: Van Mises Distribution
 
-### Emission model3: Mixture ofs Gaussians with signal strength
+### Emission model3: Mixture of Gaussians with signal strength
 
 The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $Nx1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as 
 $$
