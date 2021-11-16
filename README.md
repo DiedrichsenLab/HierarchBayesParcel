@@ -1,10 +1,42 @@
-# generativeMRF
-Collection of functions to play around with different Markov random field models as generative processes for brain activity data.
+# Generative Frameworks
+A generative modelling framework for individual brain organization across a number of different data. The Model is partitioned into a model that determines the probability of the spatial arrangement of regions in each subject s, $p(\mathbf{U}^{(s)};\theta_A)$ and the probability of observing a set of data at each given brain location. We introduce the Markov property that the observations are mutually independent, given the spatial arrangement. 
+$$
+p(\mathbf{Y}^{(s)}|\mathbf{U}^{(s)};\theta_E)=\prod_i p(\mathbf{y}_i^{(s)}|\mathbf{u}_i^{(s)};\theta_E)
+$$
 
-## Generative Potts Model
+### Inference and learning 
+
+We will learn the model, by maximizing the ELBO (Evidence lower bound). For clarity, I am dropping the index for the subject (s) for now, 
+$$
+\begin{align*}
+\log p(\mathbf{Y} | \theta)
+&=\log\sum_{\mathbf{U}}p(\mathbf{Y},\mathbf{U}|\theta) \\ 
+&=\log\sum_{\mathbf{U}}q(\mathbf{U})\frac{p(\mathbf{Y},\mathbf{U}|\theta)}{q(\mathbf{U})}\\
+&\geqslant \sum_{\mathbf{U}} q(\mathbf{U}) \log \frac{p(\mathbf{Y},\mathbf{U}|\theta)}{q(\mathbf{U})}\\ 
+&=\langle \log p(\mathbf{Y},\mathbf{U}|\theta) - \log q(\mathbf{U})\rangle_q
+\triangleq \mathcal{L}(q, \theta)
+\end{align*}
+$$
+
+Given the markov property, we can break the expected complete log likelihood into two pieces, one containing the parameters for the arrangement model and one containing the parameters for the emission model. 
+
+$$
+\begin{align*}
+\langle \log p(\mathbf{Y},\mathbf{U}|\theta)\rangle_q\\
+=\langle \log (p(\mathbf{Y}|\mathbf{U};\theta_E) p(\mathbf{U}|\theta_A))\rangle_q\\
+=\langle \log p(\mathbf{Y}|\mathbf{U};\theta_E)\rangle_q + \langle p(\mathbf{U}|\theta_A)\rangle_q\\
+
+
+\end{align*}
+$$
+
+This means, we can estimate the parameters of the emission model from optimizing the first term, and we can estimate the parameters of the arrangement model by optimizing the second term. 
+
+## Arrangement models
+
 This is a generative Potts model of brain activity data. The main idea is that the brain consists of $K$ regions, each with a specific activity profile $\mathbf{v}_k$ for a specific task set. The model consists of a arrangement model that tells us how the $K$ regions are arranged in a specific subject $s$, and an emission model that provides a probability of the measured data, given the individual arrangement of regions.
 
-### Arrangement model
+### Simple Potts model
 The brain is sampled in $P$ vertices (or voxels). Individual maps are aligned using anatomical normalization, such that each vertex refers to a (roughly) corresponding region in each individual brain. The assignment of each brain location to a specific parcel in subject $s$ is expressed as the random variable $u_i^{(s)}$.
 
 Across individual brains, we have the overall probability of a specific brain location being part of parcel $k$.
@@ -44,17 +76,14 @@ $$
 l(u_i|u_{j\neq i}) \propto \rm{log}\mu_{u_i,i}+ \theta_{w}\sum_{i\neq j}{\mathbf{u}_i^T\mathbf{u}_j w_{ij}}
 $$
 
-### Evidence lower bound 
+## Emission models
+Given the Markov property, the emission models specify the log probability of the observed data as a function of $\mathbf{u}$.  
 
-By using the Jensen's inequality, we define a lower bound to the complete log likelihood:
 $$
-\begin{align*}
-\log p(\mathbf{y},u | \theta)
-&=\sum_{i}\log \sum_{k}p(\mathbf{y}_{i},u_{i}^{(k)}|\theta) \\ 
-&=\sum_{i}\log\sum_{k}q(u_{i}^{(k)}|\mathbf{y}_{i})\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u_{i}^{(k)}|\mathbf{y}_{i})}\\
-&\geqslant\sum_{i}\sum_{k}q(u_{i}^{(k)}|\mathbf{y}_{i})\log\frac{p(\mathbf{y}_{i},u_{i}^{(k)}|\theta)}{q(u_{i}^{(k)}|\mathbf{y}_{i})} \triangleq \mathcal{L}(q, \theta)
-\end{align*}
+\log p(\mathbf{Y}|\mathbf{U};\theta_E)=\sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)
 $$
+
+In the E-step the emission model simply passes $p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)$ as a message to the arrangement model. In the M-step, $q(\mathbf{u}_i) = \langle \mathbf{u}_i \rangle$ is passed back, and the emission model optimizes $\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q$.
 
 
 ### Emission model 1: Mixture of Gaussians
