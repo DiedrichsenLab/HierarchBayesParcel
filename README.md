@@ -85,11 +85,7 @@ In the E-step the emission model simply passes $p(\mathbf{y}_i|\mathbf{u}_i;\the
 
 ### Emission model 1: Mixture of Gaussians
 
-We first try the Gaussian Mixtures as our emission probability model. The original probability model for a $N$-dimensional multivariate Gaussian mixture is as follow:
-$$
-p(x|\theta) = \sum_{i}{\pi_{i}}\frac{1}{(2\pi)^{N/2}|\sum_{i}|^{1/2}}\rm{exp}\{-\frac{1}{2}(x-\mu_{i})^T\Sigma_{i}^{-1}(x-\mu_{i})\}
-$$
-In our emission model, for all $i$ voxel and the associated $N$-dimensional data vector $y_{i}$, the above equation can be re-written as:
+The likelihood of the emission model can be re-written as the sum of the :
 $$
 p(\mathbf{Y}| \mathbf{U};\theta_E) = \sum_{i}\sum_{k}u_{i}^{(k)}\pi_{i}^{(k)}\frac{1}{(2\pi)^{N/2}|\sum_{i}|^{1/2}}\rm{exp}\{-\frac{1}{2}(y_{i}-\mu_{i})^T\Sigma_{i}^{-1}(y_{i}-\mu_{i})\}
 $$
@@ -152,11 +148,11 @@ $$
 $$
 \begin{align*}
 \mathcal{L}(q, \theta) &= \langle\sum_i\log p(\mathbf{y}_i, s_i|u_i; \theta_E)\rangle_{q} = \langle\log p(\mathbf{y}_i|u_i; \theta_E)p(s_i|u_i; \theta_E)\rangle_{q}\\
-&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)]\rangle_{q} + \sum_{i}\sum_{k}\langle u_{i}^{(k)}[\alpha \log \beta-\log\Gamma(\alpha)+(\alpha-1)\log s_i-\beta s_i] \rangle_q\\
+&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)]\rangle_{q}  \\ &+\sum_{i}\sum_{k}\langle u_{i}^{(k)}[\alpha \log \beta-\log\Gamma(\alpha)+(\alpha-1)\log s_i-\beta s_i] \rangle_q\\
 
-&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)\rangle_{q} + P\alpha\log\beta-P\log\Gamma(\alpha)+\sum_{i}\sum_k\langle u_{i}^{(k)}(\alpha-1)\log s_i-\beta s_i\rangle_q\\
+&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)\rangle_{q} \\ &+ P\alpha\log\beta-P\log\Gamma(\alpha)+\sum_{i}\sum_k\langle u_{i}^{(k)}(\alpha-1)\log s_i-u_{i}^{(k)}\beta s_i\rangle_q\\
 
-&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{P}{2\sigma^{2}}\mathbf{y}^T\mathbf{y}-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q})+P\alpha\log\beta-P\log\Gamma(\alpha)+(\alpha-1)\sum_{i}\sum_k\log \langle u_{i}^{(k)}s_i\rangle_q-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q
+&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{P}{2\sigma^{2}}\mathbf{y}^T\mathbf{y}-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) \\ &+P\alpha\log\beta-P\log\Gamma(\alpha)+(\alpha-1)\sum_{i}\sum_k \langle u_{i}^{(k)}\log s_i\rangle_q-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q
 \end{align*}
 $$
 Now, we can update the parameters $\theta$ of the Gaussians/Gamma mixture in the $\Mu$ step. There are total five parameters in this Gaussians/Gamma mixture $\theta_{k}\sim(\mu_{k},\sigma^{2}_{k},\pi_{k},\alpha_{i},\beta_{i})$ for each parcel $k$. Now, we start with updating the $\mu$ ($\mathbf{v}_k$ in our case). (Note: the updates only consider a single subject)
@@ -179,12 +175,8 @@ Now, we can update the parameters $\theta$ of the Gaussians/Gamma mixture in the
    {\sigma^2}^{(t)} = \frac{1}{N}\mathbf{y}^T\mathbf{y}+\frac{1}{NP}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q})
    $$
 
-3. Updating $\pi_{k}$ for parcel $k$ in current $\Mu$-step is exactly using the expectation from the $\mathbf{E}$-step as:
-   $$
-   \pi_{k}^{(t)} = \frac{1}{P}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}
-   $$
+3. Updating $\beta_{k}$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\beta$ and make it equals to 0 as following:
    
-5. Updating $\beta_{k}$, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\beta$ and make it equals to 0 as following:
 
 $$
 \begin{align*}
@@ -198,25 +190,26 @@ $$
 \beta_{k}^{(t)} =  	\frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}
 $$
 
-5. Updating $\alpha_{k}$ is comparatively hard since we cannot derive closed-form, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\alpha$ and make it equals to 0 as following:
-   $$
-   \begin{align*}
-   \frac{\partial \mathcal{L}}{\partial \alpha_k} &=\frac{\partial [P\alpha\log\beta-P\log\Gamma(\alpha)+(\alpha-1)\sum_{i}\sum_k\log \langle u_{i}^{(k)}s_i\rangle_q]}{\partial \alpha_k}\\
-   &=P\log\beta-P\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}+\sum_{i}\sum_k \log \langle u_{i}^{(k)}s_i\rangle_q = 0
-   \end{align*}
-   $$
-   The term $\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}$ in above equation is exactly the *digamma function* and we use $\digamma(\alpha)$ to represent. Also from (4), we know $\beta=\frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}$ Thus, we get the updated $\alpha_{k}$ in current $\Mu$ step as, 
-   $$
-   \begin{align*}
-   \digamma(\alpha)_{k}^{(t)} &= \log \frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}+\frac{1}{P}\sum_{i}\sum_k \log \langle u_{i}^{(k)}s_i\rangle_q\\
-   &=\log P\alpha_k^{(t)} - \log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q + \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q
-   \end{align*}
-   $$
-   By applying "generalized Newton" approximation form, the updated $\alpha_k$ is as follows: 
-   $$
-   \alpha_{k}^{(t)} \approx \frac{0.5}{\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q - \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q}
-   $$
-   Note that $\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q$ is given by Jensen's inequality.
+4. Updating $\alpha_{k}$ is comparatively hard since we cannot derive closed-form, we take derivative of *expected log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\alpha$ and make it equals to 0 as following:
+
+$$
+\begin{align*}
+\frac{\partial \mathcal{L}}{\partial \alpha_k} &=\frac{\partial [P\alpha\log\beta-P\log\Gamma(\alpha)+(\alpha-1)\sum_{i}\sum_k\log \langle u_{i}^{(k)}s_i\rangle_q]}{\partial \alpha_k}\\
+&=P\log\beta-P\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}+\sum_{i}\sum_k \log \langle u_{i}^{(k)}s_i\rangle_q = 0
+\end{align*}
+$$
+The term $\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}$ in above equation is exactly the *digamma function* and we use $\digamma(\alpha)$ to represent. Also from (4), we know $\beta=\frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}$ Thus, we get the updated $\alpha_{k}$ in current $\Mu$ step as, 
+$$
+\begin{align*}
+\digamma(\alpha)_{k}^{(t)} &= \log \frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}+\frac{1}{P}\sum_{i}\sum_k \log \langle u_{i}^{(k)}s_i\rangle_q\\
+&=\log P\alpha_k^{(t)} - \log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q + \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q
+\end{align*}
+$$
+By applying "generalized Newton" approximation form, the updated $\alpha_k$ is as follows: 
+$$
+\alpha_{k}^{(t)} \approx \frac{0.5}{\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q - \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q}
+$$
+Note that $\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q$ is given by Jensen's inequality.
 
 ### Emission model 3: Mixture of Von-Mises Distributions
 
