@@ -234,8 +234,8 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    
 
 $$
-\kappa_k^{(t)} \approx \frac{\overline{r}N-\overline{r}^3}{1-\overline{r}^2}\\
-\bar{r}=\frac{\sum_k r_k\langle u_{i}^{(k)}\rangle}{\sum_{i}\langle u_{i}^{(k)}\rangle}
+\kappa^{(t)} \approx \frac{\overline{r}N-\overline{r}^3}{1-\overline{r}^2}\\
+\bar{r}=\frac{\sum_k r_k\sum_{i}\langle u_{i}^{(k)}\rangle}{P}
 $$
 
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
