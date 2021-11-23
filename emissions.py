@@ -6,6 +6,46 @@ import copy
 
 from numpy.lib.index_tricks import RClass
 
+class EmissionModel: 
+    def __init__(self,K=4,N=10,P=20):
+        self.K = K # Number of states
+        self.N = N
+        self.P = P
+    
+    def initialize(self, data):
+        """Stores the data in emission model itself 
+
+        """
+        self.Y = data # This is assumed to be (num_sub,P,N)
+        self.num_subj = data.shape[0]
+
+    def Estep(self,sub=None):
+        """Implemnents E-step and returns 
+            Parameters: 
+                sub (list): 
+                    List of indices of subjects to use. Default=all (None)
+            Returns:
+                emloglik (np.array):
+                    emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
+        """
+        pass 
+
+    def Mstep(self,U_hat): 
+        """Implements M-step for the model 
+        """
+        pass
+
+    def get_params(self):
+        """[summary]
+        """
+
+    def set_params(self):
+        """[summary]
+
+        Returns:
+            [type]: [description]
+        """
+
 
 
 class MixGaussianExponential:
@@ -14,19 +54,16 @@ class MixGaussianExponential:
     scaling factor on the signal and a fixed noise variance
     """
     def __init__(self,K=4,N=10,P=20):
-        self.K = K # Number of states
-        self.N = N
-        self.P = P
+        super.__init__(K,N,P)
         self.alpha = 1
         self.beta = 1
         self.sigma2 = 1
 
     def initialize(self, data):
+        """Stores the data in emission model itself 
+        Calculates sufficient stats on the data that does not depend on u, and allocates memory for the sufficient stats that does. 
         """
-
-        """
-        self.Y = data # This is assumed to be (num_sub,N,P)
-        self.num_subj = data.shape[0]
+        super.initialize(data)
         self.s = np.empty((self.num_subj,self.K,self.P))
         self.rss = np.empty((self.num_subj,self.K,self.P))
 
@@ -69,7 +106,7 @@ class MixGaussianExponential:
         V = V / np.sqrt(np.sum(V**2,axis=0))
         return V
 
-    def generate_data(self, U):
+    def sample(self, U):
         num_subj = U.shape[0]
         Y = np.empty((num_subj, self.N, self.P))
         signal = np.empty((num_subj, self.P))

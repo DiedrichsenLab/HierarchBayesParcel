@@ -23,6 +23,54 @@ def eucl_distance(coord):
         D = D + (coord[:,i].reshape(-1,1)-coord[:,i])**2
     return np.sqrt(D)
 
+class ArrangementModel: 
+    """Abstract arrangement model
+    """
+    def __init__(self,K,P):
+        self.K = K # Number of states 
+        self.P = P # Number of nodes 
+    
+    
+
+
+class ArrangeIndependent(ArrangementModel):
+    """Arrangement model for spatially independent assignment
+        Either with a spatially uniform prior 
+        or a spatially-specific prior  
+    """
+    def __init__(self,K=3,P=100,spatial_specific = False): 
+        super.__init__(K,P)
+        if (spatial_specific): 
+            self.pi = np.ones((K,))/K
+        else:
+            self.pi = np.ones((P,K))/K
+    
+    def Estep(self,emloglik):
+        """Estep for the spatial arrangement model
+
+        Parameters: 
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
+        Returns: 
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x P x K matrix 
+        """
+        numsubj, P, K = emloglik.shape
+        logq = emloglik + np.log(self.pi)
+        Uhat = np.exp(logq)
+        Uhat = Uhat / np.sum(Uhat,axis=2).reshape((numsubj,P,1))
+        return Uhat 
+
+    def Mstep(self,Uhat):    
+        """ M-step for the spatial arrangement model
+        """
+        pi = np.mean(Uhat,axis=0) # Averarging over subjects 
+        if (self.pi.dim == 1):
+            self.pi = pi.mean(pi,axis=1)
+        else: 
+            self.pi = pi
+
+
 
 class PottsModel:
     """
