@@ -6,9 +6,10 @@ import copy
 
 from numpy.lib.index_tricks import RClass
 
+
 class EmissionModel: 
     def __init__(self,K=4,N=10,P=20):
-        self.K = K # Number of states
+        self.K = K  # Number of states
         self.N = N
         self.P = P
     
@@ -47,14 +48,13 @@ class EmissionModel:
         """
 
 
-
-class MixGaussianExponential:
+class MixGaussianExponential(EmissionModel):
     """
     Mixture of Gaussians with an exponential
     scaling factor on the signal and a fixed noise variance
     """
-    def __init__(self,K=4,N=10,P=20):
-        super.__init__(K,N,P)
+    def __init__(self, K=4, N=10, P=20):
+        super(MixGaussianExponential, self).__init__(K, N, P)
         self.alpha = 1
         self.beta = 1
         self.sigma2 = 1
@@ -63,11 +63,11 @@ class MixGaussianExponential:
         """Stores the data in emission model itself 
         Calculates sufficient stats on the data that does not depend on u, and allocates memory for the sufficient stats that does. 
         """
-        super.initialize(data)
-        self.s = np.empty((self.num_subj,self.K,self.P))
-        self.rss = np.empty((self.num_subj,self.K,self.P))
+        super(MixGaussianExponential, self).initialize(data)
+        self.s = np.empty((self.num_subj, self.K, self.P))
+        self.rss = np.empty((self.num_subj, self.K, self.P))
 
-    def Estep(self,sub = None):
+    def Estep(self, sub=None):
         """
             Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
@@ -106,7 +106,26 @@ class MixGaussianExponential:
         V = V / np.sqrt(np.sum(V**2,axis=0))
         return V
 
-    def sample(self, U):
+    def sample(self, U, V=None):
+        if V is None:
+            V = np.random.normal(0, 1, (self.N, self.K))
+            # Make zero mean, unit length
+            V = V - V.mean(axis=0)
+            V = V / np.sqrt(np.sum(V ** 2, axis=0))
+        else:
+            this_n, this_k = V.shape
+            if this_k != self.K:
+                raise(NameError('Number of columns in V need to match Model.K'))
+
+        num_subj = U.shape[0]
+        Y = np.empty((num_subj, self.N, self.P))
+        for s in range(num_subj):
+            Y[s, :, :] = V[:, U[s, :].astype('int')]
+            # And add noise of variance 1
+            Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
+        return Y
+
+    def sample_with_gamma(self, U):
         num_subj = U.shape[0]
         Y = np.empty((num_subj, self.N, self.P))
         signal = np.empty((num_subj, self.P))

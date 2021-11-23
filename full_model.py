@@ -5,22 +5,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn import plotting
-import surfAnalysisPy as surf
+import sys
+sys.path.insert(0, "D:/python_workspace/")
 
-class fullModel: 
-    def __init__(self,arrange,emission):
+
+class FullModel:
+    def __init__(self, arrange, emission):
         self.arrange = arrange
         self.emission = emission
     
-    def sample(self,num_subj=10):
+    def sample(self, num_subj=10):
         U = self.arrange.sample(num_subj)
         Y = self.emission.sample(U)
-        return Y,U
+        return U, Y
     
-    def fit_em(self,Y,iter,tol):
+    def fit_em(self, Y, iter, tol):
         # Initialize the tracking 
         ll = np.zeros((iter,))
-        theta  = np.zeros((iter,self.emission.nparams+self.arrange.nparams))
+        theta  = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
         for i in range(iter): 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep(Y)
@@ -36,44 +38,26 @@ class fullModel:
 
 
 def _fit_full(Y):
+    pass
+
 
 def _simulate_full():
-    arrangeT = ArrangeIndependent(K=5,P=100,spatial_specific=False)
-    emissionT = MixGaussianExponential(K=5,N=40,P=100)
-    # Set the true parameters to some interesting value
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
+    emissionT = MixGaussianExponential(K=5, N=40, P=100)
 
-    # Generate data 
+    # Step 2: Generate data by sampling from the above model
     U = arrangeT.sample(num_subj=10)
     Y = emissionT.sample(U)
 
-    # Generate new models for fitting 
-    arrangeM = ArrangeIndependent(K=5,P=100,spatial_specific=False)
-    emmisionM = MixGaussianExponential(K=5,N=40,P=100)
-    
-    em_algorithm(arrangeM,emmisionM,Y)
+    # Step 3: Generate new models for fitting
+    arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
+    emmisionM = MixGaussianExponential(K=5, N=40, P=100)
+
+    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    theta = FullModel(arrangeM, emmisionM).fit_em(Y, iter=100, tol=1e-6)
 
 
-if __name__=="__main__":
-    _simulate_full() 
+if __name__ == '__main__':
+    _simulate_full()
 
-    M = PottsModelCortex(17,roi_name='Icosahedron-1442')
-    M.define_mu(2000)
-    cluster = np.argmax(M.mu,axis=0)+1
-    cl = M.map_data(cluster)
-    data = cl[0]
-    # U = M.generate_subjects(num_subj = 4)
-    # [Y,param] = M.generate_emission(U)
-    # pass
-    num_subj = 3 
-    U = np.zeros((num_subj,M.P))
-    for i in range(num_subj):
-        Us = M.sample_gibbs(prior=True,iter=10)
-        U[i,:]=Us[-1,:]
-    for i in range(num_subj):
-        s = M.map_data(U[i,:]+1)
-        data = np.c_[data,s[0]]
-    # surf.map.make_label_gifti()
-    MAP = plt.get_cmap('tab20')
-    RGBA = MAP(np.arange(18))
-    G = surf.map.make_label_gifti(data,label_RGBA=RGBA)
-    nb.save(G,'indivmaps.label.gii')

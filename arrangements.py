@@ -5,7 +5,10 @@ import matplotlib.pyplot as plt
 import copy
 import nibabel as nb
 from nilearn import plotting
-import surfAnalysisPy as surf
+
+import sys
+sys.path.insert(0, "D:/python_workspace/")
+
 
 def eucl_distance(coord):
     """
@@ -23,30 +26,31 @@ def eucl_distance(coord):
         D = D + (coord[:,i].reshape(-1,1)-coord[:,i])**2
     return np.sqrt(D)
 
+
 class ArrangementModel: 
     """Abstract arrangement model
     """
-    def __init__(self,K,P):
-        self.K = K # Number of states 
-        self.P = P # Number of nodes 
-    
-    
+    def __init__(self, K, P):
+        self.K = K  # Number of states
+        self.P = P  # Number of nodes
 
 
 class ArrangeIndependent(ArrangementModel):
-    """Arrangement model for spatially independent assignment
+    """ Arrangement model for spatially independent assignment
         Either with a spatially uniform prior 
         or a spatially-specific prior  
     """
-    def __init__(self,K=3,P=100,spatial_specific = False): 
-        super.__init__(K,P)
-        if (spatial_specific): 
-            self.pi = np.ones((K,))/K
+    def __init__(self, K=3, P=100, spatial_specific=False):
+        super(ArrangeIndependent, self).__init__(K, P)
+        # In this model, the spatially independent arrangement has
+        # two options, spatially uniformed and spatially specific prior
+        if spatial_specific:
+            self.pi = np.ones((P, K)) / K
         else:
-            self.pi = np.ones((P,K))/K
+            self.pi = np.ones((K,)) / K
     
-    def Estep(self,emloglik):
-        """Estep for the spatial arrangement model
+    def Estep(self, emloglik):
+        """ Estep for the spatial arrangement model
 
         Parameters: 
             emloglik (np.array):
@@ -58,18 +62,34 @@ class ArrangeIndependent(ArrangementModel):
         numsubj, P, K = emloglik.shape
         logq = emloglik + np.log(self.pi)
         Uhat = np.exp(logq)
-        Uhat = Uhat / np.sum(Uhat,axis=2).reshape((numsubj,P,1))
+        Uhat = Uhat / np.sum(Uhat, axis=2).reshape((numsubj, P, 1))
         return Uhat 
 
-    def Mstep(self,Uhat):    
+    def Mstep(self, Uhat):
         """ M-step for the spatial arrangement model
         """
-        pi = np.mean(Uhat,axis=0) # Averarging over subjects 
-        if (self.pi.dim == 1):
-            self.pi = pi.mean(pi,axis=1)
+        pi = np.mean(Uhat, axis=0)  # Averarging over subjects
+        if self.pi.ndim == 1:
+            self.pi = pi.mean(axis=1)
         else: 
             self.pi = pi
 
+    def sample(self, num_subj=10):
+        """
+        Samples a number of subjects from the prior.
+        In this i.i.d arrangement model we assume each node has
+        no relation with other nodes, which means it equals to
+        sample from the prior pi.
+
+        :param num_subj: the number of subjects to sample
+        :return: the sampled data for subjects
+        """
+        U = np.zeros((num_subj, self.P))
+        for i in range(num_subj):
+            for p in range(self.P):
+                U[i, p] = np.random.choice(self.K, p=self.pi)
+
+        return U
 
 
 class PottsModel:
@@ -195,6 +215,7 @@ class PottsModel:
                  'signal':signal}
         return(Y,param)
 
+
 class PottsModelGrid(PottsModel):
     """
         Potts model defined on a regular grid
@@ -243,6 +264,7 @@ class PottsModelGrid(PottsModel):
 baseDir = '/Users/jdiedrichsen/Data/fs_LR_32'
 hemN = ['L','R']
 hem_name = ['CortexLeft','CortexRight']
+
 
 class PottsModelCortex(PottsModel):
     """
