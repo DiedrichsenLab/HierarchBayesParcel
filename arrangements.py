@@ -47,22 +47,22 @@ class ArrangeIndependent(ArrangementModel):
         if spatial_specific:
             self.pi = np.ones((P, K)) / K
         else:
-            self.pi = np.ones((K,)) / K
+            self.pi = np.ones((K, 1)) / K
     
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model
 
         Parameters: 
             emloglik (np.array):
-                emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns: 
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x P x K matrix 
         """
-        numsubj, P, K = emloglik.shape
+        numsubj, K, P = emloglik.shape
         logq = emloglik + np.log(self.pi)
         Uhat = np.exp(logq)
-        Uhat = Uhat / np.sum(Uhat, axis=2).reshape((numsubj, P, 1))
+        Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
         return Uhat 
 
     def Mstep(self, Uhat):
@@ -87,7 +87,11 @@ class ArrangeIndependent(ArrangementModel):
         U = np.zeros((num_subj, self.P))
         for i in range(num_subj):
             for p in range(self.P):
-                U[i, p] = np.random.choice(self.K, p=self.pi)
+                if self.pi.shape[1] == 1:
+                    U[i, p] = np.random.choice(self.K, p=self.pi.reshape(-1))
+                else:
+                    np.testing.assert_array_equal(self.K, self.pi.shape[1])
+                    U[i, p] = np.random.choice(self.K, p=self.pi[i])
 
         return U
 
