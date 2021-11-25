@@ -5,14 +5,8 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
-<<<<<<< HEAD
   <component name="TestRunnerService">
     <option name="projectConfiguration" value="pytest" />
     <option name="PROJECT_TEST_RUNNER" value="pytest" />
-=======
-  <component name="PyDocumentationSettings">
-    <option name="format" value="GOOGLE" />
-    <option name="myDocStringFormat" value="Google" />
->>>>>>> ad1789907d8b3b28d72d491c392f753f0e2c25a3
   </component>
 </module>

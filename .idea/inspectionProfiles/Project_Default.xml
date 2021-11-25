@@ -1,7 +1,6 @@
 <component name="InspectionProjectProfileManager">
   <profile version="1.0">
     <option name="myName" value="Project Default" />
-<<<<<<< HEAD
     <inspection_tool class="PyCompatibilityInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ourVersions">
         <value>
@@ -13,12 +12,6 @@
           </list>
         </value>
       </option>
-=======
-    <inspection_tool class="DuplicatedCode" enabled="true" level="WEAK WARNING" enabled_by_default="true">
-      <Languages>
-        <language minSize="65" name="Python" />
-      </Languages>
->>>>>>> ad1789907d8b3b28d72d491c392f753f0e2c25a3
     </inspection_tool>
   </profile>
 </component>

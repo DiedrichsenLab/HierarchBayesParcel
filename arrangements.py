@@ -94,24 +94,12 @@ class ArrangeIndependent(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + np.log(self.pi)
-<<<<<<< HEAD
-
         Uhat = np.exp(np.apply_along_axis(lambda x: x - np.min(x), 1, logq))
         Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         ll_A = Uhat * np.log(self.pi)
         return Uhat, ll_A
-=======
-        Uhat = np.empty(logq.shape, dtype='object')
-        for i in range(logq.shape[0]):
-            logq_sub = mp.matrix(logq[i, :, :].tolist()).apply(mp.exp)
-            Uhat[i, :, :] = np.asarray(logq_sub).reshape(self.K,self.P)
-
-        Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
-        Uhat = Uhat.astype('float64')
-        return Uhat
->>>>>>> ad1789907d8b3b28d72d491c392f753f0e2c25a3
 
     def Mstep(self, Uhat):
         """ M-step for the spatial arrangement model
