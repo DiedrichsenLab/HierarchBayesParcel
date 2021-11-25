@@ -2,9 +2,11 @@
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
-import copy
+import math
+import mpmath as mp
 import nibabel as nb
 from nilearn import plotting
+from decimal import Decimal
 
 import sys
 sys.path.insert(0, "D:/python_workspace/")
@@ -61,9 +63,14 @@ class ArrangeIndependent(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + np.log(self.pi)
-        Uhat = np.exp(logq)
+        Uhat = np.empty(logq.shape, dtype='object')
+        for i in range(logq.shape[0]):
+            logq_sub = mp.matrix(logq[i, :, :].tolist()).apply(mp.exp)
+            Uhat[i, :, :] = np.asarray(logq_sub).reshape(self.K,self.P)
+
         Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
-        return Uhat 
+        Uhat = Uhat.astype('float64')
+        return Uhat
 
     def Mstep(self, Uhat):
         """ M-step for the spatial arrangement model
