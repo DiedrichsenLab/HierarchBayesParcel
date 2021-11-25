@@ -138,9 +138,9 @@ class MixGaussianExponential(EmissionModel):
             UU = UU + U_hat[i, :, :]
         # self.V = np.linalg.solve(UU,YU.T).T
         # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
-        self.V = (YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
+        self.V = (1/self.num_subj)*(YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
         ERSS = np.sum(U_hat * self.rss)
-        self.sigma2 = ERSS/(self.N*self.P)
+        self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
 
     def random_V(self):
         V = np.random.normal(0,1,(self.N,self.K))
