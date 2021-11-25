@@ -1,5 +1,5 @@
 # Example Models
-import os # to handle path information
+import os  # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
@@ -34,6 +34,19 @@ class ArrangementModel:
         self.K = K  # Number of states
         self.P = P  # Number of nodes
 
+    def get_params(self):
+        """[summary]
+        """
+        pass
+
+    def set_params(self):
+        """[summary]
+
+        Returns:
+            [type]: [description]
+        """
+        pass
+
 
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment
@@ -45,10 +58,28 @@ class ArrangeIndependent(ArrangementModel):
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
         if spatial_specific:
-            self.pi = np.ones((P, K)) / K
+            self.pi = np.ones((K, P)) / K
         else:
             self.pi = np.ones((K, 1)) / K
-    
+        self.set_params()
+
+    def get_params(self):
+        """ Get the parameters for the Gaussian mixture model
+
+        :return: the parcel-specific mean and uniformed sigma square
+        """
+        return self.pi.flatten()
+
+    def set_params(self):
+        """ In this mixture gaussians, the parameters are parcel-specific mean V_k
+        and variance. Here, we assume the variance is equal across different parcels.
+        Therefore, there are total k+1 parameters in this mixture model
+
+        set the initial parameters for gaussian mixture
+        """
+        a, b = self.pi.shape
+        self.nparams = a * b
+
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model
 
@@ -57,20 +88,25 @@ class ArrangeIndependent(ArrangementModel):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns: 
             Uhat (np.array):
-                posterior p(U|Y) a numsubj x P x K matrix 
+                posterior p(U|Y) a numsubj x K x P matrix
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + np.log(self.pi)
-        Uhat = np.exp(logq)
+
+        Uhat = np.exp(np.apply_along_axis(lambda x: x - np.min(x), 1, logq))
         Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
-        return Uhat 
+
+        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
+        ll_A = Uhat * np.log(self.pi)
+        return Uhat, ll_A
 
     def Mstep(self, Uhat):
         """ M-step for the spatial arrangement model
+            Update the pi for arrangement model
         """
         pi = np.mean(Uhat, axis=0)  # Averarging over subjects
-        if self.pi.ndim == 1:
-            self.pi = pi.mean(axis=1)
+        if self.pi.shape[1] == 1:
+            self.pi = pi.mean(axis=1).reshape(-1, 1)
         else: 
             self.pi = pi
 

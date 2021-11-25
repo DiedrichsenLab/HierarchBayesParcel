@@ -19,7 +19,7 @@ class FullModel:
         Y = self.emission.sample(U)
         return U, Y
     
-    def fit_em(self, Y, iter, tol):
+    def fit_em(self, iter, tol):
         """ Do the real EM algorithm for the complete log likelihood for the
         combination of the arrangement model and emission model
 
@@ -30,18 +30,19 @@ class FullModel:
         :return: the resulting parameters theta and the log likelihood
         """
         # Initialize the tracking 
-        ll = np.zeros((iter,))
-        # theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
+        ll = []
+        theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
         for i in range(iter): 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
             Uhat, ll_A = self.arrange.Estep(emloglik)
             # Compute the expected complete logliklihood 
-            ll[i] = np.sum(Uhat * emloglik) + ll_A
+            ll.append(np.sum(Uhat * emloglik) + np.sum(ll_A))
             # Updates the parameters 
             self.emission.Mstep(Uhat)
             self.arrange.Mstep(Uhat)
-            # theta[i,:]=np.concatenate([self.emission.get_params(),self.arrange.get_params()])
+            theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
+        print('debug here')
         return self, ll
 
 
@@ -63,7 +64,7 @@ def _simulate_full():
     emissionM = MixGaussianExponential(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
-    theta = FullModel(arrangeM, emissionM).fit_em(Y, iter=100, tol=1e-6)
+    theta = FullModel(arrangeM, emissionM).fit_em(iter=100, tol=1e-6)
 
 
 if __name__ == '__main__':

@@ -84,16 +84,9 @@ class MixGaussianExponential(EmissionModel):
 
         :return: the parcel-specific mean and uniformed sigma square
         """
-        params = []
         np.testing.assert_array_equal(self.K, self.V.shape[1])
-        for i in range(self.K):
-            params = np.array([params, self.V[:, i]])
 
-        # np.testing.assert_array_equal(self.K, self.sigma2.shape[1])
-        for i in range(self.K):
-            params = np.array([params, self.sigma2])
-
-        return params
+        return np.append(self.V.flatten('F'), self.sigma2)
 
     def set_params(self):
         """ In this mixture gaussians, the parameters are parcel-specific mean V_k
@@ -108,7 +101,7 @@ class MixGaussianExponential(EmissionModel):
         self.V = V / np.sqrt(np.sum(V**2, axis=0))
 
         self.sigma2 = 1
-        self.nparams = self.K + 1
+        self.nparams = self.N * self.K + 1
 
     def Estep(self, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
@@ -117,7 +110,7 @@ class MixGaussianExponential(EmissionModel):
         :param Y: the real data
         :param sub: specify which subject to optimize
 
-        :return: the expected log likelihood for emission model
+        :return: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
         if sub is None:
             sub = range(self.Y.shape[0])
@@ -129,20 +122,23 @@ class MixGaussianExponential(EmissionModel):
             # self.s[i][self.s[i]<0]=0  # Limit to 0
             self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T + uVVu.reshape((self.K, 1))
 
-            LL[i, :, :] = -0.5*self.P*self.N*(np.log(2*np.pi) + np.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5*self.N*(np.log(2*np.pi) + np.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
         return LL
 
     def Mstep(self, U_hat):
         """
             Performs the M-step on a specific U-hat
         """
-        SU = self.s * U_hat
+        # SU = self.s * U_hat
         YU = np.zeros((self.N, self.K))
-        UU = np.zeros((self.K, self.K))
+        UU = np.zeros((self.K, self.P))
         for i in range(self.num_subj):
-            YU = YU + self.Y[i,:,:] @ SU[i,:,:].T
-            UU = UU + SU[i,:,:] @ SU[i,:,:].T
-        self.V = np.linalg.solve(UU,YU.T).T
+            YU = YU + self.Y[i, :, :] @ U_hat[i, :, :].T
+            UU = UU + U_hat[i, :, :]
+        # self.V = np.linalg.solve(UU,YU.T).T
+        # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
+        self.V = (YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
         ERSS = np.sum(U_hat * self.rss)
         self.sigma2 = ERSS/(self.N*self.P)
 
