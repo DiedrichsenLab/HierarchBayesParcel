@@ -1,5 +1,5 @@
 from arrangements import ArrangeIndependent
-from emissions import MixGaussianExponential
+from emissions import MixGaussianExponential, MixGaussianGamma
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
