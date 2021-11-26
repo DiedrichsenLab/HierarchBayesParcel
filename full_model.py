@@ -37,17 +37,28 @@ class FullModel:
             emloglik = self.emission.Estep()
             Uhat, ll_A = self.arrange.Estep(emloglik)
             # Compute the expected complete logliklihood 
-            ll.append(np.sum(Uhat * emloglik) + np.sum(ll_A))
+            this_ll = np.sum(Uhat * emloglik) + np.sum(ll_A)
+            if (i > 1) and (this_ll - ll[-1] < tol):  # convergence
+                return np.asarray(ll), theta
+            else:
+                ll.append(this_ll)
+
             # Updates the parameters 
             self.emission.Mstep(Uhat)
             self.arrange.Mstep(Uhat)
             theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
-        print('debug here')
-        return self, ll
+
+        return np.asarray(ll), theta
 
 
 def _fit_full(Y):
     pass
+
+
+def _plot_loglike(loglike, color='b'):
+    plt.figure()
+    plt.plot(loglike, color=color)
+    plt.show()
 
 
 def _simulate_full():
@@ -64,7 +75,9 @@ def _simulate_full():
     emissionM = MixGaussianExponential(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
-    theta = FullModel(arrangeM, emissionM).fit_em(iter=100, tol=1e-6)
+    ll, theta = FullModel(arrangeM, emissionM).fit_em(iter=1000, tol=0.001)
+    _plot_loglike(ll, color='b')
+    print(theta)
 
 
 if __name__ == '__main__':

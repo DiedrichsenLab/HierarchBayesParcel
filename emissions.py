@@ -103,6 +103,29 @@ class MixGaussianExponential(EmissionModel):
         self.sigma2 = 1
         self.nparams = self.N * self.K + 1
 
+    def _norm_pdf_multivariate(self, x, mu, sigma):
+        """ pdf function for multivariate normal distribution
+
+        Note: X and mu are assumed to be column vector
+        :param x: multivariate data. Shape (n_dim, 1)
+        :param mu: theta mu of the distribution. Shape (n_dim, 1)
+        :param sigma: theta cov of the distribution. Shape (n_dim, n_dim)
+
+        :return: the probability of a data point in the given normal distribution
+        """
+        size = len(x)
+        if size == len(mu) and (size, size) == sigma.shape:
+            det = np.linalg.det(sigma)
+            if det == 0:
+                raise NameError("The covariance matrix can't be singular")
+            norm_const = 1.0 / (np.math.pow((2 * np.pi), float(size) / 2) * np.math.pow(det, 1.0 / 2))
+            x_mu = np.matrix(x - mu)
+            inv_ = np.linalg.inv(sigma)
+            result = np.math.pow(np.math.e, -0.5 * (x_mu.T * inv_ * x_mu))
+            return norm_const * result
+        else:
+            raise NameError("The dimensions of the input don't match")
+
     def Estep(self, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
@@ -114,17 +137,20 @@ class MixGaussianExponential(EmissionModel):
         """
         if sub is None:
             sub = range(self.Y.shape[0])
-        LL = np.empty((self.Y.shape[0], self.K, self.P))
+        LL_1 = np.empty((self.Y.shape[0], self.K, self.P))
+        # LL_2 = np.empty((self.Y.shape[0], self.K, self.P))
         uVVu = np.sum(self.V**2, axis=0)  # This is u.T V.T V u for each u
         for i in sub:
             YV = self.Y[i, :, :].T @ self.V
-            # self.s[i,:,:]=(YV/uVVu-self.beta*self.sigma2).T  # Maximized g
-            # self.s[i][self.s[i]<0]=0  # Limit to 0
             self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T + uVVu.reshape((self.K, 1))
-
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5*self.N*(np.log(2*np.pi) + np.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
-        return LL
+            LL_1[i, :, :] = -0.5*self.N*(np.log(2*np.pi) + np.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+
+            # for k in range(self.K):
+            #     for p in range(self.P):
+            #         LL_2[i, k, p] = self._norm_pdf_multivariate(self.Y[i, :, p][None].T, self.V[:, k][None].T,
+            #                                                     np.identity(self.N)*self.sigma2)
+        return LL_1
 
     def Mstep(self, U_hat):
         """
@@ -138,7 +164,7 @@ class MixGaussianExponential(EmissionModel):
             UU = UU + U_hat[i, :, :]
         # self.V = np.linalg.solve(UU,YU.T).T
         # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
-        self.V = (1/self.num_subj)*(YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
+        self.V = (YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
         ERSS = np.sum(U_hat * self.rss)
         self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
 
