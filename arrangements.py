@@ -1,11 +1,15 @@
 # Example Models
-import os # to handle path information
+import os  # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
-import copy
 import nibabel as nb
 from nilearn import plotting
-import surfAnalysisPy as surf
+from decimal import Decimal
+from numpy import exp,log,sqrt
+
+import sys
+sys.path.insert(0, "D:/python_workspace/")
+
 
 def eucl_distance(coord):
     """
@@ -23,53 +27,107 @@ def eucl_distance(coord):
         D = D + (coord[:,i].reshape(-1,1)-coord[:,i])**2
     return np.sqrt(D)
 
-class ArrangementModel: 
+
+class ArrangementModel:
     """Abstract arrangement model
     """
-    def __init__(self,K,P):
-        self.K = K # Number of states 
-        self.P = P # Number of nodes 
-    
-    
+    def __init__(self, K, P):
+        self.K = K  # Number of states
+        self.P = P  # Number of nodes
+
+    def get_params(self):
+        """Returns the vectorized verion of the parameters
+        Returns:
+            theta (1-d np.array): Vectorized version of parameters
+        """
+        pass
+
+    def set_params(self,theta):
+        """Sets the parameters from a vector
+        """
+        pass
 
 
 class ArrangeIndependent(ArrangementModel):
-    """Arrangement model for spatially independent assignment
-        Either with a spatially uniform prior 
-        or a spatially-specific prior  
+    """ Arrangement model for spatially independent assignment
+        Either with a spatially uniform prior
+        or a spatially-specific prior. Pi is saved in form of log-pi.
     """
-    def __init__(self,K=3,P=100,spatial_specific = False): 
-        super.__init__(K,P)
-        if (spatial_specific): 
-            self.pi = np.ones((K,))/K
+    def __init__(self, K=3, P=100, spatial_specific=False):
+        super().__init__(K, P)
+        # In this model, the spatially independent arrangement has
+        # two options, spatially uniformed and spatially specific prior
+        self.spatial_specific = spatial_specific
+        if spatial_specific:
+            pi = np.ones((K, P)) / K
         else:
-            self.pi = np.ones((P,K))/K
-    
-    def Estep(self,emloglik):
-        """Estep for the spatial arrangement model
+            pi = np.ones((K, 1)) / K
+        self.logpi = np.log(pi)
+        self.nparams = self.logpi.size
 
-        Parameters: 
+    def get_params(self):
+        """ Get the parameters (log-pi) for the Arrangement model
+        Returns:
+            theta (1-d np.array): Vectorized version of parameters
+        """
+        return self.logpi.flatten()
+
+    def set_params(self,theta):
+        """Sets the parameters from a vector
+        """
+        if self.spatial_specific:
+            self.logpi = theta.reshape((self.K,self.P))
+        else:
+            self.pi = theta.reshape((self.K,1))
+
+    def Estep(self, emloglik):
+        """ Estep for the spatial arrangement model
+
+        Parameters:
             emloglik (np.array):
-                emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
-        Returns: 
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
             Uhat (np.array):
-                posterior p(U|Y) a numsubj x P x K matrix 
+                posterior p(U|Y) a numsubj x K x P matrix
         """
-        numsubj, P, K = emloglik.shape
-        logq = emloglik + np.log(self.pi)
-        Uhat = np.exp(logq)
-        Uhat = Uhat / np.sum(Uhat,axis=2).reshape((numsubj,P,1))
-        return Uhat 
+        numsubj, K, P = emloglik.shape
+        logq = emloglik + self.logpi
+        Uhat = np.exp(np.apply_along_axis(lambda x: x - np.min(x), 1, logq))
+        Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
 
-    def Mstep(self,Uhat):    
+        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
+        ll_A = Uhat * self.logpi
+        return Uhat, ll_A
+
+    def Mstep(self, Uhat):
         """ M-step for the spatial arrangement model
+            Update the pi for arrangement model
         """
-        pi = np.mean(Uhat,axis=0) # Averarging over subjects 
-        if (self.pi.dim == 1):
-            self.pi = pi.mean(pi,axis=1)
-        else: 
-            self.pi = pi
+        pi = np.mean(Uhat, axis=0)  # Averarging over subjects
+        if not self.spatial_specific:
+            pi = pi.mean(axis=1).reshape(-1, 1)
+        self.logpi = log(pi)
 
+    def sample(self, num_subj=10):
+        """
+        Samples a number of subjects from the prior.
+        In this i.i.d arrangement model we assume each node has
+        no relation with other nodes, which means it equals to
+        sample from the prior pi.
+
+        :param num_subj: the number of subjects to sample
+        :return: the sampled data for subjects
+        """
+        U = np.zeros((num_subj, self.P))
+        pi = np.exp(self.logpi)
+        for i in range(num_subj):
+            for p in range(self.P):
+                if self.spatial_specific:
+                    np.testing.assert_array_equal(self.K, pi.shape[1])
+                    U[i, p] = np.random.choice(self.K, p=pi[i])
+                else:
+                    U[i, p] = np.random.choice(self.K, p=pi.reshape(-1))
+        return U
 
 
 class PottsModel:
@@ -195,6 +253,7 @@ class PottsModel:
                  'signal':signal}
         return(Y,param)
 
+
 class PottsModelGrid(PottsModel):
     """
         Potts model defined on a regular grid
@@ -243,6 +302,7 @@ class PottsModelGrid(PottsModel):
 baseDir = '/Users/jdiedrichsen/Data/fs_LR_32'
 hemN = ['L','R']
 hem_name = ['CortexLeft','CortexRight']
+
 
 class PottsModelCortex(PottsModel):
     """
