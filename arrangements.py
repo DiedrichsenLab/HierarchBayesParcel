@@ -3,7 +3,6 @@ import os  # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-import mpmath as mp
 import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
@@ -29,7 +28,7 @@ def eucl_distance(coord):
     return np.sqrt(D)
 
 
-class ArrangementModel: 
+class ArrangementModel:
     """Abstract arrangement model
     """
     def __init__(self, K, P):
@@ -52,8 +51,8 @@ class ArrangementModel:
 
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment
-        Either with a spatially uniform prior 
-        or a spatially-specific prior  
+        Either with a spatially uniform prior
+        or a spatially-specific prior
     """
     def __init__(self, K=3, P=100, spatial_specific=False):
         super(ArrangeIndependent, self).__init__(K, P)
@@ -85,10 +84,10 @@ class ArrangeIndependent(ArrangementModel):
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model
 
-        Parameters: 
+        Parameters:
             emloglik (np.array):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns: 
+        Returns:
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
@@ -108,7 +107,7 @@ class ArrangeIndependent(ArrangementModel):
         pi = np.mean(Uhat, axis=0)  # Averarging over subjects
         if self.pi.shape[1] == 1:
             self.pi = pi.mean(axis=1).reshape(-1, 1)
-        else: 
+        else:
             self.pi = pi
 
     def sample(self, num_subj=10):

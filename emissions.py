@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-class EmissionModel: 
+class EmissionModel:
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         self.K = K  # Number of states
         self.N = N
@@ -18,27 +18,27 @@ class EmissionModel:
             self.set_params()
         else:
             self.params = params
-    
+
     def initialize(self, data):
-        """Stores the data in emission model itself 
+        """Stores the data in emission model itself
 
         """
         self.Y = data  # This is assumed to be (num_sub,P,N)
         self.num_subj = data.shape[0]
 
     def Estep(self, sub=None):
-        """Implemnents E-step and returns 
-            Parameters: 
-                sub (list): 
+        """Implemnents E-step and returns
+            Parameters:
+                sub (list):
                     List of indices of subjects to use. Default=all (None)
             Returns:
                 emloglik (np.array):
                     emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
         """
-        pass 
+        pass
 
-    def Mstep(self,U_hat): 
-        """Implements M-step for the model 
+    def Mstep(self,U_hat):
+        """Implements M-step for the model
         """
         pass
 
@@ -56,20 +56,19 @@ class EmissionModel:
         pass
 
 
-class MixGaussianExponential(EmissionModel):
+class MixGaussian(EmissionModel):
     """
-    Mixture of Gaussians with an exponential
-    scaling factor on the signal and a fixed noise variance
+    Mixture of Gaussians with isotropic noise
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
-        super(MixGaussianExponential, self).__init__(K, N, P, data, params)
+        super().__init__(K, N, P, data, params)
 
     def initialize(self, data):
-        """Stores the data in emission model itself 
+        """Stores the data in emission model itself
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        super(MixGaussianExponential, self).initialize(data)
+        super().initialize(data)
         self.YY = self.Y**2
         self.s = np.empty((self.num_subj, self.K, self.P))
         self.rss = np.empty((self.num_subj, self.K, self.P))

@@ -1,24 +1,23 @@
 from arrangements import ArrangeIndependent
-from emissions import MixGaussianExponential, MixGaussianGamma
+from emissions import MixGaussian
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn import plotting
 import sys
-sys.path.insert(0, "D:/python_workspace/")
-
+# sys.path.insert(0, "D:/python_workspace/")
 
 class FullModel:
     def __init__(self, arrange, emission):
         self.arrange = arrange
         self.emission = emission
-    
+
     def sample(self, num_subj=10):
         U = self.arrange.sample(num_subj)
         Y = self.emission.sample(U)
         return U, Y
-    
+
     def fit_em(self, iter, tol):
         """ Do the real EM algorithm for the complete log likelihood for the
         combination of the arrangement model and emission model
@@ -29,21 +28,21 @@ class FullModel:
 
         :return: the resulting parameters theta and the log likelihood
         """
-        # Initialize the tracking 
+        # Initialize the tracking
         ll = []
         theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
-        for i in range(iter): 
+        for i in range(iter):
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
             Uhat, ll_A = self.arrange.Estep(emloglik)
-            # Compute the expected complete logliklihood 
+            # Compute the expected complete logliklihood
             this_ll = np.sum(Uhat * emloglik) + np.sum(ll_A)
             if (i > 1) and (this_ll - ll[-1] < tol):  # convergence
                 return np.asarray(ll), theta
             else:
                 ll.append(this_ll)
 
-            # Updates the parameters 
+            # Updates the parameters
             self.emission.Mstep(Uhat)
             self.arrange.Mstep(Uhat)
             theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
@@ -64,7 +63,7 @@ def _plot_loglike(loglike, color='b'):
 def _simulate_full():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionT = MixGaussianExponential(K=5, N=40, P=100)
+    emissionT = MixGaussian(K=5, N=40, P=100)
 
     # Step 2: Generate data by sampling from the above model
     U = arrangeT.sample(num_subj=10)
@@ -72,7 +71,7 @@ def _simulate_full():
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionM = MixGaussianExponential(K=5, N=40, P=100, data=Y)
+    emissionM = MixGaussian(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     ll, theta = FullModel(arrangeM, emissionM).fit_em(iter=1000, tol=0.001)
