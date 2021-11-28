@@ -6,6 +6,7 @@ import math
 import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
+from numpy import exp,log,sqrt
 
 import sys
 sys.path.insert(0, "D:/python_workspace/")
@@ -36,15 +37,14 @@ class ArrangementModel:
         self.P = P  # Number of nodes
 
     def get_params(self):
-        """[summary]
+        """Returns the vectorized verion of the parameters
+        Returns:
+            theta (1-d np.array): Vectorized version of parameters
         """
         pass
 
-    def set_params(self):
-        """[summary]
-
-        Returns:
-            [type]: [description]
+    def set_params(self,theta):
+        """Sets the parameters from a vector
         """
         pass
 
@@ -52,34 +52,34 @@ class ArrangementModel:
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment
         Either with a spatially uniform prior
-        or a spatially-specific prior
+        or a spatially-specific prior. Pi is saved in form of log-pi.
     """
     def __init__(self, K=3, P=100, spatial_specific=False):
-        super(ArrangeIndependent, self).__init__(K, P)
+        super().__init__(K, P)
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
+        self.spatial_specific = spatial_specific
         if spatial_specific:
-            self.pi = np.ones((K, P)) / K
+            pi = np.ones((K, P)) / K
         else:
-            self.pi = np.ones((K, 1)) / K
-        self.set_params()
+            pi = np.ones((K, 1)) / K
+        self.logpi = np.log(pi)
+        self.nparams = self.logpi.size
 
     def get_params(self):
-        """ Get the parameters for the Gaussian mixture model
-
-        :return: the parcel-specific mean and uniformed sigma square
+        """ Get the parameters (log-pi) for the Arrangement model
+        Returns:
+            theta (1-d np.array): Vectorized version of parameters
         """
-        return self.pi.flatten()
+        return self.logpi.flatten()
 
-    def set_params(self):
-        """ In this mixture gaussians, the parameters are parcel-specific mean V_k
-        and variance. Here, we assume the variance is equal across different parcels.
-        Therefore, there are total k+1 parameters in this mixture model
-
-        set the initial parameters for gaussian mixture
+    def set_params(self,theta):
+        """Sets the parameters from a vector
         """
-        a, b = self.pi.shape
-        self.nparams = a * b
+        if self.spatial_specific:
+            self.logpi = theta.reshape((self.K,self.P))
+        else:
+            self.pi = theta.reshape((self.K,1))
 
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model
@@ -92,12 +92,12 @@ class ArrangeIndependent(ArrangementModel):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         numsubj, K, P = emloglik.shape
-        logq = emloglik + np.log(self.pi)
+        logq = emloglik + self.logpi
         Uhat = np.exp(np.apply_along_axis(lambda x: x - np.min(x), 1, logq))
         Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = Uhat * np.log(self.pi)
+        ll_A = Uhat * self.logpi
         return Uhat, ll_A
 
     def Mstep(self, Uhat):
@@ -105,10 +105,9 @@ class ArrangeIndependent(ArrangementModel):
             Update the pi for arrangement model
         """
         pi = np.mean(Uhat, axis=0)  # Averarging over subjects
-        if self.pi.shape[1] == 1:
-            self.pi = pi.mean(axis=1).reshape(-1, 1)
-        else:
-            self.pi = pi
+        if not self.spatial_specific:
+            pi = pi.mean(axis=1).reshape(-1, 1)
+        self.logpi = log(pi)
 
     def sample(self, num_subj=10):
         """
@@ -121,14 +120,14 @@ class ArrangeIndependent(ArrangementModel):
         :return: the sampled data for subjects
         """
         U = np.zeros((num_subj, self.P))
+        pi = np.exp(self.logpi)
         for i in range(num_subj):
             for p in range(self.P):
-                if self.pi.shape[1] == 1:
-                    U[i, p] = np.random.choice(self.K, p=self.pi.reshape(-1))
+                if self.spatial_specific:
+                    np.testing.assert_array_equal(self.K, pi.shape[1])
+                    U[i, p] = np.random.choice(self.K, p=pi[i])
                 else:
-                    np.testing.assert_array_equal(self.K, self.pi.shape[1])
-                    U[i, p] = np.random.choice(self.K, p=self.pi[i])
-
+                    U[i, p] = np.random.choice(self.K, p=pi.reshape(-1))
         return U
 
 

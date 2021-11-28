@@ -38,7 +38,7 @@ class FullModel:
             # Compute the expected complete logliklihood
             this_ll = np.sum(Uhat * emloglik) + np.sum(ll_A)
             if (i > 1) and (this_ll - ll[-1] < tol):  # convergence
-                return np.asarray(ll), theta
+                break
             else:
                 ll.append(this_ll)
 
@@ -47,7 +47,7 @@ class FullModel:
             self.arrange.Mstep(Uhat)
             theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
 
-        return np.asarray(ll), theta
+        return np.asarray(ll), theta[0:len(ll),:]
 
 
 def _fit_full(Y):
@@ -57,13 +57,13 @@ def _fit_full(Y):
 def _plot_loglike(loglike, color='b'):
     plt.figure()
     plt.plot(loglike, color=color)
-    plt.show()
 
 
 def _simulate_full():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
     emissionT = MixGaussian(K=5, N=40, P=100)
+    emissionT.random_params();
 
     # Step 2: Generate data by sampling from the above model
     U = arrangeT.sample(num_subj=10)
@@ -74,7 +74,8 @@ def _simulate_full():
     emissionM = MixGaussian(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
-    ll, theta = FullModel(arrangeM, emissionM).fit_em(iter=1000, tol=0.001)
+    M = FullModel(arrangeM, emissionM)
+    ll, theta = M.fit_em(iter=1000, tol=0.001)
     _plot_loglike(ll, color='b')
     print(theta)
 

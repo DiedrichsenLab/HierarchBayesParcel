@@ -2,26 +2,23 @@
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
-
+from numpy import log,exp,sqrt
 
 class EmissionModel:
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         self.K = K  # Number of states
         self.N = N
         self.P = P
+        self.nparams = 0
         if data is not None:
             self.initialize(data)
-        else:
-            pass
-
         if params is None:
-            self.set_params()
+            self.random_params() # Random parameter state
         else:
-            self.params = params
+            self.set_params(params)
 
     def initialize(self, data):
         """Stores the data in emission model itself
-
         """
         self.Y = data  # This is assumed to be (num_sub,P,N)
         self.num_subj = data.shape[0]
@@ -43,16 +40,19 @@ class EmissionModel:
         pass
 
     def get_params(self):
-        """[summary]
+        """Returns all parameters as a vector
         """
         pass
 
     def set_params(self):
-        """[summary]
+        """Sets all parameters from a vector
 
         Returns:
             [type]: [description]
         """
+        pass
+
+    def random_params():
         pass
 
 
@@ -62,6 +62,7 @@ class MixGaussian(EmissionModel):
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         super().__init__(K, N, P, data, params)
+        self.nparams = self.N * self.K + 1
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -70,55 +71,32 @@ class MixGaussian(EmissionModel):
         """
         super().initialize(data)
         self.YY = self.Y**2
-        self.s = np.empty((self.num_subj, self.K, self.P))
         self.rss = np.empty((self.num_subj, self.K, self.P))
 
     def get_params(self):
         """ Get the parameters for the Gaussian mixture model
 
-        :return: the parcel-specific mean and uniformed sigma square
+        :return: the parcel-specific mean and log sigma2
         """
         np.testing.assert_array_equal(self.K, self.V.shape[1])
 
-        return np.append(self.V.flatten('F'), self.sigma2)
+        return np.append(self.V.flatten('F'), log(self.sigma2))
 
-    def set_params(self):
+    def set_params(self,theta):
         """ In this mixture gaussians, the parameters are parcel-specific mean V_k
         and variance. Here, we assume the variance is equal across different parcels.
         Therefore, there are total k+1 parameters in this mixture model
-
         set the initial parameters for gaussian mixture
         """
+        self.V = theta[0:self.N*self.K].reshape((N,K))
+        self.sigma2 = exp(theta[-1])
+
+    def random_params(self):
         V = np.random.normal(0,1, (self.N, self.K))
         # standardise V to unit length
         V = V - V.mean(axis=0)
-        self.V = V / np.sqrt(np.sum(V**2, axis=0))
-
-        self.sigma2 = 1
-        self.nparams = self.N * self.K + 1
-
-    def _norm_pdf_multivariate(self, x, mu, sigma):
-        """ pdf function for multivariate normal distribution
-
-        Note: X and mu are assumed to be column vector
-        :param x: multivariate data. Shape (n_dim, 1)
-        :param mu: theta mu of the distribution. Shape (n_dim, 1)
-        :param sigma: theta cov of the distribution. Shape (n_dim, n_dim)
-
-        :return: the probability of a data point in the given normal distribution
-        """
-        size = len(x)
-        if size == len(mu) and (size, size) == sigma.shape:
-            det = np.linalg.det(sigma)
-            if det == 0:
-                raise NameError("The covariance matrix can't be singular")
-            norm_const = 1.0 / (np.math.pow((2 * np.pi), float(size) / 2) * np.math.pow(det, 1.0 / 2))
-            x_mu = np.matrix(x - mu)
-            inv_ = np.linalg.inv(sigma)
-            result = np.math.pow(np.math.e, -0.5 * (x_mu.T * inv_ * x_mu))
-            return norm_const * result
-        else:
-            raise NameError("The dimensions of the input don't match")
+        self.V = V / sqrt(np.sum(V**2, axis=0))
+        self.sigma2 = exp(np.random.normal(0,0.3))
 
     def Estep(self, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
@@ -163,39 +141,16 @@ class MixGaussian(EmissionModel):
         ERSS = np.sum(U_hat * self.rss)
         self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
 
-    def random_V(self):
-        """ Generate random initial mu for the emission model
-
-        :return: multivariate V, shape (N, K)
-        """
-        V = np.random.normal(0,1,(self.N,self.K))
-        # Make zero mean, unit length
-        V = V - V.mean(axis=0)
-        V = V / np.sqrt(np.sum(V**2,axis=0))
-        return V
-
-    def sample(self, U, V=None):
+    def sample(self, U):
         """ Generate random data given this emission model
 
         :param U: The prior arrangement U from arragnment model
-        :param V: given the initial V. If None, then randomly generate
-
         :return: sampled data Y
         """
-        if V is None:
-            V = np.random.normal(0, 1, (self.N, self.K))
-            # Make zero mean, unit length
-            V = V - V.mean(axis=0)
-            V = V / np.sqrt(np.sum(V ** 2, axis=0))
-        else:
-            this_n, this_k = V.shape
-            if this_k != self.K:
-                raise(NameError('Number of columns in V need to match Model.K'))
-
         num_subj = U.shape[0]
         Y = np.empty((num_subj, self.N, self.P))
         for s in range(num_subj):
-            Y[s, :, :] = V[:, U[s, :].astype('int')]
+            Y[s, :, :] = self.V[:, U[s, :].astype('int')]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
         return Y
