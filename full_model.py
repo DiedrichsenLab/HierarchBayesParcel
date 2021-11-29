@@ -1,5 +1,5 @@
 from arrangements import ArrangeIndependent
-from emissions import MixGaussian
+from emissions import MixGaussian, MixGaussianGamma
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
@@ -62,8 +62,8 @@ def _plot_loglike(loglike, color='b'):
 def _simulate_full():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionT = MixGaussian(K=5, N=40, P=100)
-    emissionT.random_params();
+    emissionT = MixGaussianGamma(K=5, N=40, P=100)
+    # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
     U = arrangeT.sample(num_subj=10)
@@ -71,7 +71,7 @@ def _simulate_full():
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionM = MixGaussian(K=5, N=40, P=100, data=Y)
+    emissionM = MixGaussianGamma(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)

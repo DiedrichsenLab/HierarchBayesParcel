@@ -76,9 +76,9 @@ class ArrangeIndependent(ArrangementModel):
         """Sets the parameters from a vector
         """
         if self.spatial_specific:
-            self.logpi = theta.reshape((self.K,self.P))
+            self.logpi = theta.reshape((self.K, self.P))
         else:
-            self.pi = theta.reshape((self.K,1))
+            self.logpi = theta.reshape((self.K, 1))
 
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model

@@ -66,7 +66,7 @@ fig1 = make_subplots(rows=4, cols=6,
                             [{"type": "scene"}, {"type": "scene"}, {"type": "scene"}, {"type": "scene"}, {"type": "scene"}, {"type": "scene"}]],
                      )
 for i in range(len(goodsubj)):
-    path = 'data/%s' % subj_name[goodsubj[i]-1]
+    path = 'D:/python_workspace/DCBC/data/%s' % subj_name[goodsubj[i]-1]
     data = load_subjectData(path, hemis='L')
     mean = data.mean(axis=1)
     data = data - mean[:, np.newaxis]
@@ -79,19 +79,19 @@ for i in range(len(goodsubj)):
     #                  mode='markers', marker=dict(size=3, opacity=0.7)),
     #                  row=np.int(np.floor(i/6)+1), col=(i % 6)+1)
 
-    tsne = TSNE(n_components=3, random_state=0)
-    X_embadded = tsne.fit_transform(data[~np.isnan(data).any(axis=1), :])
+    # tsne = TSNE(n_components=3, random_state=0)
+    # X_embadded = tsne.fit_transform(data[~np.isnan(data).any(axis=1), :])
 
-    num = 10
-    Uhat = np.empty((num, P, K))
-    Vhat = np.empty((num, K, N))
-    for i in range(num):
-        # Determine random starting value
-        V_init = random_V(K, N)
-        U_init = sparse_encode(Y, V_init, alpha=1, algorithm='lasso_cd')
-        Uhat[i, :, :], Vhat[i, :, :], errors = dict_learning(Y, alpha=1, n_components=5, method='cd',
-                                                             random_state=i, positive_code=True,
-                                                             code_init=U_init, dict_init=V_init)
+    # num = 10
+    # Uhat = np.empty((num, P, K))
+    # Vhat = np.empty((num, K, N))
+    # for i in range(num):
+    #     # Determine random starting value
+    #     V_init = random_V(K, N)
+    #     U_init = sparse_encode(Y, V_init, alpha=1, algorithm='lasso_cd')
+    #     Uhat[i, :, :], Vhat[i, :, :], errors = dict_learning(Y, alpha=1, n_components=5, method='cd',
+    #                                                          random_state=i, positive_code=True,
+    #                                                          code_init=U_init, dict_init=V_init)
 
     fit_alpha, fit_loc, fit_beta = stats.gamma.fit(mag[~np.isnan(mag)])
     alpha = np.append(alpha, fit_alpha)
