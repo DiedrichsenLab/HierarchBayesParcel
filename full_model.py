@@ -49,7 +49,6 @@ class FullModel:
 
         return np.asarray(ll), theta[0:len(ll),:]
 
-
 def _fit_full(Y):
     pass
 
