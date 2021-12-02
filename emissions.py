@@ -157,13 +157,13 @@ class MixGaussian(EmissionModel):
         return Y
 
 
-class MixGaussianGamma(EmissionModel):
+class MixGaussianExp(EmissionModel):
     """
     Mixture of Gaussians with signal strength (fit gamma distribution)
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
-        super(MixGaussianGamma, self).__init__(K, N, P, data, params)
+        super(MixGaussianExp, self).__init__(K, N, P, data, params)
         self.nparams = self.N * self.K + 3  # V shape is (N, K) + sigma2 + alpha + beta
 
     def initialize(self, data):
@@ -171,7 +171,7 @@ class MixGaussianGamma(EmissionModel):
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        super(MixGaussianGamma, self).initialize(data)
+        super(MixGaussianExp, self).initialize(data)
         self.YY = self.Y ** 2
         self.s = np.empty((self.num_subj, self.K, self.P))
         self.rss = np.empty((self.num_subj, self.K, self.P))
@@ -252,12 +252,16 @@ class MixGaussianGamma(EmissionModel):
         uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
         for i in sub:
             YV = np.dot(self.Y[i, :, :].T, self.V)
-            self.s[i, :, :] = (YV / uVVu - self.beta * self.sigma2).T  # Maximized g
-            self.s[i][self.s[i] < 0] = 0  # Limit to 0
+            # Importance sampling from p(s_i|y_i, u_i)
+            # First try sample from uniformed distribution
+            # self.s[i, :, :] = np.random.uniform(0.1, 1.5, (self.K, self.P))
+
+            self.s[i, :, :] = (YV / uVVu - self.beta * np.random.uniform(0.1, 1.5, (self.P, self.K))).T
+            self.s[i][self.s[i] < 0] = 0  # set all to non-negative
             self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T*self.s[i, :, :] + self.s[i, :, :]**2 * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
             LL[i, :, :] = -0.5 * self.N * (np.log(2 * np.pi) + np.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
-                          + self.alpha*log(self.beta) - log(gamma(self.alpha))  - self.beta * self.s[i, :, :]
+                          + log(self.beta) - self.beta * self.s[i, :, :]
 
         return LL
 
@@ -265,6 +269,11 @@ class MixGaussianGamma(EmissionModel):
         """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
             In this emission model, the parameters need to be updated
             are V, sigma2, alpha, and beta
+        Args:
+            U_hat:
+
+        Returns:
+
         """
         # SU = self.s * U_hat
         YU = np.zeros((self.N, self.K))
@@ -279,11 +288,9 @@ class MixGaussianGamma(EmissionModel):
         # 2. Updating the sigma squared.
         ERSS = np.sum(U_hat * self.rss)
         self.sigma2 = ERSS / (self.N * self.P * self.num_subj)
-        # 3. Updating the alpha
-        self.alpha = np.sum(0.5 / (log(UU * self.s) - UU * log(self.s))) / (self.N*self.P*self.num_subj)
-        # 4. Updating the beta
+        # 3. Updating the beta (Since this is an exponential model)
         # second moment E(X^2) = (alpha+1)alpha/beta^2
-        self.beta = self.P*self.num_subj*self.alpha / np.sum(U_hat*self.s)
+        self.beta = self.P*self.num_subj / np.sum(U_hat*self.s)
 
     def sample(self, U, V=None):
         """ Generate random data given this emission model

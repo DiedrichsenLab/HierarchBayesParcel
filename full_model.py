@@ -1,5 +1,5 @@
 from arrangements import ArrangeIndependent
-from emissions import MixGaussian, MixGaussianGamma
+from emissions import MixGaussian, MixGaussianExp
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
@@ -47,7 +47,7 @@ class FullModel:
             self.arrange.Mstep(Uhat)
             theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
 
-        return np.asarray(ll), theta[0:len(ll),:]
+        return np.asarray(ll), theta[0:len(ll), :]
 
 
 def _fit_full(Y):
@@ -62,7 +62,7 @@ def _plot_loglike(loglike, color='b'):
 def _simulate_full():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionT = MixGaussianGamma(K=5, N=40, P=100)
+    emissionT = MixGaussianExp(K=5, N=40, P=100)
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
@@ -71,11 +71,11 @@ def _simulate_full():
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionM = MixGaussianGamma(K=5, N=40, P=100, data=Y)
+    emissionM = MixGaussianExp(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(iter=1000, tol=0.001)
+    ll, theta = M.fit_em(iter=100, tol=0.001)
     _plot_loglike(ll, color='b')
     print(theta)
 
