@@ -194,60 +194,66 @@ class PottsModel(ArrangementModel):
         nb_x = U[ind] # Neighbors to node x
         same = np.equal(x,nb_x.reshape(-1,1))
         loglik = self.theta_w * np.sum(same,axis=0) + bias
-        loglik = loglik +self.logMu[:,node] + bias
         p = np.exp(loglik)
         p = p / np.sum(p)
         return(p)
 
-    def sample_gibbs(self,U0 = None, num_chains=None, bias = None, iter=5, return_all=False):
+    def sample_gibbs(self,U0 = None, num_chains=None, bias = None, iter=5, return_hist=False):
         """Samples a number of gibbs-chains simulatenously
         using the same bias term
 
         Args:
-            U0 (nd-array): Initial starting point (num_chains x P): Defaults to None.
-            bias (nd-array): Bias term (in log-probability for each of the Pi
-                             (K,P). Defaults to None.
+            U0 (nd-array): Initial starting point (num_chains x P): 
+                Default None - and will be initialized by the bias term alone 
+            num_chains (int): If U0 not provided, number of chains to initialize
+            bias (nd-array): Bias term (in log-probability (K,P)).
+                 Defaults to None. Assumed to be the same for all the chains
             iter (int): Number of iterations. Defaults to 5.
+            return_hist (bool): Return the history as a second return argument?
         Returns:
-            U (nd-array): Either a (num_chains )
+            U (nd-array): A (num_chains,P) array of integers 
+            Uhist (nd-array): Full sampling path - (iter,num_chains,P) array of integers (optional, only if return_all = True)
         Comments:
             This probably can be made more efficient by doing some of the sampling un bulk?
         """
         # Check for initialization of chains
         if U0 is None:
+            U0 = np.empty((num_chains,self.P))
             for p in range(self.P):
-                U0[:,p] = np.random.choice(self.K,p = exp(self.logpi[:,p]),size = (num_chains,))
+                U0[:,p] = np.random.choice(self.K,p = exp(bias[:,p]),size = (num_chains,))
         else:
             num_chains = U0.shape[0]
 
-        if return_all:
+        if return_hist:
             # Initilize array of full history of sample
             Uhist = np.zeros((iter+1,num_chains,self.P))
 
         # Start the chains
         U = U0
         for i in range(iter):
-            if return_all:
+            if return_hist:
                 Uhist[i,:,:]=U
-                # Now loop over chains: This loop can maybe be replaced
-                for c in range(num_chains):
-                    for p in range(self.P):
-                        prob = self.cond_prob(U,p,bias=bias[:,p])
-                        U[c,p]=np.random.choice(self.K,p=prob)
-        return(U)
+            # Now loop over chains: This loop can maybe be replaced
+            for c in range(num_chains):
+                for p in range(self.P):
+                    prob = self.cond_prob(U[c,:],p,bias=bias[:,p])
+                    U[c,p]=np.random.choice(self.K,p=prob)
+        if return_hist:
+            Uhist[-1,:,:]=U
+            return U,Uhist
+        else:
+            return U
 
-    def sample_new(self,num_subj = 10,burnin=20):
-        """Samples new subjects from prior
+    def sample(self,num_subj = 10,burnin=20):
+        """Samples new subjects from prior: wrapper for sample_gibbs
         Args:
             num_subj (int): Number of subjects. Defaults to 10.
             burnin (int): Number of . Defaults to 20.
         Returns:
             U (ndarray): Labels for all subjects (numsubj x P) array
         """
-        U = np.zeros((num_subj,self.P))
-        for i in range(num_subj):
-            Us = self.sample_gibbs(bias = self.logpi, iter = burnin)
-            U[i,:]=Us[-1,:]
+        U,Uhist = self.sample_gibbs(bias = self.logpi, iter = burnin,
+            num_chains = num_subj)
         return U
 
     def Estep(self,emloglik):

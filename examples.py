@@ -16,30 +16,37 @@ def simulate_potts_gauss_grid():
     arrangeT = ar.PottsModel(grid.W, K=5)
     emissionT = em.MixGaussian(K=5, N=40, P=grid.P)
     # Step 2: Initialize the parameters of the true model
-    arrangeT.random_smooth_pi(grid.Dist,theta_mu=50)
+    arrangeT.random_smooth_pi(grid.Dist,theta_mu=30)
+    arrangeT.theta_w = 2
     emissionT.random_params()
     emissionT.sigma2=3
 
     # Step 3: Plot the prior of the true mode
-    plt.figure(figsize=(10,2))
+    plt.figure(figsize=(7,4))
     grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
     cluster = np.argmax(arrangeT.logpi,axis=0)
     grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
 
     # Step 4: Generate data by sampling from the above model
-    U = arrangeT.sample_new(num_subj=10)
+    U,Uhist = arrangeT.sample_gibbs(num_chains=10,burnin=19,bias=arrangeT.logpi,return_hist=True)
+    # U = arrangeT.sample(num_subj=10)
     Y = emissionT.sample(U)
-    grid.plot_maps(U)
+    # Plot sampling path for visualization purposes
+    plt.figure(figsize=(10,4))
+    grid.plot_maps(Uhist[:,0,:],cmap='tab10',vmax=9)
+    # Plot all the subjects
+    plt.figure(figsize=(10,4))
+    grid.plot_maps(U,cmap='tab10',vmax=9,grid=[2,5])
 
     # Step 5: Generate new models for fitting
     arrangeM = ar.PottsModel(grid.W, K=5)
     emissionM = em.MixGaussian(K=5, N=40, P=grid.P)
-    arrangeT.random_smooth_pi(grid.Dist,theta_mu=4)
-    emissionT.random_params()
+    arrangeM.random_smooth_pi(grid.Dist,theta_mu=4)
+    emissionM.random_params()
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(iter=1000, tol=0.001)
+    ll, theta = M.fit_em(Y, iter=1000, tol=0.001)
     plt.lineplot(ll, color='b')
     print(theta)
 

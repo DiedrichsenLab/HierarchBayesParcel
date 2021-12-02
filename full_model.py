@@ -18,7 +18,7 @@ class FullModel:
         Y = self.emission.sample(U)
         return U, Y
 
-    def fit_em(self, iter, tol):
+    def fit_em(Y, self, iter, tol):
         """ Do the real EM algorithm for the complete log likelihood for the
         combination of the arrangement model and emission model
 
