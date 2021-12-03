@@ -254,9 +254,21 @@ class MixGaussianExp(EmissionModel):
             YV = np.dot(self.Y[i, :, :].T, self.V)
             # Importance sampling from p(s_i|y_i, u_i)
             # First try sample from uniformed distribution
-            # self.s[i, :, :] = np.random.uniform(0.1, 1.5, (self.K, self.P))
 
-            self.s[i, :, :] = (YV / uVVu - self.beta * np.random.uniform(0.1, 1.5, (self.P, self.K))).T
+            # plt.figure()
+            for k in range(self.K):
+
+                for p in range(self.P):
+                    # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
+                    # given y_i and u_i(k)
+                    x = np.sort(np.random.uniform(0, 5, 1000))
+                    loglike = - 0.5 * (1 / self.sigma2)*(-2*YV[p, k]*x + uVVu[k]*x**2) - self.beta*x
+                    # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+                    post = exp(loglike)/np.sum(exp(loglike))
+                    self.s[i, k, p] = np.sum(x * post)
+                    # plt.plot(x, post)
+                # plt.show()
+
             self.s[i][self.s[i] < 0] = 0  # set all to non-negative
             self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T*self.s[i, :, :] + self.s[i, :, :]**2 * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)

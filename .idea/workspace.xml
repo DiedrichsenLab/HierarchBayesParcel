@@ -2,8 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="bb1f3e5c-997f-49c4-8296-db2d08fe5eb3" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/generativeMRF.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/generativeMRF.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/full_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/full_model.py" afterDir="false" />
     </list>
@@ -14,7 +12,8 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="CoverageDataManager">
-    <SUITE FILE_PATH="coverage/generativeMRF$full_model.coverage" NAME="full_model Coverage Results" MODIFIED="1638473287583" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/generativeMRF$emissions.coverage" NAME="emissions Coverage Results" MODIFIED="1638564544513" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/generativeMRF$full_model.coverage" NAME="full_model Coverage Results" MODIFIED="1638570203997" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$EM_clustering.coverage" NAME="EM_clustering Coverage Results" MODIFIED="1637950970572" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$data_estimation.coverage" NAME="data_estimation Coverage Results" MODIFIED="1638290451868" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
@@ -44,36 +43,36 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.open">
         <counts>
-          <entry key="py" value="19" />
+          <entry key="py" value="21" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.open">
         <counts>
-          <entry key="Python" value="19" />
+          <entry key="Python" value="21" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="Python Console" value="3364" />
-          <entry key="py" value="3237" />
+          <entry key="Python Console" value="4350" />
+          <entry key="py" value="3925" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Python" value="6601" />
+          <entry key="Python" value="8275" />
         </counts>
       </usages-collector>
     </session>
   </component>
   <component name="FileEditorManager">
-    <splitter split-orientation="horizontal" split-proportion="0.35263157">
+    <splitter split-orientation="horizontal" split-proportion="0.43209878">
       <split-first>
         <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/full_model.py">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="432">
-                  <caret line="79" selection-start-line="79" selection-end-line="79" />
+                <state relative-caret-position="415">
+                  <caret line="78" selection-start-line="78" selection-end-line="78" />
                   <folding>
                     <element signature="e#0#43#0" expanded="true" />
                   </folding>
@@ -82,10 +81,19 @@
             </entry>
           </file>
           <file pinned="false" current-in-tab="false">
+            <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/arrayprint.py">
+              <provider selected="true" editor-type-id="text-editor">
+                <state relative-caret-position="218">
+                  <caret line="1476" selection-start-line="1476" selection-end-line="1476" />
+                </state>
+              </provider>
+            </entry>
+          </file>
+          <file pinned="false" current-in-tab="false">
             <entry file="file://$PROJECT_DIR$/data_estimation.py">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="1547">
-                  <caret line="101" column="68" selection-start-line="101" selection-start-column="4" selection-end-line="101" selection-end-column="68" />
+                <state relative-caret-position="140">
+                  <caret line="61" column="36" lean-forward="true" selection-start-line="61" selection-start-column="36" selection-end-line="61" selection-end-column="36" />
                   <folding>
                     <element signature="e#388#406#0" expanded="true" />
                   </folding>
@@ -112,11 +120,20 @@
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/emissions.py">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="330">
-                  <caret line="257" lean-forward="true" selection-start-line="257" selection-end-line="257" />
+                <state relative-caret-position="415">
+                  <caret line="270" lean-forward="true" selection-start-line="270" selection-end-line="270" />
                   <folding>
                     <element signature="e#17#55#0" expanded="true" />
                   </folding>
+                </state>
+              </provider>
+            </entry>
+          </file>
+          <file pinned="false" current-in-tab="false">
+            <entry file="file://$USER_HOME$/AppData/Roaming/Python/Python36/site-packages/matplotlib/gridspec.py">
+              <provider selected="true" editor-type-id="text-editor">
+                <state relative-caret-position="218">
+                  <caret line="692" selection-start-line="692" selection-end-line="692" />
                 </state>
               </provider>
             </entry>
@@ -294,6 +311,28 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="emissions" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="generativeMRF" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/emissions.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="full_model" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="generativeMRF" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -320,10 +359,12 @@
       <item itemvalue="Python.full_model" />
       <item itemvalue="Python.EM_clustering" />
       <item itemvalue="Python.data_estimation" />
+      <item itemvalue="Python.emissions" />
     </list>
     <recent_temporary>
       <list>
         <item itemvalue="Python.full_model" />
+        <item itemvalue="Python.emissions" />
         <item itemvalue="Python.data_estimation" />
         <item itemvalue="Python.EM_clustering" />
       </list>
@@ -365,7 +406,7 @@
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
-      <window_info anchor="right" id="SciView" order="3" weight="0.25906184" />
+      <window_info anchor="right" id="SciView" order="3" visible="true" weight="0.26385927" />
       <window_info anchor="right" id="Database" order="4" weight="0.32995737" />
     </layout>
   </component>
@@ -394,9 +435,9 @@
           <option name="timeStamp" value="33" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/emissions.py</url>
-          <line>292</line>
-          <option name="timeStamp" value="46" />
+          <url>file://$PROJECT_DIR$/full_model.py</url>
+          <line>78</line>
+          <option name="timeStamp" value="59" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -453,16 +494,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/data_estimation.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1547">
-          <caret line="101" column="68" selection-start-line="101" selection-start-column="4" selection-end-line="101" selection-end-column="68" />
-          <folding>
-            <element signature="e#388#406#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/EM_clustering.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="4335">
@@ -494,13 +525,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/fromnumeric.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="172">
-          <caret line="2101" selection-start-line="2101" selection-end-line="2101" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/arrangements.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="548">
@@ -511,10 +535,41 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/fromnumeric.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="172">
+          <caret line="2101" selection-start-line="2101" selection-end-line="2101" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/data_estimation.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="140">
+          <caret line="61" column="36" lean-forward="true" selection-start-line="61" selection-start-column="36" selection-end-line="61" selection-end-column="36" />
+          <folding>
+            <element signature="e#388#406#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/AppData/Roaming/Python/Python36/site-packages/matplotlib/gridspec.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="218">
+          <caret line="692" selection-start-line="692" selection-end-line="692" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/arrayprint.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="218">
+          <caret line="1476" selection-start-line="1476" selection-end-line="1476" />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/full_model.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="432">
-          <caret line="79" selection-start-line="79" selection-end-line="79" />
+        <state relative-caret-position="415">
+          <caret line="78" selection-start-line="78" selection-end-line="78" />
           <folding>
             <element signature="e#0#43#0" expanded="true" />
           </folding>
@@ -523,8 +578,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/emissions.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="330">
-          <caret line="257" lean-forward="true" selection-start-line="257" selection-end-line="257" />
+        <state relative-caret-position="415">
+          <caret line="270" lean-forward="true" selection-start-line="270" selection-end-line="270" />
           <folding>
             <element signature="e#17#55#0" expanded="true" />
           </folding>
