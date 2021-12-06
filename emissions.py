@@ -241,10 +241,11 @@ class MixGaussianExp(EmissionModel):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
 
-        :param Y: the real data
-        :param sub: specify which subject to optimize
+        Args:
+            sub: specify which subject to optimize
 
-        :return: the expected log likelihood for emission model, shape (nSubject * K * P)
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
         """
         if sub is None:
             sub = range(self.Y.shape[0])
@@ -254,10 +255,8 @@ class MixGaussianExp(EmissionModel):
             YV = np.dot(self.Y[i, :, :].T, self.V)
             # Importance sampling from p(s_i|y_i, u_i)
             # First try sample from uniformed distribution
-
             # plt.figure()
             for k in range(self.K):
-
                 for p in range(self.P):
                     # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
                     # given y_i and u_i(k)
@@ -270,9 +269,10 @@ class MixGaussianExp(EmissionModel):
                 # plt.show()
 
             self.s[i][self.s[i] < 0] = 0  # set all to non-negative
-            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T*self.s[i, :, :] + self.s[i, :, :]**2 * uVVu.reshape((self.K, 1))
+            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T*self.s[i, :, :] + \
+                                self.s[i, :, :]**2 * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (np.log(2 * np.pi) + np.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+            LL[i, :, :] = -0.5 * self.N * (log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + log(self.beta) - self.beta * self.s[i, :, :]
 
         return LL
@@ -282,9 +282,9 @@ class MixGaussianExp(EmissionModel):
             In this emission model, the parameters need to be updated
             are V, sigma2, alpha, and beta
         Args:
-            U_hat:
+            U_hat: The expected emission log likelihood
 
-        Returns:
+        Returns: Update all model parameters, self attributes
 
         """
         # SU = self.s * U_hat
@@ -302,7 +302,7 @@ class MixGaussianExp(EmissionModel):
         self.sigma2 = ERSS / (self.N * self.P * self.num_subj)
         # 3. Updating the beta (Since this is an exponential model)
         # second moment E(X^2) = (alpha+1)alpha/beta^2
-        self.beta = self.P*self.num_subj / np.sum(U_hat*self.s)
+        self.beta = self.P*self.num_subj / np.sum(UU*self.s)
 
     def sample(self, U, V=None):
         """ Generate random data given this emission model

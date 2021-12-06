@@ -37,7 +37,7 @@ class FullModel:
             Uhat, ll_A = self.arrange.Estep(emloglik)
             # Compute the expected complete logliklihood
             this_ll = np.sum(Uhat * emloglik) + np.sum(ll_A)
-            if (i > 1) and (this_ll - ll[-1] < tol):  # convergence
+            if (i > 1) and (np.abs(this_ll - ll[-1]) < tol):  # convergence
                 break
             else:
                 ll.append(this_ll)
@@ -59,6 +59,41 @@ def _plot_loglike(loglike, color='b'):
     plt.plot(loglike, color=color)
 
 
+def _plot_v_diff(theta_true, theta, K):
+    """ Plot the model parameters differences.
+
+    Args:
+        theta_true: the params from the true model
+        theta: the estimated params
+        color: the line color for the differences
+
+    Returns: a matplotlib object to be plot
+
+    """
+    iter = theta.shape[0]
+    diff = np.empty((iter, K))
+    Y = np.split(theta_true, K)
+    for i in range(iter):
+        x = np.split(theta[i], K)
+        for j in range(len(x)):
+            dist = np.linalg.norm(x[j] - Y[j])
+            diff[i, j] = dist
+    plt.figure()
+    plt.plot(diff)
+    plt.title('the differences: true Vs, estimated Vs')
+
+
+def _plt_single_param_diff(theta_true, theta, name=None):
+    plt.figure()
+    if name is not None:
+        plt.title('The difference: true %s vs estimated %s' % (name, name))
+
+    iter = theta.shape[0]
+    theta_true = np.repeat(theta_true, iter)
+    plt.plot(theta_true, linestyle='--', color='r')
+    plt.plot(theta, color='b')
+
+
 def _simulate_full():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
@@ -69,15 +104,18 @@ def _simulate_full():
     U = arrangeT.sample(num_subj=10)
     Y = emissionT.sample(U)
 
+    theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
     emissionM = MixGaussianExp(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(iter=100, tol=0.001)
+    ll, theta = M.fit_em(iter=50, tol=0.001)
     _plot_loglike(ll, color='b')
-    print(theta)
+    _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
+    _plt_single_param_diff(theta_true[202], theta[:, 202])
+    print('Done.')
 
 
 if __name__ == '__main__':
