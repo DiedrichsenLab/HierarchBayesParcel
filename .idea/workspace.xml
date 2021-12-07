@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="bb1f3e5c-997f-49c4-8296-db2d08fe5eb3" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/full_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/full_model.py" afterDir="false" />
     </list>
@@ -15,7 +14,7 @@
   <component name="CoverageDataManager">
     <SUITE FILE_PATH="coverage/generativeMRF$emissions.coverage" NAME="emissions Coverage Results" MODIFIED="1638564544513" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$test.coverage" NAME="test Coverage Results" MODIFIED="1638822493368" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/generativeMRF$full_model.coverage" NAME="full_model Coverage Results" MODIFIED="1638830928132" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/generativeMRF$full_model.coverage" NAME="full_model Coverage Results" MODIFIED="1638918126728" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$EM_clustering.coverage" NAME="EM_clustering Coverage Results" MODIFIED="1637950970572" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$data_estimation.coverage" NAME="data_estimation Coverage Results" MODIFIED="1638290451868" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
@@ -45,67 +44,40 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.open">
         <counts>
-          <entry key="py" value="24" />
+          <entry key="py" value="25" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.open">
         <counts>
-          <entry key="Python" value="24" />
+          <entry key="Python" value="25" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="Python Console" value="5043" />
-          <entry key="py" value="5216" />
+          <entry key="Python Console" value="6232" />
+          <entry key="py" value="7129" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Python" value="10259" />
+          <entry key="Python" value="13361" />
         </counts>
       </usages-collector>
     </session>
   </component>
   <component name="FileEditorManager">
-    <splitter split-orientation="horizontal" split-proportion="0.52198243">
+    <splitter split-orientation="horizontal" split-proportion="0.41677764">
       <split-first>
         <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/full_model.py">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="442">
-                  <caret line="26" column="29" lean-forward="true" selection-start-line="26" selection-start-column="29" selection-end-line="26" selection-end-column="29" />
+                <state relative-caret-position="-1776">
+                  <caret line="45" column="36" selection-start-line="45" selection-start-column="32" selection-end-line="45" selection-end-column="36" />
                   <folding>
                     <element signature="e#0#43#0" expanded="true" />
-                    <marker date="1638830920670" expanded="true" signature="2590:2866" ph="..." />
+                    <marker date="1638915993507" expanded="true" signature="2670:2946" ph="..." />
                   </folding>
-                </state>
-              </provider>
-            </entry>
-          </file>
-          <file pinned="false" current-in-tab="false">
-            <entry file="file://$USER_HOME$/AppData/Roaming/Python/Python36/site-packages/matplotlib/pyplot.py">
-              <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="230">
-                  <caret line="641" selection-start-line="641" selection-end-line="641" />
-                </state>
-              </provider>
-            </entry>
-          </file>
-          <file pinned="false" current-in-tab="false">
-            <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/linalg/linalg.py">
-              <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="202">
-                  <caret line="2359" selection-start-line="2359" selection-end-line="2359" />
-                </state>
-              </provider>
-            </entry>
-          </file>
-          <file pinned="false" current-in-tab="false">
-            <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/arrayprint.py">
-              <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="25075">
-                  <caret line="1476" selection-start-line="1476" selection-end-line="1476" />
                 </state>
               </provider>
             </entry>
@@ -141,8 +113,8 @@
           <file pinned="false" current-in-tab="true">
             <entry file="file://$PROJECT_DIR$/emissions.py">
               <provider selected="true" editor-type-id="text-editor">
-                <state relative-caret-position="293">
-                  <caret line="286" column="55" lean-forward="true" selection-start-line="286" selection-start-column="55" selection-end-line="286" selection-end-column="55" />
+                <state relative-caret-position="253">
+                  <caret line="502" column="11" lean-forward="true" selection-start-line="502" selection-start-column="11" selection-end-line="502" selection-end-column="11" />
                   <folding>
                     <element signature="e#17#55#0" expanded="true" />
                   </folding>
@@ -162,6 +134,15 @@
               </provider>
             </entry>
           </file>
+          <file pinned="false" current-in-tab="false">
+            <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/fromnumeric.py">
+              <provider selected="true" editor-type-id="text-editor">
+                <state relative-caret-position="222">
+                  <caret line="2101" selection-start-line="2101" selection-end-line="2101" />
+                </state>
+              </provider>
+            </entry>
+          </file>
         </leaf>
       </split-second>
     </splitter>
@@ -175,16 +156,17 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>self.alpha</find>
       <find>self.beta</find>
       <find>nparams</find>
       <find>random_V</find>
       <find>self.rss</find>
       <find>set_params</find>
       <find>self.pi</find>
-      <find>self.sigma2</find>
-      <find>self.s</find>
       <find>_norm_pdf_multivariate</find>
+      <find>self.s</find>
+      <find>UU</find>
+      <find>self.alpha</find>
+      <find>self.sigma2</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -396,13 +378,13 @@
     <frame x="-8" y="-8" width="1936" height="1066" extended-state="6" />
     <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.08901919" />
+      <window_info content_ui="combo" id="Project" order="0" weight="0.08901919" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" />
       <window_info anchor="bottom" id="Run" order="2" weight="0.23927039" />
-      <window_info active="true" anchor="bottom" id="Debug" order="3" sideWeight="0.49946696" visible="true" weight="0.23283261" />
+      <window_info active="true" anchor="bottom" id="Debug" order="3" sideWeight="0.49946696" visible="true" weight="0.28218883" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="6" />
@@ -415,7 +397,7 @@
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
-      <window_info anchor="right" id="SciView" order="3" visible="true" weight="0.17643923" />
+      <window_info anchor="right" id="SciView" order="3" weight="0.19936034" />
       <window_info anchor="right" id="Database" order="4" weight="0.32995737" />
     </layout>
   </component>
@@ -437,11 +419,6 @@
           <url>file://$PROJECT_DIR$/data_estimation.py</url>
           <line>109</line>
           <option name="timeStamp" value="33" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/full_model.py</url>
-          <line>117</line>
-          <option name="timeStamp" value="38" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -491,13 +468,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/arrayprint.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="25075">
-          <caret line="1476" selection-start-line="1476" selection-end-line="1476" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/data_estimation.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="867">
@@ -536,13 +506,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="2295">
           <caret line="143" selection-start-line="143" selection-end-line="143" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/fromnumeric.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="35530">
-          <caret line="2101" selection-start-line="2101" selection-end-line="2101" />
         </state>
       </provider>
     </entry>
@@ -587,23 +550,37 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/emissions.py">
+    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/arrayprint.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="293">
-          <caret line="286" column="55" lean-forward="true" selection-start-line="286" selection-start-column="55" selection-end-line="286" selection-end-column="55" />
-          <folding>
-            <element signature="e#17#55#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="218">
+          <caret line="1476" selection-start-line="1476" selection-end-line="1476" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://C:/Program Files/Python36/Lib/site-packages/numpy/core/fromnumeric.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="222">
+          <caret line="2101" selection-start-line="2101" selection-end-line="2101" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/full_model.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="442">
-          <caret line="26" column="29" lean-forward="true" selection-start-line="26" selection-start-column="29" selection-end-line="26" selection-end-column="29" />
+        <state relative-caret-position="-1776">
+          <caret line="45" column="36" selection-start-line="45" selection-start-column="32" selection-end-line="45" selection-end-column="36" />
           <folding>
             <element signature="e#0#43#0" expanded="true" />
-            <marker date="1638830920670" expanded="true" signature="2590:2866" ph="..." />
+            <marker date="1638915993507" expanded="true" signature="2670:2946" ph="..." />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/emissions.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="253">
+          <caret line="502" column="11" lean-forward="true" selection-start-line="502" selection-start-column="11" selection-end-line="502" selection-end-column="11" />
+          <folding>
+            <element signature="e#17#55#0" expanded="true" />
           </folding>
         </state>
       </provider>

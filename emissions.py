@@ -63,7 +63,7 @@ class MixGaussian(EmissionModel):
     Mixture of Gaussians with isotropic noise
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
-        super().__init__(K, N, P, data, params)
+        super(MixGaussian, self).__init__(K, N, P, data, params)
         self.nparams = self.N * self.K + 1
 
     def initialize(self, data):
@@ -71,7 +71,7 @@ class MixGaussian(EmissionModel):
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        super().initialize(data)
+        super(MixGaussian, self).initialize(data)
         self.YY = self.Y**2
         self.rss = np.empty((self.num_subj, self.K, self.P))
 
@@ -155,6 +155,25 @@ class MixGaussian(EmissionModel):
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
         return Y
+
+    def _loglikelihood(self, Y, sub=None):
+        """ Compute the log likelihood given current parameters in the model
+
+            Returns: The current log likelihood
+        """
+        if sub is None:
+            sub = range(Y.shape[0])
+        LL = np.empty((Y.shape[0], self.K, self.P))
+        rss = np.empty((Y.shape[0], self.K, self.P))
+        uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
+        for i in sub:
+            YV = np.dot(Y[i, :, :].T, self.V)
+            YY = Y ** 2
+            rss[i, :, :] = np.sum(YY[i, :, :], axis=0) - 2 * YV.T + uVVu.reshape((self.K, 1))
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5 * self.N * (np.log(2 * np.pi) + np.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * rss[i, :, :]
+
+        return LL
 
 
 class MixGaussianExp(EmissionModel):
@@ -288,21 +307,27 @@ class MixGaussianExp(EmissionModel):
 
         """
         # SU = self.s * U_hat
-        YU = np.zeros((self.N, self.K))
-        UU = np.zeros((self.K, self.P))
+        YUs = np.zeros((self.N, self.K))
+        US = np.zeros((self.K, self.P))
+        US2 = np.zeros((self.K, self.P))
+        ERSS = np.zeros((self.num_subj, self.K, self.P))
         for i in range(self.num_subj):
-            YU = YU + np.dot(self.Y[i, :, :], U_hat[i, :, :].T)
-            UU = UU + U_hat[i, :, :]
-        # self.V = np.linalg.solve(UU,YU.T).T
+            YV = np.dot(self.Y[i, :, :].T, self.V)
+            YUs = YUs + np.dot(self.Y[i, :, :], (U_hat[i, :, :]*self.s[i, :, :]).T)
+            US = US + U_hat[i, :, :] * self.s[i, :, :]
+            US2 = US2 + U_hat[i, :, :] * (self.s[i, :, :]**2)
+            ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * U_hat[i, :, :] * self.s[i, :, :] + \
+                            U_hat[i, :, :] * (self.s[i, :, :]**2) * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+
         # 1. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
-        self.V = (YU.T / np.sum(UU**2, axis=1).reshape(-1, 1)).T
+        self.V = YUs / np.sum(US2, axis=1)
         # 2. Updating the sigma squared.
-        ERSS = np.sum(U_hat * self.rss)
-        self.sigma2 = ERSS / (self.N * self.P * self.num_subj)
+        # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
+        #       U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
         # 3. Updating the beta (Since this is an exponential model)
-        # second moment E(X^2) = (alpha+1)alpha/beta^2
-        self.beta = self.P*self.num_subj / np.sum(UU*self.s)
+        self.beta = self.P*self.num_subj / np.sum(US)
 
     def sample(self, U, V=None):
         """ Generate random data given this emission model
@@ -327,9 +352,165 @@ class MixGaussianExp(EmissionModel):
         signal = np.empty((num_subj, self.P))
         for s in range(num_subj):
             # Draw the signal strength for each node from a Gamma distribution
-            signal[s, :] = np.random.gamma(self.alpha, self.beta, (self.P,))
+            signal[s, :] = np.random.exponential(self.beta, (self.P,))
             Y[s, :, :] = V[:, U[s, :].astype('int')] * signal[s, :]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
+        return Y, signal
+
+    def _loglikelihood(self, Y, signal, sub=None):
+        """ Compute the log likelihood given current parameters in the model
+
+        Returns: The current log likelihood
+        """
+        if sub is None:
+            sub = range(Y.shape[0])
+        LL = np.empty((Y.shape[0], self.K, self.P))
+        rss = np.empty((Y.shape[0], self.K, self.P))
+        uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
+        for i in sub:
+            YV = np.dot(Y[i, :, :].T, self.V)
+            YY = Y**2
+
+            rss[i, :, :] = np.sum(YY[i, :, :], axis=0) - 2*YV.T*signal[i, :] + \
+                                signal[i, :]**2 * uVVu.reshape((self.K, 1))
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5 * self.N * (log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * rss[i, :, :] \
+                          + log(self.beta) - self.beta * signal[i, :]
+
+        return LL
+
+
+class MixVMF(EmissionModel):
+    """
+    Mixture of Gaussians with isotropic noise
+    """
+    def __init__(self, K=4, N=10, P=20, data=None, params=None):
+        super(MixVMF, self).__init__(K, N, P, data, params)
+        self.nparams = self.N * self.K + 1
+
+    def initialize(self, data):
+        """Stores the data in emission model itself
+        Calculates sufficient stats on the data that does not depend on u,
+        and allocates memory for the sufficient stats that does.
+        """
+        super(MixVMF, self).initialize(data)
+        self.YY = self.Y**2
+        self.rss = np.empty((self.num_subj, self.K, self.P))
+
+    def get_params(self):
+        """ Get the parameters for the vmf mixture model
+
+        :return: the parcel-specific mean and log sigma2
+        """
+        np.testing.assert_array_equal(self.K, self.V.shape[1])
+        return np.append(self.V.flatten('F'), log(self.kappa))
+
+    def set_params(self, theta):
+        """ Set the model parameters by the given input thetas
+        Args:
+            theta: The input parameters if any
+
+        Returns: pass the given input params to the object
+
+        """
+        self.V = theta[0:self.N*self.K].reshape(self.N, self.K)
+        self.kappa = exp(theta[-self.K:])
+
+    def random_params(self):
+        """ In this mixture vmf model, the parameters are parcel-specific direction V_k
+            and concentration value kappa_k.
+
+        Returns: None, just passes the random parameters to the model
+
+        """
+        V = np.random.normal(0, 1, (self.N, self.K))
+        # standardise V to unit length
+        V = V - V.mean(axis=0)
+        self.V = V / sqrt(np.sum(V**2, axis=0))
+        self.kappa = np.random.uniform(0, 50, (self.K, ))
+
+    def Estep(self, sub=None):
+        """ Estep: Returns log p(Y|U) for each value of U, up to a constant
+            Collects the sufficient statistics for the M-step
+
+        Args:
+            sub: specify which subject to optimize
+
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        """
+        if sub is None:
+            sub = range(self.Y.shape[0])
+        LL = np.empty((self.Y.shape[0], self.K, self.P))
+        uVVu = np.sum(self.V**2, axis=0)  # This is u.T V.T V u for each u
+        for i in sub:
+            YV = np.dot(self.Y[i, :, :].T, self.V)
+            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T + uVVu.reshape((self.K, 1))
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5*self.N*(np.log(2*np.pi) + np.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+
+        return LL
+
+    def Mstep(self, U_hat):
+        """ Performs the M-step on a specific U-hat. In this emission model,
+            the parameters need to be updated are Vs (unit norm projected on
+            the N-1 sphere) and kappa (concentration value).
+        Args:
+            U_hat: the expected log likelihood from the arrangement model
+
+        Returns: Update all the object's parameters
+
+        """
+        # SU = self.s * U_hat
+        YU = np.zeros((self.N, self.K))
+        UU = np.zeros((self.K, self.P))
+        for i in range(self.num_subj):
+            YU = YU + self.Y[i, :, :] @ U_hat[i, :, :].T
+            UU = UU + U_hat[i, :, :]
+        # self.V = np.linalg.solve(UU,YU.T).T
+        # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
+        self.V = (YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
+        ERSS = np.sum(U_hat * self.rss)
+        self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
+
+    def sample(self, U):
+        """ Draw data sample from this model and given parameters
+
+        Args:
+            U: The prior arrangement U from arragnment model
+
+        Returns: The samples data form this distribution
+
+        """
+        num_subj = U.shape[0]
+        Y = np.empty((num_subj, self.N, self.P))
+        for s in range(num_subj):
+            for p in range(self.P):
+                # Draw sample from the vmf distribution given the input U
+                Y[s, :, p] = np.random.vonmises(self.V[:, U[s, p].astype('int')], self.kappa[U[s, 0].astype('int')], (self.N, ))
+
         return Y
 
+    def _loglikelihood(self, Y, sub=None):
+        """ Compute the log likelihood given current parameters in the model
+        Args:
+            Y: The given data from the sample
+            sub: the number or the index of the subject needs to be compute the log likelihood
+
+        Returns: The log likelihood given by the current settings
+
+        """
+        if sub is None:
+            sub = range(Y.shape[0])
+        LL = np.empty((Y.shape[0], self.K, self.P))
+        rss = np.empty((Y.shape[0], self.K, self.P))
+        uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
+        for i in sub:
+            YV = np.dot(Y[i, :, :].T, self.V)
+            YY = Y ** 2
+            rss[i, :, :] = np.sum(YY[i, :, :], axis=0) - 2 * YV.T + uVVu.reshape((self.K, 1))
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5 * self.N * (np.log(2 * np.pi) + np.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * rss[i, :, :]
+
+        return LL

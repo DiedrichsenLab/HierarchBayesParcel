@@ -1,5 +1,5 @@
 from arrangements import ArrangeIndependent
-from emissions import MixGaussian, MixGaussianExp
+from emissions import MixGaussian, MixGaussianExp, MixVMF
 import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
@@ -54,9 +54,10 @@ def _fit_full(Y):
     pass
 
 
-def _plot_loglike(loglike, color='b'):
+def _plot_loglike(loglike, true_loglike, color='b'):
     plt.figure()
     plt.plot(loglike, color=color)
+    plt.axhline(y=true_loglike, color='r', linestyle=':')
 
 
 def _plot_v_diff(theta_true, theta, K):
@@ -94,7 +95,36 @@ def _plt_single_param_diff(theta_true, theta, name=None):
     plt.plot(theta, color='b')
 
 
-def _simulate_full():
+def _simulate_full_GMM():
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
+    emissionT = MixGaussian(K=5, N=40, P=100)
+    # emissionT.random_params()
+
+    # Step 2: Generate data by sampling from the above model
+    U = arrangeT.sample(num_subj=10)
+    Y = emissionT.sample(U)
+
+    # Step 2.1: Compute the log likelihood from the true model
+    theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
+    emll_true = emissionT._loglikelihood(Y)
+    Uhat, ll_a = arrangeT.Estep(emll_true)
+    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+
+    # Step 3: Generate new models for fitting
+    arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
+    emissionM = MixGaussian(K=5, N=40, P=100, data=Y)
+
+    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    M = FullModel(arrangeM, emissionM)
+    ll, theta = M.fit_em(iter=100, tol=0.001)
+    _plot_loglike(ll, loglike_true, color='b')
+    _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
+    _plt_single_param_diff(theta_true[202], theta[:, 202])
+    print('Done.')
+
+
+def _simulate_full_GME():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
     emissionT = MixGaussianExp(K=5, N=40, P=100)
@@ -102,9 +132,14 @@ def _simulate_full():
 
     # Step 2: Generate data by sampling from the above model
     U = arrangeT.sample(num_subj=10)
-    Y = emissionT.sample(U)
+    Y, signal = emissionT.sample(U)
 
+    # Step 2.1: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
+    emll_true = emissionT._loglikelihood(Y, signal)
+    Uhat, ll_a = arrangeT.Estep(emll_true)
+    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
     emissionM = MixGaussianExp(K=5, N=40, P=100, data=Y)
@@ -112,11 +147,40 @@ def _simulate_full():
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
     ll, theta = M.fit_em(iter=50, tol=0.001)
-    _plot_loglike(ll, color='b')
+    _plot_loglike(ll, loglike_true, color='b')
+    _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
+    _plt_single_param_diff(theta_true[202], theta[:, 202])
+    print('Done.')
+
+
+def _simulate_full_VMF():
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
+    emissionT = MixVMF(K=5, N=40, P=100)
+    # emissionT.random_params()
+
+    # Step 2: Generate data by sampling from the above model
+    U = arrangeT.sample(num_subj=10)
+    Y = emissionT.sample(U)
+
+    # Step 2.1: Compute the log likelihood from the true model
+    theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
+    emll_true = emissionT._loglikelihood(Y)
+    Uhat, ll_a = arrangeT.Estep(emll_true)
+    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+
+    # Step 3: Generate new models for fitting
+    arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
+    emissionM = MixVMF(K=5, N=40, P=100, data=Y)
+
+    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    M = FullModel(arrangeM, emissionM)
+    ll, theta = M.fit_em(iter=50, tol=0.001)
+    _plot_loglike(ll, loglike_true, color='b')
     _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
     _plt_single_param_diff(theta_true[202], theta[:, 202])
     print('Done.')
 
 
 if __name__ == '__main__':
-    _simulate_full()
+    _simulate_full_VMF()
