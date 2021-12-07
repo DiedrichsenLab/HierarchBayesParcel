@@ -72,6 +72,8 @@ class ArrangeIndependent(ArrangementModel):
         Returns:
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (np.array): 
+                Expected log-liklihood of the arrangement model 
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
@@ -129,6 +131,9 @@ class PottsModel(ArrangementModel):
         self.logpi = np.log(pi)
         self.theta_w = 1 # Weight of the neighborhood relation - inverse temperature param
         self.nparams = self.logpi.size + 1
+        self.estep_iter = 3
+        self.estep_numchains = 20
+        self.estep_state = None
 
     def get_params(self):
         """ Get the parameters (log-pi) for the Arrangement model
@@ -169,15 +174,23 @@ class PottsModel(ArrangementModel):
            phi[0,i]=np.sum(S*self.W)
         return(phi)
 
-    def loglike(self,Y):
+    def loglike(self,U):
         """Returns the energy term of the network
         up to a constant the loglikelihood of the state
+        
         Params:
-            Y ([np-array]): 1d or 2d array of network states
+            U (ndarray): 2d array (NxP) of network states
+        Returns: 
+            ll (ndarray)): 1d array (N,) of likelihoods  
         """
-        phi=self.potential(Y)
-        l = self.theta_w @ phi
-        return(l)
+        N,P = U.shape
+        la = np.empty((N,))
+        lp = np.empty((N,))
+        for n in range(N):
+            phi=np.equal(U[n,:],U[n,:].reshape((-1,1)))
+            la[n] = np.sum(self.theta_w * self.W * phi)
+            lp[n] = np.sum(self.logpi(U[n,:],range(self.P)))
+        return(la + lp)
 
     def cond_prob(self,U,node,bias):
         """Returns the conditional probabity vector for node x, given U
@@ -194,9 +207,7 @@ class PottsModel(ArrangementModel):
         nb_x = U[ind] # Neighbors to node x
         same = np.equal(x,nb_x.reshape(-1,1))
         loglik = self.theta_w * np.sum(same,axis=0) + bias
-        p = np.exp(loglik)
-        p = p / np.sum(p)
-        return(p)
+        return(loglik2prob(loglik))
 
     def sample_gibbs(self,U0 = None, num_chains=None, bias = None, iter=5, return_hist=False):
         """Samples a number of gibbs-chains simulatenously
@@ -219,8 +230,9 @@ class PottsModel(ArrangementModel):
         # Check for initialization of chains
         if U0 is None:
             U0 = np.empty((num_chains,self.P))
+            prob = loglik2prob(bias)
             for p in range(self.P):
-                U0[:,p] = np.random.choice(self.K,p = exp(bias[:,p]),size = (num_chains,))
+                U0[:,p] = np.random.choice(self.K,p = prob[:,p],size = (num_chains,))
         else:
             num_chains = U0.shape[0]
 
@@ -252,12 +264,55 @@ class PottsModel(ArrangementModel):
         Returns:
             U (ndarray): Labels for all subjects (numsubj x P) array
         """
-        U,Uhist = self.sample_gibbs(bias = self.logpi, iter = burnin,
+        U = self.sample_gibbs(bias = self.logpi, iter = burnin,
             num_chains = num_subj)
         return U
 
-    def Estep(self,emloglik):
-        """Estep using Gibbs sampling
+    def Estep(self, emloglik):
+        """ Estep for the spatial arrangement model
 
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (np.array): 
+                Expected log-liklihood of the arrangement model 
         """
+        numsubj, K, P = emloglik.shape
+        bias = emloglik + self.logpi
+        if self.estep_state is None: # No current state of MC chains
+            self.estep_state = np.empty((numsubj,self.estep_numchains,P))
+            for s in range(numsubj):
+                self.estep_state[s,:,:] = self.sample_gibbs(num_chains=self.estep_numchains,
+                    bias = bias[s],iter=self.estep_iter)
+            else: 
+                self.estep_state[s,:,:] = self.sample_gibbs(self.estep_state[s], 
+                    bias = bias[s],iter=self.estep_iter)
+        
+        # Get Uhat from the sampled examples
+        Uhat = np.empty((numsubj,self.K.self.P))
+        for k in range(self.K): 
+            Uhat[:,k,:]=np.sum(self.estep_state==k,axis=1)
+
+        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
+        ll_A = np.e
+        for s in numsubj:
+        ll_A = self.loglik(self.estep_state)
+        return Uhat, ll_A
+
+def loglik2prob(loglik): 
+    """Safe transformation and normalization of 
+    logliklihood (along axis 0)
+
+    Args:
+        loglik (ndarray): Log likelihood (not normalized)
+    Returns: 
+        prob (ndarray): Probability
+    """
+    loglik = loglik-np.max(loglik,axis=0)+10
+    prob = np.exp(loglik)
+    prob = prob/ np.sum(prob,axis=0)
+    return prob
 
