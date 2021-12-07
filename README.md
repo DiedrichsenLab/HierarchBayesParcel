@@ -39,13 +39,13 @@ The brain is sampled in $P$ vertices (or voxels). Individual maps are aligned us
 
 Across individual brains, we have the overall probability of a specific brain location being part of parcel $k$.
 $$
-p(u_i = k) = \mu_{ki}
+p(u_i = k) = \pi_{ki}
 $$
 
 The spatial interdependence of brain locations is expressed as a Potts model. In this model, the overall probability of a specific assignment of brain locations to parcels (the vector $\mathbf{u}$) is expressed as the product of the overall prior and the product of all possible pairwise potentenials ($\psi_{ij}$). 
 
 $$
-p(\mathbf{u}) \propto \prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
+p(\mathbf{u}) \propto \prod_{i}\pi_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
 $$
 
 Each local potential is defined by an exponential over all other that are connected to node $i$, i.e. nodes with connectivity weights of $w_{ji}=w_{ij}>0$.
@@ -65,13 +65,11 @@ w_{ij}=\begin{cases}
 $$
 This formulation would enforce local smoothness of the map. However, we could also express in these potential more medium range potentials (two specific parietal and premotor areas likely belong to the same parcel), as well as cross-hemispheric symmetry. Given this, the matrix $\mathbf{W}$ could be simply derived from the underlying grid or be learned to reflect known brain-connectivity. 
 
-In summary, we can express the prior probability of a specific arrangement in terms of a set of conditional probabilities 
+The expected arrangement log-likelihood therefore becomes: 
 $$
-p(u_i|u_{j\neq i}) \propto \prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
-$$
-  and we the corresponding conditional log-probability
-$$
-l(u_i|u_{j\neq i}) \propto \rm{log}\mu_{u_i,i}+ \theta_{w}\sum_{i\neq j}{\mathbf{u}_i^T\mathbf{u}_j w_{ij}}
+\begin{align*}
+\mathcal{L}_A=\sum_i \langle\mathbf{u}_i\rangle^T \log{\boldsymbol{\pi}_{i}}+\theta_w \sum_i \sum_j w_{ij} \langle\mathbf{u}_i^T\mathbf{u}_j\rangle+C 
+\end{align*}
 $$
 
 ## Emission models
@@ -231,7 +229,7 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    $$
 
 2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005): 
-   
+  
 
 $$
 \kappa^{(t)} \approx \frac{\overline{r}N-\overline{r}^3}{1-\overline{r}^2}\\

@@ -28,12 +28,13 @@ def simulate_potts_gauss_grid():
     grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
 
     # Step 4: Generate data by sampling from the above model
-    U,Uhist = arrangeT.sample_gibbs(num_chains=10,burnin=19,bias=arrangeT.logpi,return_hist=True)
+    U = arrangeT.sample(num_subj=10,burnin=19)
     # U = arrangeT.sample(num_subj=10)
     Y = emissionT.sample(U)
+    
     # Plot sampling path for visualization purposes
-    plt.figure(figsize=(10,4))
-    grid.plot_maps(Uhist[:,0,:],cmap='tab10',vmax=9)
+    # plt.figure(figsize=(10,4))
+    # grid.plot_maps(Uhist[:,0,:],cmap='tab10',vmax=9)
     # Plot all the subjects
     plt.figure(figsize=(10,4))
     grid.plot_maps(U,cmap='tab10',vmax=9,grid=[2,5])
@@ -46,7 +47,16 @@ def simulate_potts_gauss_grid():
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(Y, iter=1000, tol=0.001)
+    M.emission.initialize(Y)
+    # Get the (approximate) posterior p(U|Y)
+    emloglik = M.emission.Estep()
+    Uhat, ll_A = M.arrange.Estep(emloglik)
+    Umax = np.argmax(Uhat,axis=1)
+    plt.figure(figsize=(7,4))
+    grid.plot_maps(Umax,cmap='tab10',vmax=9,grid=[2,5])
+    
+    
+    # ll, theta = M.fit_em(Y, iter=1000, tol=0.001)
     plt.lineplot(ll, color='b')
     print(theta)
 

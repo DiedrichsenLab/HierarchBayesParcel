@@ -18,7 +18,7 @@ class FullModel:
         Y = self.emission.sample(U)
         return U, Y
 
-    def fit_em(Y, self, iter, tol):
+    def fit_em(self, Y, iter, tol):
         """ Do the real EM algorithm for the complete log likelihood for the
         combination of the arrangement model and emission model
 
@@ -31,6 +31,7 @@ class FullModel:
         # Initialize the tracking
         ll = []
         theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
+        self.emission.initialize(Y)
         for i in range(iter):
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
