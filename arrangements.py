@@ -72,8 +72,8 @@ class ArrangeIndependent(ArrangementModel):
         Returns:
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x K x P matrix
-            ll_A (np.array): 
-                Expected log-liklihood of the arrangement model 
+            ll_A (np.array):
+                Expected log-liklihood of the arrangement model
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
@@ -177,11 +177,11 @@ class PottsModel(ArrangementModel):
     def loglike(self,U):
         """Returns the energy term of the network
         up to a constant the loglikelihood of the state
-        
+
         Params:
             U (ndarray): 2d array (NxP) of network states
-        Returns: 
-            ll (ndarray)): 1d array (N,) of likelihoods  
+        Returns:
+            ll (ndarray)): 1d array (N,) of likelihoods
         """
         N,P = U.shape
         la = np.empty((N,))
@@ -214,15 +214,15 @@ class PottsModel(ArrangementModel):
         using the same bias term
 
         Args:
-            U0 (nd-array): Initial starting point (num_chains x P): 
-                Default None - and will be initialized by the bias term alone 
+            U0 (nd-array): Initial starting point (num_chains x P):
+                Default None - and will be initialized by the bias term alone
             num_chains (int): If U0 not provided, number of chains to initialize
             bias (nd-array): Bias term (in log-probability (K,P)).
                  Defaults to None. Assumed to be the same for all the chains
             iter (int): Number of iterations. Defaults to 5.
             return_hist (bool): Return the history as a second return argument?
         Returns:
-            U (nd-array): A (num_chains,P) array of integers 
+            U (nd-array): A (num_chains,P) array of integers
             Uhist (nd-array): Full sampling path - (iter,num_chains,P) array of integers (optional, only if return_all = True)
         Comments:
             This probably can be made more efficient by doing some of the sampling un bulk?
@@ -277,8 +277,8 @@ class PottsModel(ArrangementModel):
         Returns:
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x K x P matrix
-            ll_A (np.array): 
-                Expected log-liklihood of the arrangement model 
+            ll_A (np.array):
+                Expected log-liklihood of the arrangement model
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
@@ -287,28 +287,28 @@ class PottsModel(ArrangementModel):
             for s in range(numsubj):
                 self.estep_state[s,:,:] = self.sample_gibbs(num_chains=self.estep_numchains,
                     bias = bias[s],iter=self.estep_iter)
-            else: 
-                self.estep_state[s,:,:] = self.sample_gibbs(self.estep_state[s], 
+            else:
+                self.estep_state[s,:,:] = self.sample_gibbs(self.estep_state[s],
                     bias = bias[s],iter=self.estep_iter)
-        
+
         # Get Uhat from the sampled examples
-        Uhat = np.empty((numsubj,self.K.self.P))
-        for k in range(self.K): 
-            Uhat[:,k,:]=np.sum(self.estep_state==k,axis=1)
+        Uhat = np.empty((numsubj,self.K,self.P))
+        for k in range(self.K):
+            Uhat[:,k,:]=np.sum(self.estep_state==k,axis=1)/self.estep_numchains
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = np.e
+        ll_A = np.empty((numsubj,))
         for s in numsubj:
-        ll_A = self.loglik(self.estep_state)
+            ll_A[s] = self.loglik(self.estep_state)
         return Uhat, ll_A
 
-def loglik2prob(loglik): 
-    """Safe transformation and normalization of 
+def loglik2prob(loglik):
+    """Safe transformation and normalization of
     logliklihood (along axis 0)
 
     Args:
         loglik (ndarray): Log likelihood (not normalized)
-    Returns: 
+    Returns:
         prob (ndarray): Probability
     """
     loglik = loglik-np.max(loglik,axis=0)+10
