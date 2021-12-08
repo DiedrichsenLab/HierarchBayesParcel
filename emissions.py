@@ -1,8 +1,7 @@
 # Example Models
-import os # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import gamma
+from scipy import stats, special
 
 from numpy import log, exp, sqrt
 
@@ -330,12 +329,14 @@ class MixGaussianExp(EmissionModel):
         self.beta = self.P*self.num_subj / np.sum(US)
 
     def sample(self, U, V=None):
-        """ Generate random data given this emission model
+        """ Generate random data given this emission model and parameters
 
-        :param U: The prior arrangement U from arrangement model
-        :param V: given the initial V. If None, then randomly generate
+        Args:
+            U: The prior arrangement U from the arrangement model
+            V: Given the initial V. If None, then randomly generate
 
-        :return: sampled data Y
+        Returns: Sampled data Y
+
         """
         if V is None:
             V = np.random.normal(0, 1, (self.N, self.K))
@@ -382,17 +383,22 @@ class MixGaussianExp(EmissionModel):
 
 
 class MixVMF(EmissionModel):
-    """
-    Mixture of Gaussians with isotropic noise
+    """ Mixture of Gaussians with isotropic noise
+
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         super(MixVMF, self).__init__(K, N, P, data, params)
-        self.nparams = self.N * self.K + 1
+        self.nparams = self.N * self.K + self.K
 
     def initialize(self, data):
-        """Stores the data in emission model itself
-        Calculates sufficient stats on the data that does not depend on u,
+        """ Calculates the sufficient stats on the data that does not depend on U,
         and allocates memory for the sufficient stats that does.
+
+        Args:
+            data: the input data array.
+
+        Returns: None. Store the data in emission model itself.
+
         """
         super(MixVMF, self).initialize(data)
         self.YY = self.Y**2
@@ -401,10 +407,11 @@ class MixVMF(EmissionModel):
     def get_params(self):
         """ Get the parameters for the vmf mixture model
 
-        :return: the parcel-specific mean and log sigma2
+        Returns: return all parameters that stores in the current emission model
+
         """
         np.testing.assert_array_equal(self.K, self.V.shape[1])
-        return np.append(self.V.flatten('F'), log(self.kappa))
+        return np.append(self.V.flatten('F'), self.kappa)
 
     def set_params(self, theta):
         """ Set the model parameters by the given input thetas
@@ -430,6 +437,20 @@ class MixVMF(EmissionModel):
         self.V = V / sqrt(np.sum(V**2, axis=0))
         self.kappa = np.random.uniform(0, 50, (self.K, ))
 
+    def _bessel_function(self, order, kappa):
+        """ The modified bessel function of the first kind of real order
+
+        Args:
+            order: the real order
+            kappa: the input value
+
+        Returns: The values of modified bessel function
+
+        """
+        # res = np.empty(kappa.shape)
+        res = special.iv(order, kappa)
+        return res
+
     def Estep(self, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
@@ -443,12 +464,14 @@ class MixVMF(EmissionModel):
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = np.empty((self.Y.shape[0], self.K, self.P))
-        uVVu = np.sum(self.V**2, axis=0)  # This is u.T V.T V u for each u
+        CnK = np.empty((self.Y.shape[0], self.K))
+
+        # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
         for i in sub:
             YV = np.dot(self.Y[i, :, :].T, self.V)
-            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T + uVVu.reshape((self.K, 1))
-            # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5*self.N*(np.log(2*np.pi) + np.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+            CnK[i, :] = self._bessel_function(self.N, self.kappa)
+            # the log likelihood for emission model (VMF in this case)
+            LL[i, :, :] = (log(CnK[i, :]) + self.kappa * YV).T
 
         return LL
 
@@ -456,6 +479,7 @@ class MixVMF(EmissionModel):
         """ Performs the M-step on a specific U-hat. In this emission model,
             the parameters need to be updated are Vs (unit norm projected on
             the N-1 sphere) and kappa (concentration value).
+
         Args:
             U_hat: the expected log likelihood from the arrangement model
 
@@ -466,13 +490,16 @@ class MixVMF(EmissionModel):
         YU = np.zeros((self.N, self.K))
         UU = np.zeros((self.K, self.P))
         for i in range(self.num_subj):
-            YU = YU + self.Y[i, :, :] @ U_hat[i, :, :].T
+            YU = YU + np.dot(self.Y[i, :, :], U_hat[i, :, :].T)
             UU = UU + U_hat[i, :, :]
-        # self.V = np.linalg.solve(UU,YU.T).T
-        # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
-        self.V = (YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
-        ERSS = np.sum(U_hat * self.rss)
-        self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
+
+        # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
+        self.V = YU / np.sum(UU, axis=1)
+        self.V = self.V / sqrt(np.sum(self.V ** 2, axis=0))  # normalize V to unit norm
+
+        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
+        r_bar = sqrt(np.sum(self.V ** 2, axis=0)) / np.sum(UU, axis=1)
+        self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U):
         """ Draw data sample from this model and given parameters
@@ -494,8 +521,9 @@ class MixVMF(EmissionModel):
 
     def _loglikelihood(self, Y, sub=None):
         """ Compute the log likelihood given current parameters in the model
+
         Args:
-            Y: The given data from the sample
+            Y: The given data form the sample
             sub: the number or the index of the subject needs to be compute the log likelihood
 
         Returns: The log likelihood given by the current settings
@@ -504,13 +532,13 @@ class MixVMF(EmissionModel):
         if sub is None:
             sub = range(Y.shape[0])
         LL = np.empty((Y.shape[0], self.K, self.P))
-        rss = np.empty((Y.shape[0], self.K, self.P))
-        uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
+        CnK = np.empty((Y.shape[0], self.K))
+
+        # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
         for i in sub:
             YV = np.dot(Y[i, :, :].T, self.V)
-            YY = Y ** 2
-            rss[i, :, :] = np.sum(YY[i, :, :], axis=0) - 2 * YV.T + uVVu.reshape((self.K, 1))
-            # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (np.log(2 * np.pi) + np.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * rss[i, :, :]
+            CnK[i, :] = self._bessel_function(self.N, self.kappa)
+            # the log likelihood for emission model (VMF in this case)
+            LL[i, :, :] = (log(CnK[i, :]) + self.kappa * YV).T
 
         return LL
