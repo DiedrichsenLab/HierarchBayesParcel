@@ -278,7 +278,8 @@ class PottsModel(ArrangementModel):
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x K x P matrix
             ll_A (np.array):
-                Expected log-liklihood of the arrangement model
+                Unnormalized log-likelihood of the arrangement model
+                Note that this does not contain the partition function
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
@@ -301,6 +302,29 @@ class PottsModel(ArrangementModel):
         for s in numsubj:
             ll_A[s] = self.loglik(self.estep_state)
         return Uhat, ll_A
+
+    def Mstep_SML(self,stepsize = 0.1):
+        """ Mstep via Stochastic Maximum Likelihood / persistent contrastive divergence
+        with sampling from the spatial arrangement model (not clampled to data)
+        for the negative phase of the learning
+        It requires running the E-step first to obtain ~p(u|y)
+        Uses persistent sampling across M-step (persistent contrastive diver)
+        Parameters:
+            stepsize (float):
+                Stepsize for the update of the parameters
+        """
+        if self.mstep_state is None:
+            self.mstep_state = self.sample_gibbs(num_chains=self.mstep_numchains,
+                    bias = self.logpi,iter=self.mstep_iter)
+        else:
+            self.mstep_state = self.sample_gibbs(self.mstep_state,
+                    bias = self.logpi,iter=self.mstep_iter)
+
+        # Get sufficient statistics from positive and negative phase of learning:
+
+        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
+
+
 
 def loglik2prob(loglik):
     """Safe transformation and normalization of

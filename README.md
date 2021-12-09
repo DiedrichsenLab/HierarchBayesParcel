@@ -45,7 +45,7 @@ $$
 The spatial interdependence of brain locations is expressed as a Potts model. In this model, the overall probability of a specific assignment of brain locations to parcels (the vector $\mathbf{u}$) is expressed as the product of the overall prior and the product of all possible pairwise potentenials ($\psi_{ij}$). 
 
 $$
-p(\mathbf{u}) \propto \prod_{i}\pi_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
+p(\mathbf{u}) = \frac{1}{Z(\theta)} \prod_{i}\pi_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
 $$
 
 Each local potential is defined by an exponential over all other that are connected to node $i$, i.e. nodes with connectivity weights of $w_{ji}=w_{ij}>0$.
@@ -68,9 +68,13 @@ This formulation would enforce local smoothness of the map. However, we could al
 The expected arrangement log-likelihood therefore becomes: 
 $$
 \begin{align*}
-\mathcal{L}_A=\sum_i \langle\mathbf{u}_i\rangle^T \log{\boldsymbol{\pi}_{i}}+\theta_w \sum_i \sum_j w_{ij} \langle\mathbf{u}_i^T\mathbf{u}_j\rangle+C 
+\mathcal{L}_A=\sum_i \langle\mathbf{u}_i\rangle^T \log{\boldsymbol{\pi}_{i}}+\theta_w \sum_i \sum_j w_{ij} \langle\mathbf{u}_i^T\mathbf{u}_j\rangle - \log Z 
 \end{align*}
 $$
+
+####  Gradient for different parameterization
+
+We can approximate the gradient of the parameters using the in
 
 ## Emission models
 Given the Markov property, the emission models specify the log probability of the observed data as a function of $\mathbf{u}$.  
