@@ -173,7 +173,7 @@ Now, we can update the parameters $\theta$ of the Gaussians/Gamma mixture in the
    $$
    
 3. Updating $\beta$, we take derivative of  $\mathcal{L}_E(q, \theta)$ with respect to $\beta$ and set it equal to 0 as following:
-  
+
 
 $$
 \begin{align*}
@@ -226,7 +226,7 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
 1. Updating mean direction $\mu_k$, we take derivative of * in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
    \begin{align*}
-   \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \frac{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}}; r_k=||\bar{\mathbf{y}}_{k}||
+   \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\bar{\mathbf{y}}_{k}||
    \end{align*}
    $$
 
@@ -234,8 +234,8 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    
 
 $$
-\kappa^{(t)} \approx \frac{\overline{r}N-\overline{r}^3}{1-\overline{r}^2}\\
-\bar{r}=\frac{\sum_k r_k\sum_{i}\langle u_{i}^{(k)}\rangle}{P}
+\kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\
+\bar{r}_k=\frac{r_k}{\sum_{i}\langle u_{i}^{(k)}\rangle_q}
 $$
 
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
