@@ -386,7 +386,8 @@ class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
 
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None):
+    def __init__(self, K=4, N=10, P=20, data=None, params=None, uniform=True):
+        self.uniform = uniform
         super(MixVMF, self).__init__(K, N, P, data, params)
         self.nparams = self.N * self.K + self.K
 
@@ -421,6 +422,7 @@ class MixVMF(EmissionModel):
         Returns: pass the given input params to the object
 
         """
+        np.testing.assert_array_equal(theta.size, self.nparams)
         self.V = theta[0:self.N*self.K].reshape(self.N, self.K)
         self.kappa = exp(theta[-self.K:])
 
@@ -435,7 +437,10 @@ class MixVMF(EmissionModel):
         # standardise V to unit length
         V = V - V.mean(axis=0)
         self.V = V / sqrt(np.sum(V**2, axis=0))
-        self.kappa = np.random.uniform(0, 50, (self.K, ))
+        if self.uniform:
+            self.kappa = np.repeat(np.random.uniform(0.1, 50), self.K)
+        else:
+            self.kappa = np.random.uniform(0.1, 50, (self.K, ))
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -451,6 +456,24 @@ class MixVMF(EmissionModel):
         res = special.iv(order, kappa)
         return res
 
+    def _log_bessel_function(self, order, kappa):
+        """ The log of modified bessel function of the first kind of real order
+
+        Args:
+            order: the real order
+            kappa: the input value
+
+        Returns: The values of log of modified bessel function
+
+        """
+        frac = kappa / order
+        square = 1 + frac**2
+        root = np.sqrt(square)
+        eta = root + np.log(frac) - np.log(1 + root)
+        approx = - np.log(np.sqrt(2 * np.pi * order)) + order * eta - 0.25*np.log(square)
+
+        return approx
+
     def Estep(self, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
@@ -464,14 +487,16 @@ class MixVMF(EmissionModel):
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = np.empty((self.Y.shape[0], self.K, self.P))
-        CnK = np.empty((self.Y.shape[0], self.K))
+        # CnK = np.empty((self.Y.shape[0], self.K))
 
         # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
         for i in sub:
             YV = np.dot(self.Y[i, :, :].T, self.V)
-            CnK[i, :] = self._bessel_function(self.N, self.kappa)
+            # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
+            logCnK = (self.N / 2 - 1) * log(self.kappa) - log(2 * np.pi) * (self.N / 2) - \
+                     self._log_bessel_function(self.N / 2 - 1, self.kappa)
             # the log likelihood for emission model (VMF in this case)
-            LL[i, :, :] = (log(CnK[i, :]) + self.kappa * YV).T
+            LL[i, :, :] = (logCnK + self.kappa * YV).T
 
         return LL
 
@@ -494,11 +519,23 @@ class MixVMF(EmissionModel):
             UU = UU + U_hat[i, :, :]
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        self.V = YU / np.sum(UU, axis=1)
-        self.V = self.V / sqrt(np.sum(self.V ** 2, axis=0))  # normalize V to unit norm
+        # self.V = YU / np.sum(UU, axis=1)
+        # self.V = self.V - self.V.mean(axis=0)  # Should we mean centered?
+        # norm_V = sqrt(np.sum(self.V ** 2, axis=0))
+        # self.V = self.V / norm_V  # normalize V to unit norm
+        self.V = YU / sqrt(np.sum(YU ** 2, axis=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
-        r_bar = sqrt(np.sum(self.V ** 2, axis=0)) / np.sum(UU, axis=1)
+        YV = np.sum((self.V.T @ self.Y) * U_hat, axis=0)
+        if self.uniform:
+            # r_bar = np.sum(norm_V) / np.sum(np.sum(UU, axis=1))
+            # r_bar = np.repeat(r_bar, self.K)
+            r_bar = np.mean(sqrt(np.sum(YU ** 2, axis=0)) / np.sum(UU, axis=1))
+            r_bar = np.repeat(r_bar, self.K)
+        else:
+            r_bar = sqrt(np.sum(YU ** 2, axis=0)) / np.sum(UU, axis=1)
+            # r_bar = YV.sum(axis=1) / np.sum(UU, axis=1)
+
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U):
@@ -515,7 +552,7 @@ class MixVMF(EmissionModel):
         for s in range(num_subj):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
-                Y[s, :, p] = np.random.vonmises(self.V[:, U[s, p].astype('int')], self.kappa[U[s, 0].astype('int')], (self.N, ))
+                Y[s, :, p] = np.random.vonmises(self.V[:, U[s, p].astype('int')], self.kappa[U[s, p].astype('int')], (self.N, ))
 
         return Y
 
@@ -532,13 +569,15 @@ class MixVMF(EmissionModel):
         if sub is None:
             sub = range(Y.shape[0])
         LL = np.empty((Y.shape[0], self.K, self.P))
-        CnK = np.empty((Y.shape[0], self.K))
+        # CnK = np.empty((self.Y.shape[0], self.K))
 
         # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
         for i in sub:
             YV = np.dot(Y[i, :, :].T, self.V)
-            CnK[i, :] = self._bessel_function(self.N, self.kappa)
+            # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
+            logCnK = (self.N / 2 - 1) * log(self.kappa) - log(2 * np.pi) * (self.N / 2) - \
+                     self._log_bessel_function(self.N / 2 - 1, self.kappa)
             # the log likelihood for emission model (VMF in this case)
-            LL[i, :, :] = (log(CnK[i, :]) + self.kappa * YV).T
+            LL[i, :, :] = (logCnK + self.kappa * YV).T
 
         return LL

@@ -6,6 +6,7 @@ import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
 from numpy import exp,log,sqrt
+import mpmath as mp
 
 import sys
 sys.path.insert(0, "D:/python_workspace/")
@@ -92,8 +93,16 @@ class ArrangeIndependent(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
-        Uhat = np.exp(np.apply_along_axis(lambda x: x - np.min(x), 1, logq))
+        # Uhat = np.exp(np.apply_along_axis(lambda x: x - np.mean(x), 1, logq))
+
+        # To fix overflow/underflow problem for exp large numbers
+        Uhat = np.empty(logq.shape, dtype='object')
+        for i in range(logq.shape[0]):
+            logq_sub = mp.matrix(logq[i, :, :].tolist()).apply(mp.exp)
+            Uhat[i, :, :] = np.asarray(logq_sub).reshape(self.K, self.P)
+
         Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
+        Uhat = Uhat.astype('float64')
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         ll_A = Uhat * self.logpi

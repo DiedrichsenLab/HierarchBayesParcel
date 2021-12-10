@@ -102,7 +102,7 @@ def _simulate_full_GMM():
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=10)
+    U = arrangeT.sample(num_subj=100)
     Y = emissionT.sample(U)
 
     # Step 2.1: Compute the log likelihood from the true model
@@ -148,15 +148,13 @@ def _simulate_full_GME():
     M = FullModel(arrangeM, emissionM)
     ll, theta = M.fit_em(iter=50, tol=0.001)
     _plot_loglike(ll, loglike_true, color='b')
-    _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
-    _plt_single_param_diff(theta_true[202], theta[:, 202])
     print('Done.')
 
 
 def _simulate_full_VMF():
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionT = MixVMF(K=5, N=40, P=100)
+    emissionT = MixVMF(K=5, N=40, P=100, uniform=False)
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
@@ -168,19 +166,18 @@ def _simulate_full_VMF():
     emll_true = emissionT._loglikelihood(Y)
     Uhat, ll_a = arrangeT.Estep(emll_true)
     loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+    print(theta_true)
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionM = MixVMF(K=5, N=40, P=100, data=Y)
+    emissionM = MixVMF(K=5, N=40, P=100, data=Y, uniform=True)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
     ll, theta = M.fit_em(iter=50, tol=0.001)
     _plot_loglike(ll, loglike_true, color='b')
-    _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
-    _plt_single_param_diff(theta_true[202], theta[:, 202])
     print('Done.')
 
 
 if __name__ == '__main__':
-    _simulate_full_VMF()
+    _simulate_full_GME()
