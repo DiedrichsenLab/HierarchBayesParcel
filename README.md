@@ -72,11 +72,61 @@ $$
 \end{align*}
 $$
 
-####  Gradient for different parameterization
+####  Inference using stochastic maximum likelihood / contrastive divergence
 
-We can approximate the gradient of the parameters using the in
+We can approximate the gradient of the parameters using a contrastive divergence-type algorithm. We view the arrangement log likelihood as a sum of the unnormalized part ($\tilde{\mathcal{L}}_A$) and the log partition function. For each parameter $\theta$ we then follow the gradient 
+$$
+\begin{align*}
+\grad_\theta \mathcal{L}_A&=\grad_\theta \tilde{\mathcal{L}}_A-\grad_\theta \log Z\\
+&=\grad_\theta \tilde{\mathcal{L}}_A-\mathrm{E}_p [\grad_\theta \tilde{\mathcal{L}}_A]\\
+&=\grad_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_q -
+\grad_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_p 
+\end{align*}
+$$
+Thus, we can use the gradient of the unnormalized expected log-likelihood (given a distribution $q(\mathbf{U}) = p(\mathbf{U}|\mathbf{Y};\theta)$, minus the  gradient of the unnormalized expected log-likelihood in respect to the expectation under the model parameters, without seeing the data, $q(\mathbf{U}) = p(\mathbf{U}|\mathbf{Y};\theta)$. This motivates the use of sampling / approximate inference for both of these steps. See Deep Learning (18.1).
+
+#### Gradient for different parametrization of the Potts model
+
+For the edge-energy parameters $\theta_w$ we clearly want to use the natural parametrization with the derivate: 
+$$
+\frac{\part \tilde{\mathcal{L}}_A}{\part \theta_w}=\sum_i\sum_j w_{ij}\langle\mathbf{u}_i^T\mathbf{u}_j\rangle
+$$
+For the prior probability of each parcel $k$ at each location $i$  ($\pi_{ik}$) we have a number of options. 
+
+First ,we can use the probabilities themselves as parameters:
+$$
+\frac{\part \tilde{\mathcal{L}}_A}{\part \pi_{ik}}=\frac{\langle u_{ik}\rangle}{\pi_{ik}}
+$$
+
+This is unconstrained (that is probabilities do not need to sum to 1), and the normalization would happen through the partition function. 
+
+Secondly, we can use a re-parameterization in log space, which is more natural: $\eta_{ik}=\log \pi_{ik}$. In this case the derivative of the non-normalized part just becomes: 
+$$
+\frac{\part \tilde{\mathcal{L}}_A}{\part \eta_{ik}}=\langle u_{ik}\rangle
+$$
+Finally, we can implement the constraint that the probabilities at each location sum to one by the following re-parametrization:
+$$
+\begin{align*}
+\pi_{iK}&=1-\sum_{k=1}^{K-1}\pi_{ik}\\
+\eta_{ik}&=\log(\frac{\pi_{ik}}{\pi_{iK}})=\log{\pi_{ik}}-\log({1-\sum_{k=1}^{K-1}\pi_{ik}})\\
+\pi_{ik}&=\frac{\exp(\eta_{ik})}{1+\sum_{k=1}^{K-1}\exp(\eta_{ik})}\\
+\pi_{iK}&=\frac{1}{1+\sum_{k=1}^{K-1}\exp(\eta_{ik})}
+\end{align*}
+$$
+With this constrained parameterization, we can rewrite the unnormalized part of the expected log-likelihood as: 
+
+
+$$
+\begin{align*}
+\tilde{\mathcal{L}}_A&=\sum_i \sum_{k}^{K-1}\langle u_{ik}\rangle  \log \pi_{ik}+[1-\sum_{k}^{K-1}\langle u_{ik}\rangle]\log{\pi_{iK}}+C\\
+&=\sum_i \sum_{k}^{K-1}\langle u_{ik}\rangle  (\log \pi_{ik}-\log \pi_{iK})+\log{\pi_{iK}}+C\\
+&=\sum_i \sum_{k}^{K-1}\langle u_{ik}\rangle \eta_{ik}-\log(1+\sum_{k=1}^{K-1}\exp(\eta_{ik}))+C\\
+\end{align*}
+$$
+where C is the part of the normalized log-likelihood that does not depend on $\pi$.x
 
 ## Emission models
+
 Given the Markov property, the emission models specify the log probability of the observed data as a function of $\mathbf{u}$.  
 
 $$
