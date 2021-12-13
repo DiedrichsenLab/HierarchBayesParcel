@@ -412,7 +412,7 @@ class MixVMF(EmissionModel):
 
         """
         np.testing.assert_array_equal(self.K, self.V.shape[1])
-        return np.append(self.V.flatten('F'), self.kappa)
+        return np.append(self.V.flatten('C'), self.kappa)
 
     def set_params(self, theta):
         """ Set the model parameters by the given input thetas
@@ -422,9 +422,11 @@ class MixVMF(EmissionModel):
         Returns: pass the given input params to the object
 
         """
-        np.testing.assert_array_equal(theta.size, self.nparams)
-        self.V = theta[0:self.N*self.K].reshape(self.N, self.K)
-        self.kappa = exp(theta[-self.K:])
+        # np.testing.assert_array_equal(theta.size, self.nparams)
+        # self.V = theta[0:self.N*self.K].reshape(self.N, self.K)
+        # self.kappa = exp(theta[-self.K:])
+        self.V = theta[0]
+        self.kappa = theta[1]
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -438,9 +440,9 @@ class MixVMF(EmissionModel):
         V = V - V.mean(axis=0)
         self.V = V / sqrt(np.sum(V**2, axis=0))
         if self.uniform:
-            self.kappa = np.repeat(np.random.uniform(0.1, 50), self.K)
+            self.kappa = np.repeat(np.random.uniform(30, 100), self.K)
         else:
-            self.kappa = np.random.uniform(0.1, 50, (self.K, ))
+            self.kappa = np.random.uniform(30, 100, (self.K, ))
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -493,7 +495,7 @@ class MixVMF(EmissionModel):
         for i in sub:
             YV = np.dot(self.Y[i, :, :].T, self.V)
             # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
-            logCnK = (self.N / 2 - 1) * log(self.kappa) - log(2 * np.pi) * (self.N / 2) - \
+            logCnK = (self.N / 2 - 1) * log(self.kappa) - (self.N / 2) * log(2 * np.pi) - \
                      self._log_bessel_function(self.N / 2 - 1, self.kappa)
             # the log likelihood for emission model (VMF in this case)
             LL[i, :, :] = (logCnK + self.kappa * YV).T
@@ -511,7 +513,6 @@ class MixVMF(EmissionModel):
         Returns: Update all the object's parameters
 
         """
-        # SU = self.s * U_hat
         YU = np.zeros((self.N, self.K))
         UU = np.zeros((self.K, self.P))
         for i in range(self.num_subj):
@@ -519,22 +520,18 @@ class MixVMF(EmissionModel):
             UU = UU + U_hat[i, :, :]
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        # self.V = YU / np.sum(UU, axis=1)
-        # self.V = self.V - self.V.mean(axis=0)  # Should we mean centered?
-        # norm_V = sqrt(np.sum(self.V ** 2, axis=0))
-        # self.V = self.V / norm_V  # normalize V to unit norm
         self.V = YU / sqrt(np.sum(YU ** 2, axis=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
-        YV = np.sum((self.V.T @ self.Y) * U_hat, axis=0)
         if self.uniform:
-            # r_bar = np.sum(norm_V) / np.sum(np.sum(UU, axis=1))
-            # r_bar = np.repeat(r_bar, self.K)
-            r_bar = np.mean(sqrt(np.sum(YU ** 2, axis=0)) / np.sum(UU, axis=1))
-            r_bar = np.repeat(r_bar, self.K)
-        else:
             r_bar = sqrt(np.sum(YU ** 2, axis=0)) / np.sum(UU, axis=1)
-            # r_bar = YV.sum(axis=1) / np.sum(UU, axis=1)
+            r_bar[r_bar > 0.95] = 0.95
+            r_bar[r_bar < 0.05] = 0.05
+            r_bar = np.repeat(np.mean(r_bar), self.K)
+        else:
+            r_bar = sqrt(np.sum(YU**2, axis=0)) / np.sum(UU, axis=1)
+            r_bar[r_bar > 0.95] = 0.95
+            r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
 
