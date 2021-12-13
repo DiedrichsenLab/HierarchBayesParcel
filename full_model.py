@@ -9,9 +9,10 @@ import sys
 # sys.path.insert(0, "D:/python_workspace/")
 
 class FullModel:
-    def __init__(self, arrange, emission):
+    def __init__(self, arrange,emission):
         self.arrange = arrange
         self.emission = emission
+        self.nparams = self.arrange.nparams + self.emission.nparams 
 
     def sample(self, num_subj=10):
         U = self.arrange.sample(num_subj)
@@ -41,7 +42,7 @@ class FullModel:
         self.emission.initialize(Y)
         for i in range(iter):
             # Track the parameters
-            theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
+            theta[i, :] = np.concatenate([self.arrange.get_params(),self.emission.get_params()])
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
@@ -90,7 +91,7 @@ class FullModel:
         self.emission.initialize(Y)
         for i in range(iter):
             # Track the parameters
-            theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
+            theta[i, :] = np.concatenate([self.arrange.get_params(),self.emission.get_params()])
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
@@ -103,14 +104,23 @@ class FullModel:
             if i==iter-1:
                 break
 
-            # Updates the parameters
+            # Run the negative phase 
+            self.arrange.eneg_sample()
             self.emission.Mstep(Uhat)
-            self.arrange.Mstep()
+            self.arrange.Mstep(stepsize)
 
         if seperate_ll: 
             return self,ll[:i+1,:], theta[:i+1,:]
         else:
             return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
+
+    def get_params(self):
+        """Get the concatenated parameters from arrangemenet + emission model 
+
+        Returns: 
+            theta (ndarrap) 
+        """
+        return np.concatenate([self.arrange.get_params(),self.emission.get_params()])
 
 
 def _fit_full(Y):
@@ -137,8 +147,8 @@ def _simulate_full():
     emissionM = MixGaussianGamma(K=5, N=40, P=100, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
-    M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(iter=1000, tol=0.001)
+    M = FullModel(arrangeM,emissionM)
+    ll, theta = M.fit_em(Y,iter=1000, tol=0.001)
     _plot_loglike(ll, color='b')
     print(theta)
 

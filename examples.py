@@ -60,6 +60,21 @@ def simulate_potts_gauss_grid():
     plt.lineplot(ll, color='b')
     print(theta)
 
+def make_duo_model(K=4,theta_w =1, sigma2=0.1):
+        # Step 1: Create the true model
+    W = np.array([[0,1],[1,0]])
+    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
+    arrangeT = ar.PottsModel(W, K=K)
+    emissionT = em.MixGaussian(K=K, N=5, P=2)
+
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
+
 def plot_duo_fit(theta,ll,theta_true=None,ll_true=None):
     plt.subplot(2,1,1)
     color = ['r','r','b','b','g','g','k','k']
@@ -94,7 +109,7 @@ def simulate_potts_gauss_duo(theta_w=2,
                              num_subj = 100,
                              eneg_numchains=200,
                              epos_numchains=20,
-                             numiter = 60,
+                             numiter = 40,
                              stepsize = 0.8,
                              fit_theta_w=True):
     """Basic simulation of a two-node potts model
@@ -113,22 +128,12 @@ def simulate_potts_gauss_duo(theta_w=2,
     Returns:
         [type]: [description]
     """
-    # Step 1: Create the true model
-    W = np.array([[0,1],[1,0]])
-    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
-    arrangeT = ar.PottsModel(W, K=4)
-    emissionT = em.MixGaussian(K=4, N=5, P=2)
-
-    # Step 2: Initialize the parameters of the true model
-    arrangeT.logpi=log(pi)-log(pi[-1,:])
-    arrangeT.theta_w = theta_w
-    emissionT.random_params()
-    emissionT.sigma2=sigma2
+    # Make true model 
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
 
     # Step 3: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=num_subj,burnin=6)
-    # U = arrangeT.sample(num_subj=10)
-    Y = emissionT.sample(U)
+    U,Y = MT.sample(num_subj=num_subj)
 
     # Plot the joint distribution of the hidden variables
     df = pd.DataFrame({'U1':U[:,0],'U2':U[:,1]})
@@ -138,12 +143,12 @@ def simulate_potts_gauss_duo(theta_w=2,
     print(T.sum(axis=0).T/num_subj)
 
     # Step 4: Generate new models for fitting
-    arrangeM = ar.PottsModel(W, K=4)
+    arrangeM = ar.PottsModel(MT.arrange.W, K=4)
     arrangeM.theta_w =0
     arrangeM.fit_theta_w = fit_theta_w
     arrangeM.eneg_numchains=eneg_numchains
     arrangeM.epos_numchains=epos_numchains
-    emissionM = copy.deepcopy(emissionT)
+    emissionM = copy.deepcopy(MT.emission)
 
     # Step 5: Get the emission log-liklihood:
     M = FullModel(arrangeM, emissionM)
@@ -154,31 +159,30 @@ def simulate_potts_gauss_duo(theta_w=2,
     # Step 6: Get baseline for the emission and arrangement likelihood by fitting a Indepenent model
     arrangeI = ar.ArrangeIndependent(K=4,P=2,spatial_specific=True)
     Uhat,ll_A_in = arrangeI.Estep(emloglik)
-    arrangeI.Mstep(Uhat)
+    arrangeI.Mstep()
     Uhat,ll_A_in = arrangeI.Estep(emloglik)
     pass
 
     # Step 7: Get he the baseline for emission and arrangement model 
     # from the true model 
-    Uhat,ll_A_true = arrangeT.epos_sample(emloglik)
+    Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
     ll_E_true=np.sum(emloglik*Uhat,axis=(1,2))
 
     # Step 8: With fixed emission model, fit the arrangement model
-    theta = np.empty((numiter+1,M.arrange.nparams))
+    theta = np.empty((numiter,M.arrange.nparams))
     ll_E = np.empty((numiter,num_subj))
     ll_A = np.empty((numiter,num_subj))
-    theta[0,:]=M.arrange.get_params()
     for i in range(numiter):
+        theta[i,:]=M.arrange.get_params()
         Uhat,ll_A[i,:] = M.arrange.epos_sample(emloglik)
         ll_E[i,:]=np.sum(emloglik*Uhat,axis=(1,2))
         M.arrange.eneg_sample()
         M.arrange.Mstep(stepsize)
-        theta[i+1,:]=M.arrange.get_params()
 
-    thetaT = arrangeT.get_params()
-    iter = np.arange(numiter+1)
-    ll = np.c_[ll_E.sum(axis=1),ll_A.sum(axis=1)] 
-    plot_duo_fit(theta,ll,theta_true=thetaT,ll_true=[ll_E_true,ll_A_true],skip_col = 1)
+    thetaT = MT.arrange.get_params()
+    ll = np.c_[ll_E.sum(axis=1),ll_A.sum(axis=1)]
+    ll_true = np.array([ll_E_true.sum(),ll_A_true.sum()])
+    plot_duo_fit(theta,ll,theta_true=thetaT,ll_true=ll_true)
 
     return theta,iter,thetaT
 
@@ -208,99 +212,47 @@ def simulate_potts_gauss_duo2(theta_w=2,
         [type]: [description]
     """
     # Step 1: Create the true model
-    W = np.array([[0,1],[1,0]])
-    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
-    arrangeT = ar.PottsModel(W, K=4)
-    emissionT = em.MixGaussian(K=4, N=5, P=2)
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
 
-    # Step 2: Initialize the parameters of the true model
-    arrangeT.logpi=log(pi)-log(pi[-1,:])
-    arrangeT.theta_w = theta_w
-    emissionT.random_params()
-    emissionT.sigma2=sigma2
-
-    # Step 3: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=num_subj,burnin=6)
-    Y = emissionT.sample(U)
+    # Generate the data 
+    U,Y = MT.sample(num_subj=num_subj)
 
     # Step 4: Generate indepedent models for fitting
-    arrangeI = ar.ArrangeIndependent(K=4, P=2)
-    emissionI = copy.deepcopy(emissionT)
-    emissionI.sigma2=1
+    arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True)
+    emissionI = copy.deepcopy(MT.emission)
+    emissionI.sigma2=0.5
     # Add a small perturbation to paramters 
     emissionI.V = emissionI.V + np.random.normal(0,0.1,emissionI.V.shape)
     emissionM = copy.deepcopy(emissionI)
     MI = FullModel(arrangeI, emissionI)
 
     # Step 5: Fit independent model to the data and plot
+    plt.figure()
+    pIn = np.concatenate([np.arange(0,6),
+                [MI.nparams-1]])
     MI,ll,theta = MI.fit_em(Y,iter=30,tol=0.001,seperate_ll=True)
-    plot_duo_fit(theta,ll)
+    plot_duo_fit(theta[:,pIn],ll,theta_true = theta_true[pIn])
 
     # Step 6: Generate Potts model for fitting
-    arrangeM = ar.PottsModel(W, K=4)
+    arrangeM = ar.PottsModel(MT.arrange.W, K=4)
     arrangeM.theta_w =0
     arrangeM.eneg_numchains=eneg_numchains
     arrangeM.epos_numchains=epos_numchains
     MP = FullModel(arrangeM, emissionM)
-    MP.emission.initialize(Y)
 
-    # Step 6: 
-
-
-    # Step 6: Get baseline for the emission and arrangement likelihood by fitting a Indepenent model
-    arrangeI = ar.ArrangeIndependent(K=4,P=2,spatial_specific=True)
-    Uhat,ll_A_in = arrangeI.Estep(emloglik)
-    arrangeI.Mstep(Uhat)
-    Uhat,ll_A_in = arrangeI.Estep(emloglik)
+    # Step 7: Use stochastic gradient descent to pit the combined model 
+    plt.figure()
+    pIn = np.concatenate([np.arange(0,7),
+                [MP.nparams-1]])
+    MP,ll,theta = MP.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True)
+    plot_duo_fit(theta[:,pIn],ll,theta_true = theta_true[pIn])
     pass
 
-    # Step 7: Get he the baseline for emission and arrangement model 
-    # from the true model 
-    Uhat,ll_A_true = arrangeT.epos_sample(emloglik)
-    ll_E_true=np.sum(emloglik*Uhat,axis=(1,2))
 
-    # Step 8: With fixed emission model, fit the arrangement model
-    theta = np.empty((numiter+1,M.arrange.nparams))
-    ll_E = np.empty((numiter,num_subj))
-    ll_A = np.empty((numiter,num_subj))
-    theta[0,:]=M.arrange.get_params()
-    for i in range(numiter):
-        Uhat,ll_A[i,:] = M.arrange.epos_sample(emloglik)
-        ll_E[i,:]=np.sum(emloglik*Uhat,axis=(1,2))
-        M.arrange.eneg_sample()
-        M.arrange.Mstep(stepsize)
-        theta[i+1,:]=M.arrange.get_params()
-
-    thetaT = arrangeT.get_params()
-    iter = np.arange(numiter+1)
-
-    # ll, theta = M.fit_em(Y, iter=1000, tol=0.001)
-    plt.subplot(2,1,1)
-    color = ['r','r','b','b','g','g','k']
-    style = ['-',':','-',':','-',':','-.']
-    marker = ['o','s','o','s','o','s','*']
-
-    for i in range(theta.shape[1]):
-        plt.plot(iter,theta[:,i],color[i]+style[i])
-        plt.plot(numiter+5,thetaT[i],color[i]+marker[i])
-    pass
-    plt.xlabel('Iteration')
-    plt.ylabel('Theta')
-    
-
-    # Plot the likelihood
-    plt.subplot(2,1,2)
-    plt.plot(iter[:-1],np.mean(ll_E,axis=1)-ll_E[0,:].mean(),'k')
-    plt.plot(iter[:-1],np.mean(ll_A,axis=1)-ll_A[0,:].mean(),'b')
-    plt.plot(numiter+5,np.mean(ll_A_in)-ll_A[0,:].mean(),'bo')
-    plt.plot(numiter+5,np.mean(ll_A_true)-ll_A[0,:].mean(),'b*')
-    plt.plot(numiter+5,np.mean(ll_E_true)-ll_E[0,:].mean(),'k*')
-    plt.legend(['emmision','arrange'])
-    plt.xlabel('Iteration')
-    plt.ylabel('Likelihood')
 
     return theta,iter,thetaT
 
 if __name__ == '__main__':
-    simulate_potts_gauss_duo2(sigma2 = 0.1,numiter=40,theta_w=0)
+    simulate_potts_gauss_duo(sigma2 = 0.1,numiter=10,theta_w=0)
     pass

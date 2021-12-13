@@ -36,32 +36,46 @@ class ArrangeIndependent(ArrangementModel):
         Either with a spatially uniform prior
         or a spatially-specific prior. Pi is saved in form of log-pi.
     """
-    def __init__(self, K=3, P=100, spatial_specific=False):
+    def __init__(self, K=3, P=100, spatial_specific=False,remove_redundancy=True):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
+        # If 
         self.spatial_specific = spatial_specific
         if spatial_specific:
             pi = np.ones((K, P)) / K
         else:
             pi = np.ones((K, 1)) / K
         self.logpi = np.log(pi)
-        self.nparams = self.logpi.size
+        # Remove redundancy in parametrization 
+        self.rem_red = remove_redundancy
+        if self.rem_red: 
+            self.logpi = self.logpi - self.logpi[-1,:]
+            self.nparams = P*(K-1)
+        else: 
+            self.nparams = P*K 
 
     def get_params(self):
         """ Get the parameters (log-pi) for the Arrangement model
         Returns:
             theta (1-d np.array): Vectorized version of parameters
         """
-        return self.logpi.flatten()
+        if self.rem_red:
+            return self.logpi[:-1,:].flatten()
+        else:
+            return self.logpi.flatten()
 
     def set_params(self,theta):
         """Sets the parameters from a vector
         """
         if self.spatial_specific:
-            self.logpi = theta.reshape((self.K, self.P))
+            P = self.P
         else:
-            self.logpi = theta.reshape((self.K, 1))
+            P = 1
+        if self.rem_red:
+            self.logpi[:-1,:] = theta.reshape((self.K-1, P))
+        else: 
+            self.logpi = theta.reshape((self.K-1, P))
 
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model
@@ -98,6 +112,8 @@ class ArrangeIndependent(ArrangementModel):
         if not self.spatial_specific:
             pi = pi.mean(axis=1).reshape(-1, 1)
         self.logpi = log(pi)
+        if self.rem_red:
+            self.logpi = self.logpi-self.logpi[-1,:]
 
     def sample(self, num_subj=10):
         """
@@ -110,7 +126,7 @@ class ArrangeIndependent(ArrangementModel):
         :return: the sampled data for subjects
         """
         U = np.zeros((num_subj, self.P))
-        pi = np.exp(self.logpi)
+        pi = loglik2prob(self.logpi)
         for i in range(num_subj):
             for p in range(self.P):
                 if self.spatial_specific:
