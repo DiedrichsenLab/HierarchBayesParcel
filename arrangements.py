@@ -77,11 +77,12 @@ class ArrangeIndependent(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
-        Uhat = np.exp(np.apply_along_axis(lambda x: x - np.min(x), 1, logq))
-        Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
+        Uhat = np.empty(logq.shape)
+        for s in range(numsubj):
+            Uhat[s] = loglik2prob(logq[s])
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = Uhat * self.logpi
+        ll_A = np.sum(Uhat * self.logpi,axis=(1,2))
         return Uhat, ll_A
 
     def Mstep(self, Uhat):
@@ -123,30 +124,57 @@ class PottsModel(ArrangementModel):
     parameterization is joint between all linkages, although it could be split
     into different parameter functions
     """
-    def __init__(self,W,K=3):
+    def __init__(self,W,K=3,remove_redundancy=True):
         self.W = W
         self.K = K # Number of states
         self.P = W.shape[0]
+        self.theta_w = 1 # Weight of the neighborhood relation - inverse temperature param
+        self.rem_red = remove_redundancy
         pi = np.ones((K, self.P)) / K
         self.logpi = np.log(pi)
-        self.theta_w = 1 # Weight of the neighborhood relation - inverse temperature param
-        self.nparams = self.logpi.size + 1
-        self.estep_iter = 3
-        self.estep_numchains = 20
-        self.estep_state = None
+        if remove_redundancy:
+            self.logpi = self.logpi - self.logpi[-1,:]
+            self.nparams = self.logpi[:-1,:].size + 1
+        else:
+            self.nparams = self.logpi.size + 1
+        # Inference parameters for persistence CD alogrithm via sampling
+        self.epos_iter = 3
+        self.epos_numchains = 20 # Chains per subject
+        self.epos_U = None
+        self.eneg_iter = 3
+        self.eneg_numchains = 20 # Overall number of chains
+        self.eneg_U = None
 
     def get_params(self):
         """ Get the parameters (log-pi) for the Arrangement model
         Returns:
             theta (1-d np.array): Vectorized version of parameters
         """
-        return np.concatenate([self.logpi.flatten(), log(self.theta_w)])
+        if self.rem_red:
+            theta = np.concatenate([self.logpi[:-1,:].flatten(), np.array([self.theta_w])])
+        else:
+            theta = np.concatenate([self.logpi.flatten(), np.array([self.theta_w])])
+        return theta
 
     def set_params(self,theta):
         """Sets the parameters from a vector
         """
-        self.logpi = theta[:-1].reshape((self.K, self.P))
+        if self.rem_red:
+            self.logpi[:-1,:] = theta[:-1].reshape((self.K-1, self.P))
+        else:
+            self.logpi = theta[:-1].reshape((self.K, self.P))
         self.theta_w = exp(theta[-1])
+
+    def get_param_names(self):
+        """Returns a list of strings referring to the parameter names
+        in the theta vector
+        """
+        if self.rem_red:
+            n = self.K-1
+        else:
+            n = self.K
+        names = []
+        return names
 
     def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
         """
@@ -159,6 +187,9 @@ class PottsModel(ArrangementModel):
         pi = np.exp(-d2/theta_mu)
         pi = pi / pi.sum(axis=0)
         self.logpi = np.log(pi)
+        if self.rem_red:
+            self.logpi = self.logpi - self.logpi[-1,:]
+
 
     def potential(self,y):
         """
@@ -268,8 +299,9 @@ class PottsModel(ArrangementModel):
             num_chains = num_subj)
         return U
 
-    def Estep(self, emloglik):
-        """ Estep for the spatial arrangement model
+    def epos_sample(self, emloglik):
+        """ Positive phase of getting p(U|Y) for the spatial arrangement model
+        Gets the expectations.
 
         Parameters:
             emloglik (np.array):
@@ -283,47 +315,86 @@ class PottsModel(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
-        if self.estep_state is None: # No current state of MC chains
-            self.estep_state = np.empty((numsubj,self.estep_numchains,P))
+        if self.epos_U is None: # No current state of MC chains
+            self.epos_U = np.empty((numsubj,self.epos_numchains,P))
             for s in range(numsubj):
-                self.estep_state[s,:,:] = self.sample_gibbs(num_chains=self.estep_numchains,
-                    bias = bias[s],iter=self.estep_iter)
-            else:
-                self.estep_state[s,:,:] = self.sample_gibbs(self.estep_state[s],
-                    bias = bias[s],iter=self.estep_iter)
+                self.epos_U[s,:,:] = self.sample_gibbs(num_chains=self.epos_numchains,
+                    bias = bias[s],iter=self.epos_iter)
+        else:
+            for s in range(numsubj):
+                self.epos_U[s,:,:] = self.sample_gibbs(self.epos_U[s],
+                    bias = bias[s],iter=self.epos_iter)
 
         # Get Uhat from the sampled examples
-        Uhat = np.empty((numsubj,self.K,self.P))
+        self.epos_Uhat = np.empty((numsubj,self.K,self.P))
         for k in range(self.K):
-            Uhat[:,k,:]=np.sum(self.estep_state==k,axis=1)/self.estep_numchains
+            self.epos_Uhat[:,k,:]=np.sum(self.epos_U==k,axis=1)/self.epos_numchains
 
-        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = np.empty((numsubj,))
-        for s in numsubj:
-            ll_A[s] = self.loglik(self.estep_state)
-        return Uhat, ll_A
+        # Get the sufficient statistics for the potential functions
+        self.epos_phihat = np.zeros((numsubj,))
+        for s in range(numsubj):
+            phi = np.zeros((self.P,self.P))
+            for n in range(self.epos_numchains):
+                phi=phi+np.equal(self.epos_U[s,n,:],self.epos_U[s,n,:].reshape((-1,1)))
+            self.epos_phihat[s] = np.sum(self.W * phi)/self.epos_numchains
 
-    def Mstep_SML(self,stepsize = 0.1):
-        """ Mstep via Stochastic Maximum Likelihood / persistent contrastive divergence
+        # The log likelihood for arrangement model p(U|theta_A) is not trackable-
+        # So we can only return the unormalized potential functions
+        if P>2:
+            ll_Ae = self.theta_w * self.epos_phihat
+            ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+            ll_A=ll_Ae+ll_Ap
+        else:
+            # Calculate Z in the case of P=2
+            pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
+            Z = np.sum(pp)
+            ll_A = self.theta_w * self.epos_phihat + np.sum(self.epos_Uhat*self.logpi,axis=(1,2)) - log(Z)
+        return self.epos_Uhat,ll_A
+
+    def eneg_sample(self):
+        """Negative phase of the learning: uses persistent contrastive divergence
         with sampling from the spatial arrangement model (not clampled to data)
-        for the negative phase of the learning
-        It requires running the E-step first to obtain ~p(u|y)
-        Uses persistent sampling across M-step (persistent contrastive diver)
+        Uses persistence across negative smapling steps
+        """
+        if self.eneg_U is None:
+            self.eneg_U = self.sample_gibbs(num_chains=self.eneg_numchains,
+                    bias = self.logpi,iter=self.eneg_iter)
+        else:
+            self.mstep_state = self.sample_gibbs(self.eneg_U,
+                    bias = self.logpi,iter=self.eneg_iter)
+
+        # Get Uhat from the sampled examples
+        self.eneg_Uhat = np.empty((self.K,self.P))
+        for k in range(self.K):
+            self.eneg_Uhat[k,:]=np.sum(self.eneg_U==k,axis=0)/self.eneg_numchains
+
+        # Get the sufficient statistics for the potential functions
+        phi = np.zeros((self.P,self.P))
+        for n in range(self.eneg_numchains):
+            phi=phi+np.equal(self.eneg_U[n,:],self.eneg_U[n,:].reshape((-1,1)))
+        self.eneg_phihat = np.sum(self.W * phi)/self.eneg_numchains
+        return self.eneg_Uhat
+
+    def Mstep(self,stepsize = 0.1,update_theta_w=True):
+        """ Gradient update for SML or CD algorithm
         Parameters:
             stepsize (float):
                 Stepsize for the update of the parameters
         """
-        if self.mstep_state is None:
-            self.mstep_state = self.sample_gibbs(num_chains=self.mstep_numchains,
-                    bias = self.logpi,iter=self.mstep_iter)
+        # Update logpi
+        if self.rem_red:
+            # The - pi can be dropped here as we follow the difference between pos and neg anyway
+            gradpos_logpi = self.epos_Uhat[:,:-1,:].mean(axis=0)
+            gradneg_logpi = self.eneg_Uhat[:-1,:]
+            self.logpi[:-1,:] = self.logpi[:-1,:] + stepsize * (gradpos_logpi - gradneg_logpi)
         else:
-            self.mstep_state = self.sample_gibbs(self.mstep_state,
-                    bias = self.logpi,iter=self.mstep_iter)
-
-        # Get sufficient statistics from positive and negative phase of learning:
-
-        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-
+            gradpos_logpi = self.epos_Uhat.mean(axis=0)
+            gradneg_logpi = self.eneg_Uhat
+            self.logpi = self.logpi + stepsize * (gradpos_logpi - gradneg_logpi)
+        if update_theta_w:
+            grad_theta_w = self.epos_phihat.mean() - self.eneg_phihat
+            self.theta_w = self.theta_w + stepsize* grad_theta_w
+        return
 
 
 def loglik2prob(loglik):
@@ -332,11 +403,12 @@ def loglik2prob(loglik):
 
     Args:
         loglik (ndarray): Log likelihood (not normalized)
+        axis (int): Number of axis (or axes), along which the probability is being standardized
     Returns:
         prob (ndarray): Probability
     """
     loglik = loglik-np.max(loglik,axis=0)+10
     prob = np.exp(loglik)
-    prob = prob/ np.sum(prob,axis=0)
+    prob = prob/np.sum(prob,axis=0)
     return prob
 
