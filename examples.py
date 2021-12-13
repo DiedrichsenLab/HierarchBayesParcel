@@ -66,7 +66,7 @@ def simulate_potts_gauss_duo(theta_w=2,
                              num_subj = 100,
                              eneg_numchains=200,
                              epos_numchains=20,
-                             niter = 60,
+                             numiter = 60,
                              stepsize = 0.8,
                              fit_theta_w=True):
     """[summary]
@@ -128,8 +128,12 @@ def simulate_potts_gauss_duo(theta_w=2,
     Uhat,ll_A_in = arrangeI.Estep(emloglik)
     pass
 
-    # With fixed emission model, fit the arrangement model
-    numiter = 60
+    # Step 7: Get he the baseline for emission and arrangement model 
+    # from the true model 
+    Uhat,ll_A_true = arrangeT.epos_sample(emloglik)
+    ll_E_true=np.sum(emloglik*Uhat,axis=(1,2))
+
+    # Step 8: With fixed emission model, fit the arrangement model
     theta = np.empty((numiter+1,M.arrange.nparams))
     ll_E = np.empty((numiter,num_subj))
     ll_A = np.empty((numiter,num_subj))
@@ -154,16 +158,23 @@ def simulate_potts_gauss_duo(theta_w=2,
         plt.plot(iter,theta[:,i],color[i]+style[i])
         plt.plot(numiter+5,thetaT[i],color[i]+marker[i])
     pass
+    plt.xlabel('Iteration')
+    plt.ylabel('Theta')
+    
 
     # Plot the likelihood
     plt.subplot(2,1,2)
     plt.plot(iter[:-1],np.mean(ll_E,axis=1)-ll_E[0,:].mean(),'k')
     plt.plot(iter[:-1],np.mean(ll_A,axis=1)-ll_A[0,:].mean(),'b')
     plt.plot(numiter+5,np.mean(ll_A_in)-ll_A[0,:].mean(),'bo')
+    plt.plot(numiter+5,np.mean(ll_A_true)-ll_A[0,:].mean(),'b*')
+    plt.plot(numiter+5,np.mean(ll_E_true)-ll_E[0,:].mean(),'k*')
     plt.legend(['emmision','arrange'])
+    plt.xlabel('Iteration')
+    plt.ylabel('Likelihood')
+
     return theta,iter,thetaT
 
-
 if __name__ == '__main__':
-    simulate_potts_gauss_duo(sigma2 = 0.1)
+    simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40)
     pass
