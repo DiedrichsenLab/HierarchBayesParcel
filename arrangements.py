@@ -77,19 +77,24 @@ class ArrangeIndependent(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
-        Uhat = np.empty(logq.shape)
+        self.estep_Uhat = np.empty(logq.shape)
         for s in range(numsubj):
-            Uhat[s] = loglik2prob(logq[s])
+            self.estep_Uhat[s] = loglik2prob(logq[s])
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = np.sum(Uhat * self.logpi,axis=(1,2))
-        return Uhat, ll_A
 
-    def Mstep(self, Uhat):
+        ll_A = np.sum(self.estep_Uhat * self.logpi,axis=(1,2))
+        return self.estep_Uhat, ll_A
+
+    def Mstep(self):
         """ M-step for the spatial arrangement model
             Update the pi for arrangement model
+            uses the epos_Uhat statistic that is put away from the last e-step.  
+        
+        Parameters:
+        Returns: 
         """
-        pi = np.mean(Uhat, axis=0)  # Averarging over subjects
+        pi = np.mean(self.estep_Uhat, axis=0)  # Averarging over subjects
         if not self.spatial_specific:
             pi = pi.mean(axis=1).reshape(-1, 1)
         self.logpi = log(pi)
@@ -144,7 +149,8 @@ class PottsModel(ArrangementModel):
         self.eneg_iter = 3
         self.eneg_numchains = 20 # Overall number of chains
         self.eneg_U = None
-
+        self.fit_theta_w = True # Update smoothing parameter in Mstep 
+ 
     def get_params(self):
         """ Get the parameters (log-pi) for the Arrangement model
         Returns:
@@ -310,8 +316,7 @@ class PottsModel(ArrangementModel):
             Uhat (np.array):
                 posterior p(U|Y) a numsubj x K x P matrix
             ll_A (np.array):
-                Unnormalized log-likelihood of the arrangement model
-                Note that this does not contain the partition function
+                Unnormalized log-likelihood of the arrangement model for each subject. Note that this does not contain the partition function
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
@@ -375,7 +380,7 @@ class PottsModel(ArrangementModel):
         self.eneg_phihat = np.sum(self.W * phi)/self.eneg_numchains
         return self.eneg_Uhat
 
-    def Mstep(self,stepsize = 0.1,update_theta_w=True):
+    def Mstep(self,stepsize = 0.1):
         """ Gradient update for SML or CD algorithm
         Parameters:
             stepsize (float):
@@ -391,7 +396,7 @@ class PottsModel(ArrangementModel):
             gradpos_logpi = self.epos_Uhat.mean(axis=0)
             gradneg_logpi = self.eneg_Uhat
             self.logpi = self.logpi + stepsize * (gradpos_logpi - gradneg_logpi)
-        if update_theta_w:
+        if self.fit_theta_w:
             grad_theta_w = self.epos_phihat.mean() - self.eneg_phihat
             self.theta_w = self.theta_w + stepsize* grad_theta_w
         return

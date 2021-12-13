@@ -18,37 +18,100 @@ class FullModel:
         Y = self.emission.sample(U)
         return U, Y
 
-    def fit_em(self, Y, iter, tol):
-        """ Do the real EM algorithm for the complete log likelihood for the
-        combination of the arrangement model and emission model
+    def fit_em(self, Y, iter=30, tol=0.01,seperate_ll=False):
+        """ Run the EM-algorithm on a full model 
+        this demands that both the Emission and Arrangement model 
+        have a full Estep and Mstep and can calculate the likelihood, including the partition function 
 
-        :param Y: the data to passing
-        :param iter: the maximum iteration number
-        :param tol: the delta
+        Args:
+            Y (3d-ndarray): numsubj x N x numvoxel array of data
+            iter (int): Maximal number of iterations (def:30)
+            tol (double): Tolerance on overall likelihood (def: 0.01)
+            seperate_ll (bool): Return arrangement and emission LL separetely 
+        Returns:
+            model (Full Model): fitted model (also updated)
+            ll (ndarray): Log-likelihood of full model as function of iteration
+                If seperate_ll, the first column is ll_E, the second ll_A 
+            theta (ndarray): History of the parameter vector
 
-        :return: the resulting parameters theta and the log likelihood
         """
         # Initialize the tracking
-        ll = []
+        ll = np.zeros((iter,2))
         theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
         self.emission.initialize(Y)
         for i in range(iter):
+            # Track the parameters
+            theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
+
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
             Uhat, ll_A = self.arrange.Estep(emloglik)
             # Compute the expected complete logliklihood
-            this_ll = np.sum(Uhat * emloglik) + np.sum(ll_A)
-            if (i > 1) and (this_ll - ll[-1] < tol):  # convergence
+            ll_E = np.sum(Uhat * emloglik,axis=(1,2))
+            ll[i,0]=np.sum(ll_E)
+            ll[i,1]=np.sum(ll_A)
+            # Check convergence 
+            if i==iter-1 or ((i > 1) and (ll[i,:].sum() - ll[i-1,:].sum() < tol)):
                 break
-            else:
-                ll.append(this_ll)
 
             # Updates the parameters
             self.emission.Mstep(Uhat)
-            self.arrange.Mstep(Uhat)
+            self.arrange.Mstep()
+
+        if seperate_ll: 
+            return self,ll[:i+1,:], theta[:i+1,:]
+        else:
+            return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
+
+    def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False):
+        """ Runs a Stochastic Maximum likelihood algorithm on a full model.
+        The emission model is still assumed to have E-step and Mstep. 
+        The arrangement model is has a postive and negative phase estep, 
+        and a gradient M-step. The arrangement likelihood is not necessarily 
+        FUTURE EXTENSIONS: 
+        * Sampling of subjects from training set 
+        * initialization of parameters
+        * adaptitive stopping criteria
+        * Adaptive stepsizes 
+        * Gradient acceleration methods
+        Args:
+            Y (3d-ndarray): numsubj x N x numvoxel array of data
+            iter (int): Maximal number of iterations
+            stepsize (double): Fixed step size for MStep 
+        Returns:
+            model (Full Model): fitted model (also updated)
+            ll (ndarray): Log-likelihood of full model as function of iteration
+                If seperate_ll, the first column is ll_E, the second ll_A 
+            theta (ndarray): History of the parameter vector
+        """
+        # Initialize the tracking
+        ll = np.zeros((iter,2))
+        theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
+        self.emission.initialize(Y)
+        for i in range(iter):
+            # Track the parameters
             theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
 
-        return np.asarray(ll), theta[0:len(ll),:]
+            # Get the (approximate) posterior p(U|Y)
+            emloglik = self.emission.Estep()
+            Uhat,ll_A = self.arrange.epos_sample(emloglik)
+            # Compute the expected complete logliklihood
+            ll_E = np.sum(Uhat * emloglik,axis=(1,2))
+            ll[i,0]=np.sum(ll_E)
+            ll[i,1]=np.sum(ll_A)
+
+            if i==iter-1:
+                break
+
+            # Updates the parameters
+            self.emission.Mstep(Uhat)
+            self.arrange.Mstep()
+
+        if seperate_ll: 
+            return self,ll[:i+1,:], theta[:i+1,:]
+        else:
+            return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
+
 
 def _fit_full(Y):
     pass
