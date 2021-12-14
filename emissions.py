@@ -2,9 +2,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats, special
-
 from numpy import log, exp, sqrt
-
+from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 
 class EmissionModel:
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
@@ -435,9 +434,9 @@ class MixVMF(EmissionModel):
         Returns: None, just passes the random parameters to the model
 
         """
-        V = np.random.normal(0, 1, (self.N, self.K))
+        V = np.random.uniform(0, 1, (self.N, self.K))
         # standardise V to unit length
-        V = V - V.mean(axis=0)
+        # V = V - V.mean(axis=0)
         self.V = V / sqrt(np.sum(V**2, axis=0))
         if self.uniform:
             self.kappa = np.repeat(np.random.uniform(30, 100), self.K)
@@ -549,7 +548,9 @@ class MixVMF(EmissionModel):
         for s in range(num_subj):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
-                Y[s, :, p] = np.random.vonmises(self.V[:, U[s, p].astype('int')], self.kappa[U[s, p].astype('int')], (self.N, ))
+                # sample = np.random.vonmises(self.V[:, U[s, p].astype('int')], self.kappa[U[s, p].astype('int')], (self.N,))
+                # Y[s, :, p] = sample / np.linalg.norm(sample)
+                Y[s, :, p] = rand_von_mises_fisher(self.V[:, U[s, p].astype('int')], self.kappa[U[s, p].astype('int')])
 
         return Y
 

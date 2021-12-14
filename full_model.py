@@ -170,8 +170,8 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False)
-    emissionM = MixVMF(K=K, N=N, P=P, data=Y, uniform=True)
-    emissionM.set_params([emissionT.V, emissionM.kappa])
+    emissionM = MixVMF(K=K, N=N, P=P, data=Y, uniform=False)
+    # emissionM.set_params([emissionM.V, emissionM.kappa])
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
