@@ -95,14 +95,14 @@ def _plt_single_param_diff(theta_true, theta, name=None):
     plt.plot(theta, color='b')
 
 
-def _simulate_full_GMM():
+def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # Step 1: Set the true model to some interesting value
-    arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionT = MixGaussian(K=5, N=40, P=100)
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False)
+    emissionT = MixGaussian(K=K, N=N, P=P)
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=100)
+    U = arrangeT.sample(num_subj=num_sub)
     Y = emissionT.sample(U)
 
     # Step 2.1: Compute the log likelihood from the true model
@@ -110,17 +110,16 @@ def _simulate_full_GMM():
     emll_true = emissionT._loglikelihood(Y)
     Uhat, ll_a = arrangeT.Estep(emll_true)
     loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+    print(theta_true)
 
     # Step 3: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionM = MixGaussian(K=5, N=40, P=100, data=Y)
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False)
+    emissionM = MixGaussian(K=K, N=N, P=P, data=Y)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(iter=100, tol=0.001)
+    ll, theta = M.fit_em(iter=max_iter, tol=0.001)
     _plot_loglike(ll, loglike_true, color='b')
-    _plot_v_diff(theta_true[0:200], theta[:, 0:200], K=5)
-    _plt_single_param_diff(theta_true[202], theta[:, 202])
     print('Done.')
 
 
@@ -139,10 +138,12 @@ def _simulate_full_GME():
     emll_true = emissionT._loglikelihood(Y, signal)
     Uhat, ll_a = arrangeT.Estep(emll_true)
     loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+    print(theta_true)
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
     emissionM = MixGaussianExp(K=5, N=40, P=100, data=Y)
+    emissionM.set_params([emissionT.V, emissionT.sigma2, emissionT.alpha, emissionM.beta])
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
@@ -181,4 +182,6 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
 
 if __name__ == '__main__':
-    _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
+    # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
+    # _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=100)
+    _simulate_full_GME()

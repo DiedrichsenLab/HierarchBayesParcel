@@ -5,6 +5,7 @@ from scipy import stats, special
 from numpy import log, exp, sqrt
 from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 
+
 class EmissionModel:
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         self.K = K  # Number of states
@@ -136,7 +137,7 @@ class MixGaussian(EmissionModel):
             UU = UU + U_hat[i, :, :]
         # self.V = np.linalg.solve(UU,YU.T).T
         # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
-        self.V = (YU.T / np.sum(UU, axis=1).reshape(-1, 1)).T
+        self.V = YU / np.sum(UU, axis=1)
         ERSS = np.sum(U_hat * self.rss)
         self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
 
@@ -208,10 +209,10 @@ class MixGaussianExp(EmissionModel):
                       N*K Vs + sigma2 + alpha + beta
         :return: None
         """
-        self.V = theta[0:self.N*self.K].reshape(self.N, self.K)
-        self.sigma2 = theta[-3]
-        self.alpha = theta[-2]
-        self.beta = theta[-1]
+        self.V = theta[0]
+        self.sigma2 = theta[1]
+        self.alpha = theta[2]
+        self.beta = theta[3]
 
     def random_params(self):
         """ In this mixture gaussians, the parameters are parcel-specific mean V_k
@@ -224,10 +225,6 @@ class MixGaussianExp(EmissionModel):
         V = V - V.mean(axis=0)
         self.V = V / sqrt(np.sum(V**2, axis=0))
         self.sigma2 = exp(np.random.normal(0, 0.3))
-        # The initial random alpha and beta values are fitted to 24 subjects data of MDTB
-        # Run 'data_estimation.py' to see evidence
-        # self.alpha = np.random.normal(2.5, 0.46)
-        # self.beta = -0.13 * self.alpha + 0.6
         self.alpha = 1
         self.beta = 1
 
@@ -320,14 +317,16 @@ class MixGaussianExp(EmissionModel):
         # 1. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
         self.V = YUs / np.sum(US2, axis=1)
+
         # 2. Updating the sigma squared.
         # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
         #       U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
         self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
+
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P*self.num_subj / np.sum(US)
 
-    def sample(self, U, V=None):
+    def sample(self, U):
         """ Generate random data given this emission model and parameters
 
         Args:
@@ -337,23 +336,13 @@ class MixGaussianExp(EmissionModel):
         Returns: Sampled data Y
 
         """
-        if V is None:
-            V = np.random.normal(0, 1, (self.N, self.K))
-            # Make zero mean, unit length
-            V = V - V.mean(axis=0)
-            V = V / np.sqrt(np.sum(V ** 2, axis=0))
-        else:
-            this_n, this_k = V.shape
-            if this_k != self.K:
-                raise (NameError('Number of columns in V need to match Model.K'))
-
         num_subj = U.shape[0]
         Y = np.empty((num_subj, self.N, self.P))
         signal = np.empty((num_subj, self.P))
         for s in range(num_subj):
             # Draw the signal strength for each node from a Gamma distribution
             signal[s, :] = np.random.exponential(self.beta, (self.P,))
-            Y[s, :, :] = V[:, U[s, :].astype('int')] * signal[s, :]
+            Y[s, :, :] = self.V[:, U[s, :].astype('int')] * signal[s, :]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
         return Y, signal
