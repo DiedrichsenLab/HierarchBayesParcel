@@ -248,7 +248,7 @@ Now, we can update the parameters $\theta$ of the Gaussians/Gamma mixture in the
    $$
    
 3. Updating $\beta$, we take derivative of  $\mathcal{L}_E(q, \theta)$ with respect to $\beta$ and set it equal to 0 as following:
-  
+
 
 $$
 \begin{align*}
@@ -293,24 +293,24 @@ where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels),
 $$
 \begin{align*}
 \mathcal{L}_E &=\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q\\
-&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle \log C_N(\kappa)+\langle u_{i}^{(k)}\rangle\kappa{\mu^{(k)}}^{T}\mathbf{y}_i
+&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa{\mu^{(k)}}^{T}\mathbf{y}_i
 \end{align*}
 $$
-Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa)$. (Note: the updates only consider a single subject).
+Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
 
-1. Updating mean direction $\mu_k$, we take derivative of * in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
+1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
    \begin{align*}
-   \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \frac{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}}; r_k=||\bar{\mathbf{y}}_{k}||
+   \mathbf{v}_{k}^{(t)} &=\frac{\mathbf{y}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \mathbf{y}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\;\; r_k=||\mathbf{y}_{k}||
    \end{align*}
    $$
 
 2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005): 
-  
+
 
 $$
-\kappa^{(t)} \approx \frac{\overline{r}N-\overline{r}^3}{1-\overline{r}^2}\\
-\bar{r}=\frac{\sum_k r_k\sum_{i}\langle u_{i}^{(k)}\rangle}{P}
+\kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\
+\bar{r}_k=\frac{r_k}{\sum_i \langle u_i^{(k)} \rangle_q}
 $$
 
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
