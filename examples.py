@@ -218,6 +218,13 @@ def simulate_potts_gauss_duo2(theta_w=2,
     # Generate the data 
     U,Y = MT.sample(num_subj=num_subj)
 
+    # Get the likelihood of the data under the MT 
+    MT.emission.initialize(Y)
+    emloglik = MT.emission.Estep()
+    Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
+    ll_E_true = np.sum(emloglik * Uhat,axis=(1,2))
+    ll_true = [ll_A_true.sum(),ll_E_true.sum()] 
+
     # Step 4: Generate indepedent models for fitting
     arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True)
     emissionI = copy.deepcopy(MT.emission)
@@ -229,10 +236,12 @@ def simulate_potts_gauss_duo2(theta_w=2,
 
     # Step 5: Fit independent model to the data and plot
     plt.figure()
-    pIn = np.concatenate([np.arange(0,6),
+    tI_I = np.concatenate([np.arange(0,6),
                 [MI.nparams-1]])
+    tI_T = np.concatenate([np.arange(0,6),
+                [MT.nparams-1]])
     MI,ll,theta = MI.fit_em(Y,iter=30,tol=0.001,seperate_ll=True)
-    plot_duo_fit(theta[:,pIn],ll,theta_true = theta_true[pIn])
+    plot_duo_fit(theta[:,tI_I],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
 
     # Step 6: Generate Potts model for fitting
     arrangeM = ar.PottsModel(MT.arrange.W, K=4)
@@ -241,18 +250,18 @@ def simulate_potts_gauss_duo2(theta_w=2,
     arrangeM.epos_numchains=epos_numchains
     MP = FullModel(arrangeM, emissionM)
 
-    # Step 7: Use stochastic gradient descent to pit the combined model 
+    # Step 7: Use stochastic gradient descent to fit the combined model 
     plt.figure()
-    pIn = np.concatenate([np.arange(0,7),
-                [MP.nparams-1]])
+    tI_T = np.concatenate([np.arange(0,6),
+                [MT.nparams-1,6]])
     MP,ll,theta = MP.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True)
-    plot_duo_fit(theta[:,pIn],ll,theta_true = theta_true[pIn])
+    plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
     pass
 
 
 
-    return theta,iter,thetaT
+    return theta,iter
 
 if __name__ == '__main__':
-    simulate_potts_gauss_duo(sigma2 = 0.1,numiter=10,theta_w=0)
+    simulate_potts_gauss_duo2(sigma2 = 0.1,numiter=10,theta_w=0)
     pass
