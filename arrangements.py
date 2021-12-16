@@ -36,7 +36,7 @@ class ArrangeIndependent(ArrangementModel):
         Either with a spatially uniform prior
         or a spatially-specific prior. Pi is saved in form of log-pi.
     """
-    def __init__(self, K=3, P=100, spatial_specific=False,remove_redundancy=True):
+    def __init__(self, K=3, P=100, spatial_specific=False, remove_redundancy=True):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
@@ -50,10 +50,10 @@ class ArrangeIndependent(ArrangementModel):
         # Remove redundancy in parametrization 
         self.rem_red = remove_redundancy
         if self.rem_red: 
-            self.logpi = self.logpi - self.logpi[-1,:]
-            self.nparams = P*(K-1)
+            self.logpi = self.logpi - self.logpi[-1, :]
+            self.nparams = self.logpi.size - self.logpi[-1, :].size
         else: 
-            self.nparams = P*K 
+            self.nparams = self.logpi.size
 
     def get_params(self):
         """ Get the parameters (log-pi) for the Arrangement model
@@ -61,7 +61,7 @@ class ArrangeIndependent(ArrangementModel):
             theta (1-d np.array): Vectorized version of parameters
         """
         if self.rem_red:
-            return self.logpi[:-1,:].flatten()
+            return self.logpi[:-1, :].flatten()
         else:
             return self.logpi.flatten()
 
