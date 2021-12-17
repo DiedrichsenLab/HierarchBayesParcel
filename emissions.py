@@ -4,20 +4,16 @@ import matplotlib.pyplot as plt
 from scipy import stats, special
 from numpy import log, exp, sqrt
 from sample_vmf import rand_von_mises_fisher, rand_von_Mises
+from model import Model
 
-
-class EmissionModel:
-    def __init__(self, K=4, N=10, P=20, data=None, params=None):
+class EmissionModel(Model):
+    def __init__(self, K=4, N=10, P=20, data=None):
         self.K = K  # Number of states
         self.N = N
         self.P = P
         self.nparams = 0
         if data is not None:
             self.initialize(data)
-        if params is None:
-            self.random_params()  # Random parameter state
-        else:
-            self.set_params(params)
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -41,16 +37,6 @@ class EmissionModel:
         """
         pass
 
-    def get_params(self):
-        """Returns all parameters as a vector
-        """
-        pass
-
-    def set_params(self, params):
-        """Sets all parameters from a vector
-        """
-        pass
-
     def random_params(self):
         """Sets all random parameters from a vector
         """
@@ -61,9 +47,12 @@ class MixGaussian(EmissionModel):
     """
     Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None):
-        super().__init__(K, N, P, data, params)
-        self.nparams = self.N * self.K + 1
+    def __init__(self, K=4, N=10, P=20, data=None,params=None):
+        super().__init__(K, N, P, data)
+        self.random_params()
+        self.set_param_list(['V','sigma2'])
+        if params is not None: 
+            self.set_params(params)
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -73,21 +62,6 @@ class MixGaussian(EmissionModel):
         super().initialize(data)
         self.YY = self.Y**2
         self.rss = np.empty((self.num_subj, self.K, self.P))
-
-    def get_params(self):
-        """ Get the parameters for the Gaussian mixture model
-        :return: the parcel-specific mean and log sigma2
-        """
-        np.testing.assert_array_equal(self.K, self.V.shape[1])
-        return np.append(self.V.flatten('F'), log(self.sigma2))
-
-    def set_params(self, theta):
-        """ Set the model parameters by the given input thetas
-        :param theta: input parameters
-        :return: None
-        """
-        self.V = theta[0:self.N*self.K].reshape(self.N, self.K, order='F')
-        self.sigma2 = exp(theta[-1])
 
     def random_params(self):
         """ In this mixture gaussians, the parameters are parcel-specific mean V_k
@@ -158,7 +132,10 @@ class MixGaussianExp(EmissionModel):
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         super().__init__(K, N, P, data, params)
-        self.nparams = self.N * self.K + 3  # V shape is (N, K) + sigma2 + alpha + beta
+        self.random_params()
+        self.set_param_list(['V','sigma2','alpha','beta'])
+        if params is not None: 
+            self.set_params(params)
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -169,24 +146,6 @@ class MixGaussianExp(EmissionModel):
         self.YY = self.Y ** 2
         self.s = np.empty((self.num_subj, self.K, self.P))
         self.rss = np.empty((self.num_subj, self.K, self.P))
-
-    def get_params(self):
-        """ Get the parameters for the Gaussian mixture model
-        :return: the parcel-specific mean and uniformed sigma square, alpha, and beta
-        """
-        np.testing.assert_array_equal(self.K, self.V.shape[1])
-        return np.append(self.V.flatten('F'), (self.sigma2, self.alpha, self.beta))
-
-    def set_params(self, theta):
-        """ Set the model parameters by the given input thetas
-        :param theta: input parameters by fixed order
-                      N*K Vs + sigma2 + alpha + beta
-        :return: None
-        """
-        self.V = theta[0:self.N * self.K].reshape(self.N, self.K, order='F')
-        self.sigma2 = theta[-3]
-        self.alpha = theta[-2]
-        self.beta = theta[-1]
 
     def random_params(self):
         """ In this mixture gaussians, the parameters are parcel-specific mean V_k
@@ -202,6 +161,7 @@ class MixGaussianExp(EmissionModel):
         self.alpha = 1
         self.beta = 1
 
+    # REmove this one here: 
     def _norm_pdf_multivariate(self, x, mu, sigma):
         """ pdf function for multivariate normal distribution
         Note: X and mu are assumed to be column vector
@@ -339,8 +299,11 @@ class MixVMF(EmissionModel):
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None, uniform=True):
         self.uniform = uniform
-        super().__init__(K, N, P, data, params)
-        self.nparams = self.N * self.K + self.K
+        super().__init__(K, N, P, data)
+        self.random_params()
+        self.set_param_list(['V','kappa'])
+        if params is not None: 
+            self.set_params(params)
 
     def initialize(self, data):
         """ Calculates the sufficient stats on the data that does not depend on U,
@@ -352,23 +315,6 @@ class MixVMF(EmissionModel):
         super().initialize(data)
         self.YY = self.Y**2
         self.rss = np.empty((self.num_subj, self.K, self.P))
-
-    def get_params(self):
-        """ Get the parameters for the vmf mixture model
-        Returns: return all parameters that stores in the current emission model
-        """
-        np.testing.assert_array_equal(self.K, self.V.shape[1])
-        return np.append(self.V.flatten('F'), self.kappa)
-
-    def set_params(self, theta):
-        """ Set the model parameters by the given input thetas
-        Args:
-            theta: The input parameters if any
-        Returns: pass the given input params to the object
-        """
-        # np.testing.assert_array_equal(theta.size, self.nparams)
-        self.V = theta[0:self.N*self.K].reshape(self.N, self.K, order='F')
-        self.kappa = exp(theta[-self.K:])
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k

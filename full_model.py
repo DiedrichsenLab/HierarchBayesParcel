@@ -1,3 +1,4 @@
+from numpy.typing import _16Bit
 from arrangements import ArrangeIndependent
 from emissions import MixGaussian, MixGaussianExp, MixVMF
 import os # to handle path information
@@ -32,7 +33,7 @@ class FullModel:
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
-                If seperate_ll, the first column is ll_E, the second ll_A
+                If seperate_ll, the first column is ll_A, the second ll_E
             theta (ndarray): History of the parameter vector
 
         """
@@ -49,8 +50,8 @@ class FullModel:
             Uhat, ll_A = self.arrange.Estep(emloglik)
             # Compute the expected complete logliklihood
             ll_E = np.sum(Uhat * emloglik, axis=(1, 2))
-            ll[i,0]=np.sum(ll_E)
-            ll[i,1]=np.sum(ll_A)
+            ll[i,0]=np.sum(ll_A)
+            ll[i,1]=np.sum(ll_E)
             # Check convergence
             if i==iter-1 or ((i > 1) and (ll[i,:].sum() - ll[i-1,:].sum() < tol)):
                 break
@@ -82,7 +83,7 @@ class FullModel:
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
-                If seperate_ll, the first column is ll_E, the second ll_A 
+                If seperate_ll, the first column is ll_A, the second ll_E 
             theta (ndarray): History of the parameter vector
         """
         # Initialize the tracking
@@ -98,8 +99,8 @@ class FullModel:
             Uhat,ll_A = self.arrange.epos_sample(emloglik)
             # Compute the expected complete logliklihood
             ll_E = np.sum(Uhat * emloglik,axis=(1,2))
-            ll[i,0]=np.sum(ll_E)
-            ll[i,1]=np.sum(ll_A)
+            ll[i,0]=np.sum(ll_A)
+            ll[i,1]=np.sum(ll_E)
 
             if i==iter-1:
                 break
@@ -116,11 +117,28 @@ class FullModel:
 
     def get_params(self):
         """Get the concatenated parameters from arrangemenet + emission model 
-
         Returns: 
             theta (ndarrap) 
         """
         return np.concatenate([self.arrange.get_params(),self.emission.get_params()])
+    
+    def get_param_indices(self,name):
+        """Return the indices for the full model theta vector
+
+        Args:
+            name (str): Parameter name in the format of 'arrange.logpi' 
+                        or 'emission.V'
+        Returns: 
+            indices (np.ndarray): 1-d numpy array of indices into the theta vector 
+        """
+        names = name.split(".")
+        if len(names)==2:
+            ind=vars(self)[names[0]].get_param_indices(names[1])
+            if names[0]=='emission':
+                ind=ind+self.arrange.nparams
+            return ind
+        else: 
+            raise NameError('Parameter name needs to be model.param')
 
 
 def _fit_full(Y):

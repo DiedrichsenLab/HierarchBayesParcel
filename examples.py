@@ -99,7 +99,7 @@ def plot_duo_fit(theta,ll,theta_true=None,ll_true=None):
     if ll_true is not None: 
         plt.plot(numiter+5,ll_true[0]-ll[0,0],'k*')
         plt.plot(numiter+5,ll_true[1]-ll[0,1],'b*')
-    plt.legend(['emmision','arrange'])
+    plt.legend(['arrange','emmision'])
     plt.xlabel('Iteration')
     plt.ylabel('Likelihood')
 
@@ -180,9 +180,13 @@ def simulate_potts_gauss_duo(theta_w=2,
         M.arrange.Mstep(stepsize)
 
     thetaT = MT.arrange.get_params()
-    ll = np.c_[ll_E.sum(axis=1),ll_A.sum(axis=1)]
-    ll_true = np.array([ll_E_true.sum(),ll_A_true.sum()])
-    plot_duo_fit(theta,ll,theta_true=thetaT,ll_true=ll_true)
+    indT1 = MT.arrange.get_param_indices('logpi')
+    indT2 = MT.arrange.get_param_indices('theta_w')
+    ind = np.concatenate([indT1[0:6],indT2])
+
+    ll = np.c_[ll_A.sum(axis=1),ll_E.sum(axis=1)]
+    ll_true = np.array([ll_A_true.sum(),ll_E_true.sum()])
+    plot_duo_fit(theta[:,ind],ll,theta_true=thetaT[ind],ll_true=ll_true)
 
     return theta,iter,thetaT
 
@@ -236,10 +240,14 @@ def simulate_potts_gauss_duo2(theta_w=2,
 
     # Step 5: Fit independent model to the data and plot
     plt.figure()
-    tI_I = np.concatenate([np.arange(0,6),
-                [MI.nparams-1]])
-    tI_T = np.concatenate([np.arange(0,6),
-                [MT.nparams-1]])
+    indT1 = MT.get_param_indices('arrange.logpi')
+    indT2 = MT.get_param_indices('emission.sigma2')
+    indT3 = MT.get_param_indices('arrange.theta_w')
+    indI1 = MI.get_param_indices('arrange.logpi')
+    indI2 = MI.get_param_indices('emission.sigma2')
+
+    tI_I = np.concatenate([indI1[0:6],indI2])
+    tI_T = np.concatenate([indT1[0:6],indT2])
     MI,ll,theta = MI.fit_em(Y,iter=30,tol=0.001,seperate_ll=True)
     plot_duo_fit(theta[:,tI_I],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
 
@@ -252,8 +260,7 @@ def simulate_potts_gauss_duo2(theta_w=2,
 
     # Step 7: Use stochastic gradient descent to fit the combined model 
     plt.figure()
-    tI_T = np.concatenate([np.arange(0,6),
-                [MT.nparams-1,6]])
+    tI_T = np.concatenate([indT1[0:6],indT2,indT3])
     MP,ll,theta = MP.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True)
     plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
     pass
@@ -263,5 +270,5 @@ def simulate_potts_gauss_duo2(theta_w=2,
     return theta,iter
 
 if __name__ == '__main__':
-    simulate_potts_gauss_duo2(sigma2 = 0.1,numiter=10,theta_w=0)
+    simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     pass

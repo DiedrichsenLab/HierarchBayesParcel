@@ -6,30 +6,16 @@ import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
 from numpy import exp,log,sqrt
+from model import Model
 
 import sys
-# JD: THis is system specific and should be removed....
-# sys.path.insert(0, "D:/python_workspace/")
 
-class ArrangementModel:
+class ArrangementModel(Model):
     """Abstract arrangement model
     """
     def __init__(self, K, P):
         self.K = K  # Number of states
         self.P = P  # Number of nodes
-
-    def get_params(self):
-        """Returns the vectorized verion of the parameters
-        Returns:
-            theta (1-d np.array): Vectorized version of parameters
-        """
-        pass
-
-    def set_params(self,theta):
-        """Sets the parameters from a vector
-        """
-        pass
-
 
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment
@@ -51,31 +37,7 @@ class ArrangeIndependent(ArrangementModel):
         self.rem_red = remove_redundancy
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1, :]
-            self.nparams = self.logpi.size - self.logpi[-1, :].size
-        else:
-            self.nparams = self.logpi.size
-
-    def get_params(self):
-        """ Get the parameters (log-pi) for the Arrangement model
-        Returns:
-            theta (1-d np.array): Vectorized version of parameters
-        """
-        if self.rem_red:
-            return self.logpi[:-1, :].flatten()
-        else:
-            return self.logpi.flatten()
-
-    def set_params(self,theta):
-        """Sets the parameters from a vector
-        """
-        if self.spatial_specific:
-            P = self.P
-        else:
-            P = 1
-        if self.rem_red:
-            self.logpi[:-1,:] = theta.reshape((self.K-1, P))
-        else:
-            self.logpi = theta.reshape((self.K-1, P))
+        self.set_param_list(['logpi'])
 
     def Estep(self, emloglik):
         """ Estep for the spatial arrangement model
@@ -158,9 +120,6 @@ class PottsModel(ArrangementModel):
         self.logpi = np.log(pi)
         if remove_redundancy:
             self.logpi = self.logpi - self.logpi[-1,:]
-            self.nparams = self.logpi[:-1,:].size + 1
-        else:
-            self.nparams = self.logpi.size + 1
         # Inference parameters for persistence CD alogrithm via sampling
         self.epos_iter = 3
         self.epos_numchains = 20 # Chains per subject
@@ -169,37 +128,7 @@ class PottsModel(ArrangementModel):
         self.eneg_numchains = 20 # Overall number of chains
         self.eneg_U = None
         self.fit_theta_w = True # Update smoothing parameter in Mstep
-
-    def get_params(self):
-        """ Get the parameters (log-pi) for the Arrangement model
-        Returns:
-            theta (1-d np.array): Vectorized version of parameters
-        """
-        if self.rem_red:
-            theta = np.concatenate([self.logpi[:-1,:].flatten(), np.array([self.theta_w])])
-        else:
-            theta = np.concatenate([self.logpi.flatten(), np.array([self.theta_w])])
-        return theta
-
-    def set_params(self,theta):
-        """Sets the parameters from a vector
-        """
-        if self.rem_red:
-            self.logpi[:-1,:] = theta[:-1].reshape((self.K-1, self.P))
-        else:
-            self.logpi = theta[:-1].reshape((self.K, self.P))
-        self.theta_w = exp(theta[-1])
-
-    def get_param_names(self):
-        """Returns a list of strings referring to the parameter names
-        in the theta vector
-        """
-        if self.rem_red:
-            n = self.K-1
-        else:
-            n = self.K
-        names = []
-        return names
+        self.set_param_list(['logpi','theta_w'])
 
     def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
         """
@@ -214,7 +143,6 @@ class PottsModel(ArrangementModel):
         self.logpi = np.log(pi)
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1,:]
-
 
     def potential(self,y):
         """
