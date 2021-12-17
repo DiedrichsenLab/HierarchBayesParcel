@@ -367,11 +367,14 @@ class PottsModel(ArrangementModel):
         if P>2:
             ll_Ae = self.theta_w * self.epos_phihat
             ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+            if self.rem_red:
+                Z = exp(self.logpi).sum(axis=0) # Local partition function
+                ll_Ap = ll_Ap - np.sum(log(Z))
             ll_A=ll_Ae+ll_Ap
         else:
             # Calculate Z in the case of P=2
             pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
-            Z = np.sum(pp)
+            Z = np.sum(pp) # full partition function
             ll_A = self.theta_w * self.epos_phihat + np.sum(self.epos_Uhat*self.logpi,axis=(1,2)) - log(Z)
         return self.epos_Uhat,ll_A
 
