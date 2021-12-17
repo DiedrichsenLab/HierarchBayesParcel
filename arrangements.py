@@ -8,8 +8,8 @@ from decimal import Decimal
 from numpy import exp,log,sqrt
 
 import sys
-sys.path.insert(0, "D:/python_workspace/")
-
+# JD: THis is system specific and should be removed....
+# sys.path.insert(0, "D:/python_workspace/")
 
 class ArrangementModel:
     """Abstract arrangement model
@@ -40,19 +40,19 @@ class ArrangeIndependent(ArrangementModel):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
-        # If 
+        # If
         self.spatial_specific = spatial_specific
         if spatial_specific:
             pi = np.ones((K, P)) / K
         else:
             pi = np.ones((K, 1)) / K
         self.logpi = np.log(pi)
-        # Remove redundancy in parametrization 
+        # Remove redundancy in parametrization
         self.rem_red = remove_redundancy
-        if self.rem_red: 
+        if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1, :]
             self.nparams = self.logpi.size - self.logpi[-1, :].size
-        else: 
+        else:
             self.nparams = self.logpi.size
 
     def get_params(self):
@@ -74,7 +74,7 @@ class ArrangeIndependent(ArrangementModel):
             P = 1
         if self.rem_red:
             self.logpi[:-1,:] = theta.reshape((self.K-1, P))
-        else: 
+        else:
             self.logpi = theta.reshape((self.K-1, P))
 
     def Estep(self, emloglik):
@@ -96,17 +96,20 @@ class ArrangeIndependent(ArrangementModel):
             self.estep_Uhat[s] = loglik2prob(logq[s])
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-
         ll_A = np.sum(self.estep_Uhat * self.logpi,axis=(1,2))
+        if self.rem_red:
+            pi_K = exp(self.logpi).sum(axis=0)
+            ll_A = ll_A - np.sum(log(pi_K))
+
         return self.estep_Uhat, ll_A
 
     def Mstep(self):
         """ M-step for the spatial arrangement model
             Update the pi for arrangement model
-            uses the epos_Uhat statistic that is put away from the last e-step.  
-        
+            uses the epos_Uhat statistic that is put away from the last e-step.
+
         Parameters:
-        Returns: 
+        Returns:
         """
         pi = np.mean(self.estep_Uhat, axis=0)  # Averarging over subjects
         if not self.spatial_specific:
@@ -165,8 +168,8 @@ class PottsModel(ArrangementModel):
         self.eneg_iter = 3
         self.eneg_numchains = 20 # Overall number of chains
         self.eneg_U = None
-        self.fit_theta_w = True # Update smoothing parameter in Mstep 
- 
+        self.fit_theta_w = True # Update smoothing parameter in Mstep
+
     def get_params(self):
         """ Get the parameters (log-pi) for the Arrangement model
         Returns:
