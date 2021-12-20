@@ -13,7 +13,7 @@ class FullModel:
     def __init__(self, arrange,emission):
         self.arrange = arrange
         self.emission = emission
-        self.nparams = self.arrange.nparams + self.emission.nparams 
+        self.nparams = self.arrange.nparams + self.emission.nparams
 
     def sample(self, num_subj=10):
         U = self.arrange.sample(num_subj)
@@ -67,23 +67,23 @@ class FullModel:
 
     def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
-        The emission model is still assumed to have E-step and Mstep. 
-        The arrangement model is has a postive and negative phase estep, 
-        and a gradient M-step. The arrangement likelihood is not necessarily 
-        FUTURE EXTENSIONS: 
-        * Sampling of subjects from training set 
+        The emission model is still assumed to have E-step and Mstep.
+        The arrangement model is has a postive and negative phase estep,
+        and a gradient M-step. The arrangement likelihood is not necessarily
+        FUTURE EXTENSIONS:
+        * Sampling of subjects from training set
         * initialization of parameters
         * adaptitive stopping criteria
-        * Adaptive stepsizes 
+        * Adaptive stepsizes
         * Gradient acceleration methods
         Args:
             Y (3d-ndarray): numsubj x N x numvoxel array of data
             iter (int): Maximal number of iterations
-            stepsize (double): Fixed step size for MStep 
+            stepsize (double): Fixed step size for MStep
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
-                If seperate_ll, the first column is ll_A, the second ll_E 
+                If seperate_ll, the first column is ll_A, the second ll_E
             theta (ndarray): History of the parameter vector
         """
         # Initialize the tracking
@@ -105,31 +105,45 @@ class FullModel:
             if i==iter-1:
                 break
 
-            # Run the negative phase 
+            # Run the negative phase
             self.arrange.eneg_sample()
             self.emission.Mstep(Uhat)
             self.arrange.Mstep(stepsize)
 
-        if seperate_ll: 
+        if seperate_ll:
             return self,ll[:i+1,:], theta[:i+1,:]
         else:
             return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
 
+    def loglike(self,Y):
+        """Loglikelihood of the data under a full model
+        Args:
+            Y (nd-array): numsubj x N x P array of data
+        Returns:
+            Uhat (nd-array): numsubj x K x P array of expectations
+            ll_E (nd-array): emission logliklihood of data (numsubj,)
+            ll_A (nd-array): arrangement logliklihood of data (numsubj,)
+        """
+        self.emission.initialize(Y)
+        emloglik=self.emission.Estep()
+        Uhat,ll_A = self.arrange.Estep(emloglik)
+        ll_E = np.sum(emloglik*Uhat,axis=(1,2))
+        return Uhat, ll_E,ll_A
     def get_params(self):
-        """Get the concatenated parameters from arrangemenet + emission model 
-        Returns: 
-            theta (ndarrap) 
+        """Get the concatenated parameters from arrangemenet + emission model
+        Returns:
+            theta (ndarrap)
         """
         return np.concatenate([self.arrange.get_params(),self.emission.get_params()])
-    
+
     def get_param_indices(self,name):
         """Return the indices for the full model theta vector
 
         Args:
-            name (str): Parameter name in the format of 'arrange.logpi' 
+            name (str): Parameter name in the format of 'arrange.logpi'
                         or 'emission.V'
-        Returns: 
-            indices (np.ndarray): 1-d numpy array of indices into the theta vector 
+        Returns:
+            indices (np.ndarray): 1-d numpy array of indices into the theta vector
         """
         names = name.split(".")
         if len(names)==2:
@@ -137,7 +151,7 @@ class FullModel:
             if names[0]=='emission':
                 ind=ind+self.arrange.nparams
             return ind
-        else: 
+        else:
             raise NameError('Parameter name needs to be model.param')
 
 

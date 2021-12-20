@@ -95,11 +95,16 @@ class ArrangeIndependent(ArrangementModel):
         for i in range(num_subj):
             for p in range(self.P):
                 if self.spatial_specific:
-                    np.testing.assert_array_equal(self.K, pi.shape[1])
-                    U[i, p] = np.random.choice(self.K, p=pi[i])
+                    U[i, p] = np.random.choice(self.K, p=pi[:,p])
                 else:
-                    U[i, p] = np.random.choice(self.K, p=pi.reshape(-1))
+                    U[i, p] = np.random.choice(self.K, p=pi[:,p].reshape(-1))
         return U
+
+    def marginal_prob(self):
+        """Returns marginal probabilty for every node under the model
+        Returns: p[] marginal probability under the model
+        """
+        return loglik2prob(self.logpi)
 
 
 class PottsModel(ArrangementModel):
@@ -351,6 +356,44 @@ class PottsModel(ArrangementModel):
             self.theta_w = self.theta_w + stepsize* grad_theta_w
         return
 
+class PottsModelDuo(PottsModel):
+    """
+    Potts models (Markov random field on multinomial variable)
+    with K possible states, but only 2 nodes
+    Closed-form solututions for checking the approximations
+    """
+    def __init__(self,K=3,remove_redundancy=True):
+        W = np.array([[0,1],[1,0]])
+        super().__init__(W,K,remove_redundancy)
+
+    def Estep(self,emloglik):
+        numsubj, K, P = emloglik.shape
+        logq = emloglik + self.logpi
+        self.estep_Uhat = np.empty((numsubj,K,P))
+        Uhat2 = np.empty((numsubj,K,K))
+        for s in range(numsubj):
+            pp=exp(logq[s,:,0]+logq[s,:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
+            Z = np.sum(pp) # full partition function
+            pp = pp/Z
+            self.estep_Uhat[s] = np.c_[pp.sum(axis=0),pp.sum(axis=1)]
+            Uhat2[s]=pp
+
+        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
+        p,pp = self.marginal_prob(return_joint=True)
+        ll_A = np.sum(Uhat2 * log(pp),axis=(1,2))
+
+        return self.estep_Uhat, ll_A
+
+    def marginal_prob(self,return_joint=False):
+        pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
+        Z = np.sum(pp) # full partition function
+        pp=pp/Z
+        p1 = pp.sum(axis=0)
+        p2 = pp.sum(axis=1)
+        if return_joint:
+            return np.c_[p1,p2],pp
+        else:
+            return np.c_[p1,p2]
 
 def loglik2prob(loglik):
     """Safe transformation and normalization of

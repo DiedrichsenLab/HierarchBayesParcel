@@ -8,7 +8,8 @@ import arrangements as ar
 import spatial as sp
 from full_model import FullModel
 import pandas as pd
-# import seaborn as sns
+import seaborn as sns
+import scipy.stats as ss
 
 def simulate_potts_gauss_grid():
     # Step 1: Create the true model
@@ -62,9 +63,8 @@ def simulate_potts_gauss_grid():
 
 def make_duo_model(K=4,theta_w =1, sigma2=0.1):
         # Step 1: Create the true model
-    W = np.array([[0,1],[1,0]])
     pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
-    arrangeT = ar.PottsModel(W, K=K)
+    arrangeT = ar.PottsModelDuo(K=K)
     emissionT = em.MixGaussian(K=K, N=5, P=2)
 
     # Step 2: Initialize the parameters of the true model
@@ -86,17 +86,17 @@ def plot_duo_fit(theta,ll,theta_true=None,ll_true=None):
 
     for i in range(nparams):
         plt.plot(iter,theta[:,i],color[i]+style[i])
-        if theta_true is not None: 
+        if theta_true is not None:
             plt.plot(numiter+5,theta_true[i],color[i]+marker[i])
     pass
     plt.xlabel('Iteration')
     plt.ylabel('Theta')
-    
+
     # Plot the likelihood
     plt.subplot(2,1,2)
     plt.plot(iter,ll[:,0]-ll[0,0],'k')
     plt.plot(iter,ll[:,1]-ll[0,1],'b')
-    if ll_true is not None: 
+    if ll_true is not None:
         plt.plot(numiter+5,ll_true[0]-ll[0,0],'k*')
         plt.plot(numiter+5,ll_true[1]-ll[0,1],'b*')
     plt.legend(['arrange','emmision'])
@@ -128,7 +128,7 @@ def simulate_potts_gauss_duo(theta_w=2,
     Returns:
         [type]: [description]
     """
-    # Make true model 
+    # Make true model
     MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
     theta_true = MT.get_params()
 
@@ -163,8 +163,8 @@ def simulate_potts_gauss_duo(theta_w=2,
     Uhat,ll_A_in = arrangeI.Estep(emloglik)
     pass
 
-    # Step 7: Get he the baseline for emission and arrangement model 
-    # from the true model 
+    # Step 7: Get he the baseline for emission and arrangement model
+    # from the true model
     Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
     ll_E_true=np.sum(emloglik*Uhat,axis=(1,2))
 
@@ -219,21 +219,21 @@ def simulate_potts_gauss_duo2(theta_w=2,
     MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
     theta_true = MT.get_params()
 
-    # Generate the data 
+    # Generate the data
     U,Y = MT.sample(num_subj=num_subj)
 
-    # Get the likelihood of the data under the MT 
+    # Get the likelihood of the data under the MT
     MT.emission.initialize(Y)
     emloglik = MT.emission.Estep()
     Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
     ll_E_true = np.sum(emloglik * Uhat,axis=(1,2))
-    ll_true = [ll_A_true.sum(),ll_E_true.sum()] 
+    ll_true = [ll_A_true.sum(),ll_E_true.sum()]
 
     # Step 4: Generate indepedent models for fitting
     arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True)
     emissionI = copy.deepcopy(MT.emission)
     emissionI.sigma2=0.5
-    # Add a small perturbation to paramters 
+    # Add a small perturbation to paramters
     emissionI.V = emissionI.V + np.random.normal(0,0.1,emissionI.V.shape)
     emissionM = copy.deepcopy(emissionI)
     MI = FullModel(arrangeI, emissionI)
@@ -258,17 +258,71 @@ def simulate_potts_gauss_duo2(theta_w=2,
     arrangeM.epos_numchains=epos_numchains
     MP = FullModel(arrangeM, emissionM)
 
-    # Step 7: Use stochastic gradient descent to fit the combined model 
+    # Step 7: Use stochastic gradient descent to fit the combined model
     plt.figure()
     tI_T = np.concatenate([indT1[0:6],indT2,indT3])
     MP,ll,theta = MP.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True)
     plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
     pass
-
-
-
     return theta,iter
 
+def evaluate_duo(theta_w=0,sigma2=0.01):
+    """Test diffferent evlautions
+    """
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
+    p=MT.arrange.marginal_prob()
+    arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True,remove_redundancy=True)
+    arrangeI.logpi=log(p)
+    emissionI = copy.deepcopy(MT.emission)
+    MI = FullModel(arrangeI, emissionI)
+    M = [MI,MT]
+
+    # different evaluations on data coming forim independent
+    num_subj = 100
+    T = pd.DataFrame()
+    for i in range(2):
+        U,Y = M[i].sample(num_subj=num_subj)
+        ll_A = np.empty((num_subj,2))
+        ll_E = np.empty((num_subj,2))
+        for j in range(2):
+            M[j].emission.initialize(Y)
+            emloglik=M[j].emission.Estep()
+            # Using the Uhat from this data set
+            Uhat,ll_A[:,j] = M[j].arrange.Estep(emloglik)
+            ll_E[:,j] = np.sum(emloglik*Uhat,axis=(1,2))
+            # Using the Uhat from the model
+            Up = M[j].arrange.marginal_prob()
+            pass
+
+        D = pd.DataFrame({'trueModel':np.ones(num_subj,)*i,
+                          'll_E':ll_E[:,1]-ll_E[:,0],
+                          'll_A':ll_A[:,1]-ll_A[:,0],
+                          'll_T':ll_A[:,1]+ll_E[:,1]-ll_A[:,0]-ll_E[:,0]})
+        T=pd.concat([T,D])
+    plt.subplot(1,3,1)
+    eval_plot(T,'ll_A','trueModel')
+    plt.subplot(1,3,2)
+    eval_plot(T,'ll_E','trueModel')
+    plt.subplot(1,3,3)
+    eval_plot(T,'ll_T','trueModel')
+    pass
+
+def eval_plot(data,crit,x=None):
+    sns.violinplot(data=data,y=crit,x=x)
+    plt.axhline(0)
+    if x is not None:
+        r = np.unique(data[x])
+    else:
+        r = [0]
+        x = np.zeros(data[crit].shape)
+    for i in r:
+        t,p = ss.ttest_1samp(data[crit][data[x]==i],0)
+        print(f"{i}: t(99)={t:.2f}, p={p:.3f}")
+
+
+
 if __name__ == '__main__':
-    simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
+    # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
+    evaluate_duo(theta_w = 2,sigma2=0.0001)
     pass
