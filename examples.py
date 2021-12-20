@@ -266,7 +266,7 @@ def simulate_potts_gauss_duo2(theta_w=2,
     pass
     return theta,iter
 
-def evaluate_duo(theta_w=0,sigma2=0.01):
+def evaluate_duo(theta_w=0,sigma2=0.01,num_subj=1000):
     """Test diffferent evlautions
     """
     MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
@@ -279,33 +279,40 @@ def evaluate_duo(theta_w=0,sigma2=0.01):
     M = [MI,MT]
 
     # different evaluations on data coming forim independent
-    num_subj = 100
     T = pd.DataFrame()
     for i in range(2):
         U,Y = M[i].sample(num_subj=num_subj)
+        Y_rep = M[i].emission.sample(U)
         ll_A = np.empty((num_subj,2))
         ll_E = np.empty((num_subj,2))
+        lq = np.empty((num_subj,2))
+        ll_E_rep = np.empty((num_subj,2))
+        marg_log_rep = np.empty((num_subj,2))
+        ELBO = np.empty((num_subj,2))
         for j in range(2):
-            M[j].emission.initialize(Y)
-            emloglik=M[j].emission.Estep()
-            # Using the Uhat from this data set
-            Uhat,ll_A[:,j] = M[j].arrange.Estep(emloglik)
-            ll_E[:,j] = np.sum(emloglik*Uhat,axis=(1,2))
-            # Using the Uhat from the model
-            Up = M[j].arrange.marginal_prob()
-            pass
+            # Get the likelihoods from the fitting data
+            ELBO[:,j], Uhat, ll_E[:,j],ll_A[:,j],lq[:,j]=M[j].ELBO(Y)
+            # Use the replication data from the same subjects 
+            M[j].emission.initialize(Y_rep)
+            emloglik = M[j].emission.Estep() 
+            ll_E_rep[:,j] = np.sum(Uhat *emloglik,axis=(1,2))
+            marg_log_rep[:,j] = np.sum(np.log(np.sum(Uhat*exp(emloglik),axis=1)),axis=1)
 
         D = pd.DataFrame({'trueModel':np.ones(num_subj,)*i,
                           'll_E':ll_E[:,1]-ll_E[:,0],
                           'll_A':ll_A[:,1]-ll_A[:,0],
-                          'll_T':ll_A[:,1]+ll_E[:,1]-ll_A[:,0]-ll_E[:,0]})
+                          'ELBO':ELBO[:,1]-ELBO[:,0],
+                          'lq':lq[:,0]-lq[:,1],
+                          'll_E_rep':ll_E_rep[:,1]-ll_E_rep[:,0],
+                          'marg_log_rep':marg_log_rep[:,1]-marg_log_rep[:,0]})
+
         T=pd.concat([T,D])
-    plt.subplot(1,3,1)
-    eval_plot(T,'ll_A','trueModel')
-    plt.subplot(1,3,2)
-    eval_plot(T,'ll_E','trueModel')
-    plt.subplot(1,3,3)
-    eval_plot(T,'ll_T','trueModel')
+    ev = ['ll_E','ll_A','lq','ELBO','ll_E_rep','marg_log_rep']
+    plt.figure(figsize=(15,11))
+    for i in range(len(ev)):
+        plt.subplot(2,3,i+1)
+        eval_plot(T,ev[i],'trueModel')
+        plt.title(ev[i])
     pass
 
 def eval_plot(data,crit,x=None):
@@ -317,12 +324,16 @@ def eval_plot(data,crit,x=None):
         r = [0]
         x = np.zeros(data[crit].shape)
     for i in r:
-        t,p = ss.ttest_1samp(data[crit][data[x]==i],0)
-        print(f"{i}: t(99)={t:.2f}, p={p:.3f}")
+        y = data[crit][data[x]==i]
+        t,p = ss.ttest_1samp(y,0)
+        n = np.sum(y>0)/y.shape[0]
+        plt.text(i,max(y)*0.8,f"t={t:.2f}")
+        plt.text(i,max(y)*0.6,f"p={p:.3f}")
+        plt.text(i,max(y)*0.4,f"n={n:.2f}")
 
 
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
-    evaluate_duo(theta_w = 2,sigma2=0.0001)
+    evaluate_duo(theta_w = 2,sigma2=0.1)
     pass

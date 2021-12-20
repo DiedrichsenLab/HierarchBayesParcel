@@ -115,20 +115,34 @@ class FullModel:
         else:
             return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
 
-    def loglike(self,Y):
-        """Loglikelihood of the data under a full model
+    def ELBO(self,Y):
+        """Evidence lower bound of the data under the full model
         Args:
             Y (nd-array): numsubj x N x P array of data
         Returns:
+            ELBO (nd-array): Evidence lower bound - should be relatively tight 
             Uhat (nd-array): numsubj x K x P array of expectations
             ll_E (nd-array): emission logliklihood of data (numsubj,)
             ll_A (nd-array): arrangement logliklihood of data (numsubj,)
+            lq (nd-array): <log q(u)> under q: Entropy
         """
         self.emission.initialize(Y)
         emloglik=self.emission.Estep()
-        Uhat,ll_A = self.arrange.Estep(emloglik)
+        try:
+            Uhat,ll_A,QQ = self.arrange.Estep(emloglik,return_joint=True)
+            lq = np.sum(np.log(QQ)*QQ,axis=(1,2))
+        except:
+            # Assume independence: 
+            Uhat,ll_A = self.arrange.Estep(emloglik)
+            lq = np.sum(np.log(Uhat)*Uhat,axis=(1,2))
+            # This is the same as:
+            # Uhat2 = Uhat[0,:,0]*Uhat[0,:,1].reshape(-1,1)
+            # l_test = np.sum(np.log(Uhat2)*Uhat2)
         ll_E = np.sum(emloglik*Uhat,axis=(1,2))
-        return Uhat, ll_E,ll_A
+        ELBO = ll_E + ll_A - lq
+        return  ELBO, Uhat, ll_E,ll_A,lq
+
+
     def get_params(self):
         """Get the concatenated parameters from arrangemenet + emission model
         Returns:

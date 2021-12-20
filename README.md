@@ -14,7 +14,7 @@ $$
 &=\log\sum_{\mathbf{U}}q(\mathbf{U})\frac{p(\mathbf{Y},\mathbf{U}|\theta)}{q(\mathbf{U})}\\
 &\geqslant \sum_{\mathbf{U}} q(\mathbf{U}) \log \frac{p(\mathbf{Y},\mathbf{U}|\theta)}{q(\mathbf{U})} \tag{Jensen's inequality}\\ 
 &=\langle \log p(\mathbf{Y},\mathbf{U}|\theta) - \log q(\mathbf{U})\rangle_q
-\triangleq \mathcal{L}(q, \theta)
+\triangleq \mathcal{L}(q, \theta) - \log \langle q(\mathbf{U})\rangle_q
 \end{align*}
 $$
 

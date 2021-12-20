@@ -366,7 +366,7 @@ class PottsModelDuo(PottsModel):
         W = np.array([[0,1],[1,0]])
         super().__init__(W,K,remove_redundancy)
 
-    def Estep(self,emloglik):
+    def Estep(self,emloglik,return_joint = False):
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
         self.estep_Uhat = np.empty((numsubj,K,P))
@@ -381,8 +381,10 @@ class PottsModelDuo(PottsModel):
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         p,pp = self.marginal_prob(return_joint=True)
         ll_A = np.sum(Uhat2 * log(pp),axis=(1,2))
-
-        return self.estep_Uhat, ll_A
+        if return_joint:
+            return self.estep_Uhat, ll_A,Uhat2
+        else:
+            return self.estep_Uhat, ll_A
 
     def marginal_prob(self,return_joint=False):
         pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
