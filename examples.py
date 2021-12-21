@@ -11,18 +11,37 @@ import pandas as pd
 import seaborn as sns
 import scipy.stats as ss
 
-def simulate_potts_gauss_grid():
+def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
     # Step 1: Create the true model
-    grid = sp.SpatialGrid(width=10,height=10)
-    arrangeT = ar.PottsModel(grid.W, K=5)
-    emissionT = em.MixGaussian(K=5, N=40, P=grid.P)
+    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
+    arrangeT = ar.PottsModelDuo(K=K)
+    emissionT = em.MixGaussian(K=K, N=N, P=2)
 
     # Step 2: Initialize the parameters of the true model
-    arrangeT.random_smooth_pi(grid.Dist,theta_mu=30)
-    arrangeT.theta_w = 2
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    arrangeT.theta_w = theta_w
     emissionT.random_params()
-    emissionT.sigma2=3
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
 
+def make_grid_model(K=4,theta_w=1,sigma2=0.1, grid=10,N=10,theta_mu=30):
+    # Step 1: Create the true model
+    grid = sp.SpatialGrid(width=grid,height=grid)
+    arrangeT = ar.PottsModel(grid.W, K=K)
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
+
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.random_smooth_pi(grid.Dist,theta_mu=theta_mu)
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    M = FullModel(arrangeT,emissionT)
+    return M
+
+def simulate_potts_gauss_grid():
+    # Step 1: Make ht model
+    MT=make_grid_model(K=5,theta_w=2,sigma2=1)
     # Step 3: Plot the prior of the true mode
     plt.figure(figsize=(7,4))
     grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
@@ -30,9 +49,9 @@ def simulate_potts_gauss_grid():
     grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
 
     # Step 4: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=10,burnin=19)
+    U = MT.arrange.sample(num_subj=10,burnin=19)
     # U = arrangeT.sample(num_subj=10)
-    Y = emissionT.sample(U)
+    Y = MT.emission.sample(U)
 
     # Plot sampling path for visualization purposes
     # plt.figure(figsize=(10,4))
@@ -61,19 +80,6 @@ def simulate_potts_gauss_grid():
     plt.lineplot(ll, color='b')
     print(theta)
 
-def make_duo_model(K=4,theta_w =1, sigma2=0.1):
-        # Step 1: Create the true model
-    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
-    arrangeT = ar.PottsModelDuo(K=K)
-    emissionT = em.MixGaussian(K=K, N=5, P=2)
-
-    # Step 2: Initialize the parameters of the true model
-    arrangeT.logpi=log(pi)-log(pi[-1,:])
-    arrangeT.theta_w = theta_w
-    emissionT.random_params()
-    emissionT.sigma2=sigma2
-    MT = FullModel(arrangeT,emissionT)
-    return MT
 
 def plot_duo_fit(theta,ll,theta_true=None,ll_true=None):
     plt.subplot(2,1,1)
@@ -292,9 +298,9 @@ def evaluate_duo(theta_w=0,sigma2=0.01,num_subj=1000):
         for j in range(2):
             # Get the likelihoods from the fitting data
             ELBO[:,j], Uhat, ll_E[:,j],ll_A[:,j],lq[:,j]=M[j].ELBO(Y)
-            # Use the replication data from the same subjects 
+            # Use the replication data from the same subjects
             M[j].emission.initialize(Y_rep)
-            emloglik = M[j].emission.Estep() 
+            emloglik = M[j].emission.Estep()
             ll_E_rep[:,j] = np.sum(Uhat *emloglik,axis=(1,2))
             marg_log_rep[:,j] = np.sum(np.log(np.sum(Uhat*exp(emloglik),axis=1)),axis=1)
 
@@ -331,9 +337,21 @@ def eval_plot(data,crit,x=None):
         plt.text(i,max(y)*0.6,f"p={p:.3f}")
         plt.text(i,max(y)*0.4,f"n={n:.2f}")
 
-
+def estep_approximate(sigma2=0.1,theta_w=1,num_subj=2,kind='duo'):
+    if kind=='duo':
+        M=make_duo_model(sigma2=sigma2,theta_w=theta_w)
+    else:
+        M=make_grid_model(sigma2=sigma2,theta_w=theta_w,grid=kind)
+    U,Y=M.sample(num_subj)
+    M.emission.initialize(Y)
+    emloglik=M.emission.Estep()
+    Uhat1 = M.arrange.epos_meanfield(emloglik,iter=10)
+    Uhat2,ll_A1 = M.arrange.epos_sample(emloglik)
+    Uhat3,ll_A = M.arrange.Estep(emloglik)
+    pass
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
-    evaluate_duo(theta_w = 2,sigma2=0.1)
+    # evaluate_duo(theta_w = 2,sigma2=0.1)
+    estep_approximate(sigma2=2,theta_w=1,kind='duo')
     pass

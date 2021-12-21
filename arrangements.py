@@ -311,6 +311,30 @@ class PottsModel(ArrangementModel):
             ll_A = self.theta_w * self.epos_phihat + np.sum(self.epos_Uhat*self.logpi,axis=(1,2)) - log(Z)
         return self.epos_Uhat,ll_A
 
+    def epos_meanfield(self, emloglik,iter=5):
+        """ Positive phase of getting p(U|Y) for the spatial arrangement model
+        Using meanfield approximation
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        bias = emloglik + self.logpi
+        self.epos_Uhat = loglik2prob(bias,axis=1)
+        h = np.empty((iter+1,))
+        for i in range(iter):
+            h[i]=self.epos_Uhat[0,0,0]
+            for p in range(P): # Serial updating across all subjects
+                nEng = np.sum(self.W[:,p]*self.epos_Uhat,axis=2)
+                nEng = nEng + bias[:,:,p]
+                self.epos_Uhat[:,:,p]=loglik2prob(nEng,axis=1)
+        h[i+1]=self.epos_Uhat[0,0,0]
+        return self.epos_Uhat
+
     def eneg_sample(self):
         """Negative phase of the learning: uses persistent contrastive divergence
         with sampling from the spatial arrangement model (not clampled to data)
@@ -397,9 +421,9 @@ class PottsModelDuo(PottsModel):
         else:
             return np.c_[p1,p2]
 
-def loglik2prob(loglik):
+def loglik2prob(loglik,axis=0):
     """Safe transformation and normalization of
-    logliklihood (along axis 0)
+    logliklihood
 
     Args:
         loglik (ndarray): Log likelihood (not normalized)
@@ -407,8 +431,15 @@ def loglik2prob(loglik):
     Returns:
         prob (ndarray): Probability
     """
-    loglik = loglik-np.max(loglik,axis=0)+10
-    prob = np.exp(loglik)
-    prob = prob/np.sum(prob,axis=0)
+    if (axis==0):
+        loglik = loglik-np.max(loglik,axis=0)+10
+        prob = np.exp(loglik)
+        prob = prob/np.sum(prob,axis=0)
+    else:
+        a = np.array(loglik.shape)
+        a[axis]=1 # Insert singleton dimension
+        loglik = loglik-np.max(loglik,axis=1).reshape(a)+10
+        prob = np.exp(loglik)
+        prob = prob/np.sum(prob,axis=1).reshape(a)
     return prob
 
