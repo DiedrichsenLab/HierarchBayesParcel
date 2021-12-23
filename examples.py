@@ -25,6 +25,22 @@ def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
     MT = FullModel(arrangeT,emissionT)
     return MT
 
+def make_chain_model(P=4,K=4,theta_w =1, sigma2=0.1,N=10):
+    """
+    # Step 1: Create the true model
+    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
+    arrangeT = ar.PottsModelDuo(K=K)
+    emissionT = em.MixGaussian(K=K, N=N, P=2)
+
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
+
+
 def make_grid_model(K=4,theta_w=1,sigma2=0.1, grid=10,N=10,theta_mu=30):
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=grid,height=grid)
@@ -335,22 +351,25 @@ def eval_plot(data,crit,x=None):
         plt.text(i,max(y)*0.6,f"p={p:.3f}")
         plt.text(i,max(y)*0.4,f"n={n:.2f}")
 
-def estep_approximate(sigma2=0.1,theta_w=1,num_subj=2,kind='duo'):
+def estep_approximate(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
     if kind=='duo':
         M=make_duo_model(sigma2=sigma2,theta_w=theta_w)
+    elif kind=='trio':
+        M=make_trio_model(sigma2=sigma2,theta_w=theta_w)
     else:
         M=make_grid_model(sigma2=sigma2,theta_w=theta_w,grid=kind)
     U,Y=M.sample(num_subj)
     M.emission.initialize(Y)
     emloglik=M.emission.Estep()
     emloglik = np.zeros((1,4,2))
+    Uhat0 = M.arrange.estep_jta(emloglik)
+    Uhat3,ll_A = M.arrange.Estep(emloglik)
     Uhat1,h = M.arrange.epos_meanfield(emloglik,iter=10)
     Uhat2,ll_A1 = M.arrange.epos_sample(emloglik,num_chains=1000)
-    Uhat3,ll_A = M.arrange.Estep(emloglik)
     pass
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     # evaluate_duo(theta_w = 2,sigma2=0.1)
-    estep_approximate(sigma2=1,theta_w=2,kind='duo')
+    estep_approximate(sigma2=0.1,theta_w=2,kind='duo')
     pass
