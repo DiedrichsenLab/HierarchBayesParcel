@@ -311,7 +311,7 @@ class PottsModel(ArrangementModel):
 
     def epos_meanfield(self, emloglik,iter=5):
         """ Positive phase of getting p(U|Y) for the spatial arrangement model
-        Using meanfield approximation. Note that this implementation is quite inaccurate
+        Using meanfield approximation. Note that this implementation is not accurate
         As it simply uses the Uhat from the other node
 
         Parameters:
@@ -333,6 +333,54 @@ class PottsModel(ArrangementModel):
                 self.epos_Uhat[:,:,p]=loglik2prob(nEng,axis=1)
         h[i+1]=self.epos_Uhat[0,0,0]
         return self.epos_Uhat, h
+
+    def estep_jta(self, emloglik,order=None):
+        """ This implements a closed-form Estep using a Junction-tree
+        Algorithm. Uses a sequential elimination algorithm to result in a factor graph
+        Uses the last node as root.
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        # Construct a linear Factor graph containing the factor (u1,u2),
+        #(u2,u3),(u3,u4)....
+        Psi = np.zeros((P-1,K,K))
+        Phi = np.zeros((numsubj,K,P))
+        for s in range(numsubj):
+            # Initialize the factors
+            Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
+            for p in range(P-1):
+                Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
+            Psi=Psi+np.eye(K)*self.theta_w
+            pass
+            # Now pass the evidence to the factors
+            Psi[0,:,:]=Psi[0,:,:]+emloglik[s,:,0].reshape(-1,1)
+            for p in range(P-1):
+                Psi[p,:,:]=Psi[p,:,:]+emloglik[s,:,p+1]
+            pass
+            # Do the forward pass
+            for p in np.arange(0,P-1):
+                pp=exp(Psi[p,:,:])
+                pp = pp / np.sum(pp) # Normalize
+                Phi[s,:,p+1]=np.log(pp.sum(axis=0))
+                if p<P-2:
+                    Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1] # Update the next factors
+            pass
+            # Do the backwards pass
+            for p in np.arange(P-2,-1,-1):
+                pp=exp(Psi[p,:,:])
+                pp = pp / np.sum(pp) # Normalize
+                Phi[s,:,p]=np.log(pp.sum(axis=1))-Phi[s,:,p]
+                if p>0:
+                    Psi[p-1,:,:]=Psi[p-1,:,:]+Phi[s,:,p] # Update the factors
+            pass
+
+        return exp(Phi)
 
     def eneg_sample(self,num_chains=None,iter=5):
         """Negative phase of the learning: uses persistent contrastive divergence
