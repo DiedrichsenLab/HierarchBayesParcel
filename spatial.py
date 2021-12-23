@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import nibabel as nb
 import os
+from scipy.linalg import toeplitz
 
 class SpatialLayout():
     """Spatial layout help class for
@@ -12,6 +13,17 @@ class SpatialLayout():
     def __init__(self,P):
         self.P = P
     pass
+
+class SpatialChain(SpatialLayout):
+    """
+        Linear arrangement of Nodes
+    """
+    def __init__(self,P=5):
+        self.P=P
+        a=np.zeros(P)
+        a[1]=1
+        self.W = toeplitz(a)
+
 
 class SpatialGrid(SpatialLayout):
     """Rectangular grid Layout

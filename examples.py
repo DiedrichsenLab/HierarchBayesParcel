@@ -12,7 +12,16 @@ import seaborn as sns
 import scipy.stats as ss
 
 def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
-    # Step 1: Create the true model
+    """Make a toy model with 2 nodes - can be analytically treated.
+    Args:
+        K (int): Number of states. Defaults to 4.
+        theta_w (float): Coupling strenght between nodes. Defaults to 1.
+        sigma2 (float): Output variance. Defaults to 0.1.
+        N (int): Number of observations. Defaults to 10.
+
+    Returns:
+        M (FullModel): Full initilized model
+    """
     pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
     arrangeT = ar.PottsModelDuo(K=K)
     emissionT = em.MixGaussian(K=K, N=N, P=2)
@@ -25,12 +34,25 @@ def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
     MT = FullModel(arrangeT,emissionT)
     return MT
 
-def make_chain_model(P=4,K=4,theta_w =1, sigma2=0.1,N=10):
+def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
+    """Make a chain model that can be calculated with the
+    Junction-tree-algorithm (JTA)
+    Args:
+        P (int): Number of nodes. Defaults to 5.
+        K (int): Number of states. Defaults to 4.
+        theta_w (float): Coupling strenght between nodes. Defaults to 1.
+        sigma2 (float): Output variance. Defaults to 0.1.
+        N (int): Number of observations. Defaults to 10.
+
+    Returns:
+        M (FullModel): Full initilized model
     """
-    # Step 1: Create the true model
-    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
-    arrangeT = ar.PottsModelDuo(K=K)
-    emissionT = em.MixGaussian(K=K, N=N, P=2)
+
+    pi = np.ones((K,P))/K
+    pi[:,0]=[0.6,0.05,0.15,0.2]
+    grid = sp.SpatialChain(P=P)
+    arrangeT = ar.PottsModel(grid.W,K=K)
+    emissionT = em.MixGaussian(K=K, N=N, P=P)
 
     # Step 2: Initialize the parameters of the true model
     arrangeT.logpi=log(pi)-log(pi[-1,:])
@@ -354,22 +376,22 @@ def eval_plot(data,crit,x=None):
 def estep_approximate(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
     if kind=='duo':
         M=make_duo_model(sigma2=sigma2,theta_w=theta_w)
-    elif kind=='trio':
-        M=make_trio_model(sigma2=sigma2,theta_w=theta_w)
+    elif kind=='chain':
+        M=make_chain_model(sigma2=sigma2,theta_w=theta_w,P=5)
     else:
         M=make_grid_model(sigma2=sigma2,theta_w=theta_w,grid=kind)
     U,Y=M.sample(num_subj)
     M.emission.initialize(Y)
     emloglik=M.emission.Estep()
-    emloglik = np.zeros((1,4,2))
+    emloglik = np.zeros((1,4,5))
     Uhat0 = M.arrange.estep_jta(emloglik)
-    Uhat3,ll_A = M.arrange.Estep(emloglik)
+    # Uhat3,ll_A = M.arrange.Estep(emloglik)
     Uhat1,h = M.arrange.epos_meanfield(emloglik,iter=10)
-    Uhat2,ll_A1 = M.arrange.epos_sample(emloglik,num_chains=1000)
+    Uhat2,ll_A1 = M.arrange.epos_sample(emloglik,num_chains=100,iter=20)
     pass
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     # evaluate_duo(theta_w = 2,sigma2=0.1)
-    estep_approximate(sigma2=0.1,theta_w=2,kind='duo')
+    estep_approximate(sigma2=1,theta_w=2,kind='chain')
     pass
