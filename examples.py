@@ -152,8 +152,6 @@ def simulate_potts_gauss_duo(theta_w=2,
     arrangeM = ar.PottsModel(MT.arrange.W, K=4)
     arrangeM.theta_w =0
     arrangeM.fit_theta_w = fit_theta_w
-    arrangeM.eneg_numchains=eneg_numchains
-    arrangeM.epos_numchains=epos_numchains
     emissionM = copy.deepcopy(MT.emission)
 
     # Step 5: Get the emission log-liklihood:
@@ -180,9 +178,9 @@ def simulate_potts_gauss_duo(theta_w=2,
     ll_A = np.empty((numiter,num_subj))
     for i in range(numiter):
         theta[i,:]=M.arrange.get_params()
-        Uhat,ll_A[i,:] = M.arrange.epos_sample(emloglik)
+        Uhat,ll_A[i,:] = M.arrange.epos_sample(emloglik,num_chains = epos_numchains,iter=5)
         ll_E[i,:]=np.sum(emloglik*Uhat,axis=(1,2))
-        M.arrange.eneg_sample()
+        M.arrange.eneg_sample(num_chains=eneg_numchains, iter =5)
         M.arrange.Mstep(stepsize)
 
     thetaT = MT.arrange.get_params()
@@ -345,13 +343,14 @@ def estep_approximate(sigma2=0.1,theta_w=1,num_subj=2,kind='duo'):
     U,Y=M.sample(num_subj)
     M.emission.initialize(Y)
     emloglik=M.emission.Estep()
-    Uhat1 = M.arrange.epos_meanfield(emloglik,iter=10)
-    Uhat2,ll_A1 = M.arrange.epos_sample(emloglik)
+    emloglik = np.zeros((1,4,2))
+    Uhat1,h = M.arrange.epos_meanfield(emloglik,iter=10)
+    Uhat2,ll_A1 = M.arrange.epos_sample(emloglik,num_chains=1000)
     Uhat3,ll_A = M.arrange.Estep(emloglik)
     pass
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     # evaluate_duo(theta_w = 2,sigma2=0.1)
-    estep_approximate(sigma2=2,theta_w=1,kind='duo')
+    estep_approximate(sigma2=1,theta_w=2,kind='duo')
     pass

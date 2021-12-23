@@ -126,11 +126,7 @@ class PottsModel(ArrangementModel):
         if remove_redundancy:
             self.logpi = self.logpi - self.logpi[-1,:]
         # Inference parameters for persistence CD alogrithm via sampling
-        self.epos_iter = 3
-        self.epos_numchains = 20 # Chains per subject
         self.epos_U = None
-        self.eneg_iter = 3
-        self.eneg_numchains = 20 # Overall number of chains
         self.eneg_U = None
         self.fit_theta_w = True # Update smoothing parameter in Mstep
         self.set_param_list(['logpi','theta_w'])
@@ -257,7 +253,7 @@ class PottsModel(ArrangementModel):
             num_chains = num_subj)
         return U
 
-    def epos_sample(self, emloglik):
+    def epos_sample(self, emloglik, num_chains=None, iter=10):
         """ Positive phase of getting p(U|Y) for the spatial arrangement model
         Gets the expectations.
 
@@ -272,28 +268,30 @@ class PottsModel(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
-        if self.epos_U is None: # No current state of MC chains
-            self.epos_U = np.empty((numsubj,self.epos_numchains,P))
+        if self.epos_U is None: # num_chains given: reinitialize
+            self.epos_U = np.empty((numsubj,num_chains,P))
             for s in range(numsubj):
-                self.epos_U[s,:,:] = self.sample_gibbs(num_chains=self.epos_numchains,
-                    bias = bias[s],iter=self.epos_iter)
+                self.epos_U[s,:,:] = self.sample_gibbs(num_chains=num_chains,
+                    bias = bias[s],iter=iter)
         else:
+            if self.epos_U is None:
+                raise NameError('Gibbs sampler not initialized - pass num_chains the first time.')
             for s in range(numsubj):
                 self.epos_U[s,:,:] = self.sample_gibbs(self.epos_U[s],
-                    bias = bias[s],iter=self.epos_iter)
+                    bias = bias[s],iter=iter)
 
         # Get Uhat from the sampled examples
         self.epos_Uhat = np.empty((numsubj,self.K,self.P))
         for k in range(self.K):
-            self.epos_Uhat[:,k,:]=np.sum(self.epos_U==k,axis=1)/self.epos_numchains
+            self.epos_Uhat[:,k,:]=np.sum(self.epos_U==k,axis=1)/num_chains
 
         # Get the sufficient statistics for the potential functions
         self.epos_phihat = np.zeros((numsubj,))
         for s in range(numsubj):
             phi = np.zeros((self.P,self.P))
-            for n in range(self.epos_numchains):
+            for n in range(num_chains):
                 phi=phi+np.equal(self.epos_U[s,n,:],self.epos_U[s,n,:].reshape((-1,1)))
-            self.epos_phihat[s] = np.sum(self.W * phi)/self.epos_numchains
+            self.epos_phihat[s] = np.sum(self.W * phi)/num_chains
 
         # The log likelihood for arrangement model p(U|theta_A) is not trackable-
         # So we can only return the unormalized potential functions
@@ -313,7 +311,8 @@ class PottsModel(ArrangementModel):
 
     def epos_meanfield(self, emloglik,iter=5):
         """ Positive phase of getting p(U|Y) for the spatial arrangement model
-        Using meanfield approximation
+        Using meanfield approximation. Note that this implementation is quite inaccurate
+        As it simply uses the Uhat from the other node
 
         Parameters:
             emloglik (np.array):
@@ -329,34 +328,36 @@ class PottsModel(ArrangementModel):
         for i in range(iter):
             h[i]=self.epos_Uhat[0,0,0]
             for p in range(P): # Serial updating across all subjects
-                nEng = np.sum(self.W[:,p]*self.epos_Uhat,axis=2)
+                nEng = self.theta_w*np.sum(self.W[:,p]*self.epos_Uhat,axis=2)
                 nEng = nEng + bias[:,:,p]
                 self.epos_Uhat[:,:,p]=loglik2prob(nEng,axis=1)
         h[i+1]=self.epos_Uhat[0,0,0]
-        return self.epos_Uhat
+        return self.epos_Uhat, h
 
-    def eneg_sample(self):
+    def eneg_sample(self,num_chains=None,iter=5):
         """Negative phase of the learning: uses persistent contrastive divergence
         with sampling from the spatial arrangement model (not clampled to data)
         Uses persistence across negative smapling steps
         """
         if self.eneg_U is None:
-            self.eneg_U = self.sample_gibbs(num_chains=self.eneg_numchains,
-                    bias = self.logpi,iter=self.eneg_iter)
+            self.eneg_U = self.sample_gibbs(num_chains=num_chains,
+                    bias = self.logpi,iter=iter)
         else:
+            if (num_chains != self.eneg_U.shape[0]):
+                raise NameError('num_chains needs to stay constant')
             self.mstep_state = self.sample_gibbs(self.eneg_U,
-                    bias = self.logpi,iter=self.eneg_iter)
+                    bias = self.logpi,iter=iter)
 
         # Get Uhat from the sampled examples
         self.eneg_Uhat = np.empty((self.K,self.P))
         for k in range(self.K):
-            self.eneg_Uhat[k,:]=np.sum(self.eneg_U==k,axis=0)/self.eneg_numchains
+            self.eneg_Uhat[k,:]=np.sum(self.eneg_U==k,axis=0)/num_chains
 
         # Get the sufficient statistics for the potential functions
         phi = np.zeros((self.P,self.P))
-        for n in range(self.eneg_numchains):
+        for n in range(num_chains):
             phi=phi+np.equal(self.eneg_U[n,:],self.eneg_U[n,:].reshape((-1,1)))
-        self.eneg_phihat = np.sum(self.W * phi)/self.eneg_numchains
+        self.eneg_phihat = np.sum(self.W * phi)/num_chains
         return self.eneg_Uhat
 
     def Mstep(self,stepsize = 0.1):
