@@ -369,7 +369,7 @@ class PottsModel(ArrangementModel):
                 pp = pp / np.sum(pp) # Normalize
                 Phi[s,:,p+1]=np.log(pp.sum(axis=0))
                 if p<P-2:
-                    Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1] # Update the next factors
+                    Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1].reshape(-1,1) # Update the next factors
             pass
             # Do the backwards pass
             for p in np.arange(P-2,-1,-1):
