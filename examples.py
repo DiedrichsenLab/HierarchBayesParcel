@@ -50,6 +50,7 @@ def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
 
     pi = np.ones((K,P))/K
     pi[:,0]=[0.6,0.05,0.15,0.2]
+    pi[:,-1]=[0.2,0.15,0.05,0.6]
     grid = sp.SpatialChain(P=P)
     arrangeT = ar.PottsModel(grid.W,K=K)
     emissionT = em.MixGaussian(K=K, N=N, P=P)
@@ -233,14 +234,89 @@ def simulate_potts_gauss_duo(theta_w=2,
     return theta,iter,thetaT
 
 
-def simulate_potts_gauss_duo2(theta_w=2,
-                             sigma2 = 0.01,
-                             num_subj = 100,
-                             eneg_numchains=200,
-                             epos_numchains=20,
-                             numiter = 60,
-                             stepsize = 0.8,
-                             fit_theta_w=True):
+def learn_potts_duo(theta_w=2,
+                    sigma2 = 0.01,
+                    num_subj = 100,
+                    eneg_numchains=200,
+                    epos_numchains=20,
+                    numiter = 60,
+                    stepsize = 0.8,
+                    fit_theta_w=True):
+    """Simulation of a two-node potts model
+    with a flexible Mixed-Gaussian emission model
+
+    Args:
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.01.
+        num_subj (int, optional): [description]. Defaults to 100.
+        eneg_numchains (int, optional): [description]. Defaults to 200.
+        epos_numchains (int, optional): [description]. Defaults to 20.
+        niter (int, optional): [description]. Defaults to 60.
+        stepsize (float, optional): [description]. Defaults to 0.8.
+        fit_theta_w (bool, optional): [description]. Defaults to True.
+
+    Returns:
+        [type]: [description]
+    """
+    # Step 1: Create the true model
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
+
+    # Generate the data
+    U,Y = MT.sample(num_subj=num_subj)
+
+    # Get the likelihood of the data under the MT
+    MT.emission.initialize(Y)
+    emloglik = MT.emission.Estep()
+    Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
+    ll_E_true = np.sum(emloglik * Uhat,axis=(1,2))
+    ll_true = [ll_A_true.sum(),ll_E_true.sum()]
+
+    # Step 4: Generate indepedent models for fitting
+    arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True)
+    emissionI = copy.deepcopy(MT.emission)
+    emissionI.sigma2=0.5
+    # Add a small perturbation to paramters
+    emissionI.V = emissionI.V + np.random.normal(0,0.1,emissionI.V.shape)
+    emissionM = copy.deepcopy(emissionI)
+    MI = FullModel(arrangeI, emissionI)
+
+    # Step 5: Fit independent model to the data and plot
+    plt.figure()
+    indT1 = MT.get_param_indices('arrange.logpi')
+    indT2 = MT.get_param_indices('emission.sigma2')
+    indT3 = MT.get_param_indices('arrange.theta_w')
+    indI1 = MI.get_param_indices('arrange.logpi')
+    indI2 = MI.get_param_indices('emission.sigma2')
+
+    tI_I = np.concatenate([indI1[0:6],indI2])
+    tI_T = np.concatenate([indT1[0:6],indT2])
+    MI,ll,theta = MI.fit_em(Y,iter=30,tol=0.001,seperate_ll=True)
+    plot_duo_fit(theta[:,tI_I],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
+
+    # Step 6: Generate Potts model for fitting
+    arrangeM = ar.PottsModel(MT.arrange.W, K=4)
+    arrangeM.theta_w =0
+    arrangeM.eneg_numchains=eneg_numchains
+    arrangeM.epos_numchains=epos_numchains
+    MP = FullModel(arrangeM, emissionM)
+
+    # Step 7: Use stochastic gradient descent to fit the combined model
+    plt.figure()
+    tI_T = np.concatenate([indT1[0:6],indT2,indT3])
+    MP,ll,theta = MP.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True)
+    plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
+    pass
+    return theta,iter
+
+def learn_potts_duo(theta_w=2,
+                    sigma2 = 0.01,
+                    num_subj = 100,
+                    eneg_numchains=200,
+                    epos_numchains=20,
+                    numiter = 60,
+                    stepsize = 0.8,
+                    fit_theta_w=True):
     """Simulation of a two-node potts model
     with a flexible Mixed-Gaussian emission model
 
@@ -383,12 +459,23 @@ def estep_approximate(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
     U,Y=M.sample(num_subj)
     M.emission.initialize(Y)
     emloglik=M.emission.Estep()
-    emloglik = np.zeros((1,4,5))
-    Uhat0 = M.arrange.estep_jta(emloglik)
+    Uhat1 = M.arrange.epos_jta(emloglik)
+    Uhat2,ll_A2 = M.arrange.epos_ssa(emloglik)
+    ppos2 = M.arrange.epos_phihat
+    Uhat3,ll_A3 = M.arrange.epos_sample(emloglik,num_chains=1000,iter=20)
+    ppos3 = M.arrange.epos_phihat
+    Uneg1 = M.arrange.epos_jta(np.zeros((1,4,5)))
+    Uneg2 = M.arrange.eneg_ssa()
+    pneg2 = M.arrange.eneg_phihat
+    Uneg3 = M.arrange.eneg_sample(num_chains=1000,iter=20)
+    pneg3 = M.arrange.eneg_phihat
+
     # Uhat3,ll_A = M.arrange.Estep(emloglik)
-    Uhat1,h = M.arrange.epos_meanfield(emloglik,iter=10)
-    Uhat2,ll_A1 = M.arrange.epos_sample(emloglik,num_chains=100,iter=20)
+    # Uhat1,h = M.arrange.epos_meanfield(emloglik,iter=10)
     pass
+
+
+
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
