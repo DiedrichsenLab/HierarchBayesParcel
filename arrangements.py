@@ -309,79 +309,6 @@ class PottsModel(ArrangementModel):
             ll_A = self.theta_w * self.epos_phihat + np.sum(self.epos_Uhat*self.logpi,axis=(1,2)) - log(Z)
         return self.epos_Uhat,ll_A
 
-    def epos_meanfield(self, emloglik,iter=5):
-        """ Positive phase of getting p(U|Y) for the spatial arrangement model
-        Using meanfield approximation. Note that this implementation is not accurate
-        As it simply uses the Uhat from the other node
-
-        Parameters:
-            emloglik (np.array):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (np.array):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        bias = emloglik + self.logpi
-        self.epos_Uhat = loglik2prob(bias,axis=1)
-        h = np.empty((iter+1,))
-        for i in range(iter):
-            h[i]=self.epos_Uhat[0,0,0]
-            for p in range(P): # Serial updating across all subjects
-                nEng = self.theta_w*np.sum(self.W[:,p]*self.epos_Uhat,axis=2)
-                nEng = nEng + bias[:,:,p]
-                self.epos_Uhat[:,:,p]=loglik2prob(nEng,axis=1)
-        h[i+1]=self.epos_Uhat[0,0,0]
-        return self.epos_Uhat, h
-
-    def estep_jta(self, emloglik,order=None):
-        """ This implements a closed-form Estep using a Junction-tree
-        Algorithm. Uses a sequential elimination algorithm to result in a factor graph
-        Uses the last node as root.
-
-        Parameters:
-            emloglik (np.array):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (np.array):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        # Construct a linear Factor graph containing the factor (u1,u2),
-        #(u2,u3),(u3,u4)....
-        Psi = np.zeros((P-1,K,K))
-        Phi = np.zeros((numsubj,K,P))
-        for s in range(numsubj):
-            # Initialize the factors
-            Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
-            for p in range(P-1):
-                Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
-            Psi=Psi+np.eye(K)*self.theta_w
-            pass
-            # Now pass the evidence to the factors
-            Psi[0,:,:]=Psi[0,:,:]+emloglik[s,:,0].reshape(-1,1)
-            for p in range(P-1):
-                Psi[p,:,:]=Psi[p,:,:]+emloglik[s,:,p+1]
-            pass
-            # Do the forward pass
-            for p in np.arange(0,P-1):
-                pp=exp(Psi[p,:,:])
-                pp = pp / np.sum(pp) # Normalize
-                Phi[s,:,p+1]=np.log(pp.sum(axis=0))
-                if p<P-2:
-                    Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1].reshape(-1,1) # Update the next factors
-            pass
-            # Do the backwards pass
-            for p in np.arange(P-2,-1,-1):
-                pp=exp(Psi[p,:,:])
-                pp = pp / np.sum(pp) # Normalize
-                Phi[s,:,p]=np.log(pp.sum(axis=1))-Phi[s,:,p]
-                if p>0:
-                    Psi[p-1,:,:]=Psi[p-1,:,:]+Phi[s,:,p] # Update the factors
-            pass
-
-        return exp(Phi)
-
     def eneg_sample(self,num_chains=None,iter=5):
         """Negative phase of the learning: uses persistent contrastive divergence
         with sampling from the spatial arrangement model (not clampled to data)
@@ -407,6 +334,186 @@ class PottsModel(ArrangementModel):
             phi=phi+np.equal(self.eneg_U[n,:],self.eneg_U[n,:].reshape((-1,1)))
         self.eneg_phihat = np.sum(self.W * phi)/num_chains
         return self.eneg_Uhat
+
+    def epos_meanfield(self, emloglik,iter=5):
+        """ Positive phase of getting p(U|Y) for the spatial arrangement model
+        Using meanfield approximation. Note that this implementation is not accurate
+        As it simply uses the Uhat from the other node
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        bias = emloglik + self.logpi
+        self.epos_Uhat = loglik2prob(bias,axis=1)
+        h = np.empty((iter+1,))
+        for i in range(iter):
+            h[i]=self.epos_Uhat[0,0,0]
+            for p in range(P): # Serial updating across all subjects
+                nEng = self.theta_w*np.sum(self.W[:,p]*self.epos_Uhat,axis=2)
+                nEng = nEng + bias[:,:,p]
+                self.epos_Uhat[:,:,p]=loglik2prob(nEng,axis=1)
+        h[i+1]=self.epos_Uhat[0,0,0]
+        return self.epos_Uhat, h
+
+    def epos_jta(self, emloglik,order=None):
+        """ This implements a closed-form Estep using a Junction-tree (Hugin)
+        Algorithm. Uses a sequential elimination algorithm to result in a factor graph
+        Uses the last node as root.
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        # Construct a linear Factor graph containing the factor (u1,u2),
+        #(u2,u3),(u3,u4)....
+        Psi = np.zeros((P-1,K,K))
+        Phi = np.zeros((numsubj,K,P)) # Messages for the forward pass
+        Phis = np.zeros((numsubj,K,P)) # Messages for the backward pass
+        for s in range(numsubj):
+            # Initialize the factors
+            Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
+            for p in range(P-1):
+                Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
+            Psi=Psi+np.eye(K)*self.theta_w
+            pass
+            # Now pass the evidence to the factors
+            Psi[0,:,:]=Psi[0,:,:]+emloglik[s,:,0].reshape(-1,1)
+            for p in range(P-1):
+                Psi[p,:,:]=Psi[p,:,:]+emloglik[s,:,p+1]
+            pass
+            # Do the forward pass
+            for p in np.arange(0,P-1):
+                pp=exp(Psi[p,:,:])
+                pp = pp / np.sum(pp) # Normalize
+                Phi[s,:,p+1]=np.log(pp.sum(axis=0))
+                if p<P-2:
+                    Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1].reshape(-1,1) # Update the next factors
+            pass
+            # Do the backwards pass
+            Phis[s,:,P-1]=Phi[s,:,P-1]
+            for p in np.arange(P-2,-1,-1):
+                pp=exp(Psi[p,:,:])
+                pp = pp / np.sum(pp) # Normalize
+                Phis[s,:,p]=np.log(pp.sum(axis=1))
+                if p>0:
+                    Psi[p-1,:,:]=Psi[p-1,:,:]+Phis[s,:,p]-Phi[s,:,p] # Update the factors
+            pass
+
+        return exp(Phis)
+
+    def epos_ssa(self, emloglik):
+        """ This implements a closed-form Estep using the Schafer Shenoy algorithm.
+        This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        # Construct a linear Factor graph containing the factor (u1,u2),
+        #(u2,u3),(u3,u4)....
+        Psi = np.zeros((P-1,K,K)) # These are the original potentials
+        muL = np.zeros((P-1,K)) # Incoming messages from the left side
+        muR = np.zeros((P-1,K)) # Incoming messages from the right side
+        self.epos_Uhat = np.zeros((numsubj, K, P))
+        self.epos_phihat = np.zeros((numsubj,))
+        for s in range(numsubj):
+            # Initialize the factors
+            Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
+            for p in range(P-1):
+                Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
+            Psi=Psi+np.eye(K)*self.theta_w
+            # Now pass the evidence to the factors
+            muL[0,:]=muL[0,:]+emloglik[s,:,0]
+            for p in range(P-1):
+                muR[p,:]=muR[p,:]+emloglik[s,:,p+1]
+            # Do the forward pass
+            for p in np.arange(0,P-2):
+                pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
+                pp = pp / np.sum(pp) # Normalize
+                muL[p+1,:]=np.log(pp.sum(axis=0))
+            # Do the backwards pass
+            for p in np.arange(P-2,0,-1):
+                pp=exp(Psi[p,:,:]+muR[p,:])
+                pp = pp / np.sum(pp) # Normalize
+                muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(axis=1))
+            pass
+            # Finally get the normalized potential
+            for p in np.arange(0,P-1):
+                pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
+                pp =pp / np.sum(pp)
+                # For the sufficent statistics, we need to consider each potential twice in the
+                # Sum of the log-liklihoof sum_{i} sum_{j \neq i} <u_i u_j>
+                self.epos_phihat[s] = self.epos_phihat[s] + 2 * pp.trace()
+                if p==0:
+                    self.epos_Uhat[s,:,0]=pp.sum(axis=1)
+                self.epos_Uhat[s,:,p+1]=pp.sum(axis=0)
+        # Get the postive likelihood: Could we use standardization here?
+        ll_Ae = self.theta_w * self.epos_phihat
+        ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+        if self.rem_red:
+            Z = exp(self.logpi).sum(axis=0) # Local partition function
+            ll_Ap = ll_Ap - np.sum(log(Z))
+        ll_A=ll_Ae+ll_Ap
+
+        return self.epos_Uhat, ll_A
+
+    def eneg_ssa(self):
+        """ This implements a closed-form Estep using the Schafer Shenoy algorithm.
+        This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
+        Calculates the expectation under the current verson of the model, without input data
+
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        # Construct a linear Factor graph containing the factor (u1,u2),
+        #(u2,u3),(u3,u4)....
+        P = self.P
+        K = self.K
+        Psi = np.zeros((P-1,K,K)) # These are the original potentials
+        muL = np.zeros((P-1,K)) # Incoming messages from the left side
+        muR = np.zeros((P-1,K)) # Incoming messages from the right side
+        self.eneg_Uhat = np.zeros((K, P))
+        self.eneg_phihat = 0
+        # Initialize the factors
+        Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
+        for p in range(P-1):
+            Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
+        Psi=Psi+np.eye(K)*self.theta_w
+        # Do the forward pass
+        for p in np.arange(0,P-2):
+            pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1))
+            pp = pp / np.sum(pp) # Normalize
+            muL[p+1,:]=np.log(pp.sum(axis=0))
+        # Do the backwards pass
+        for p in np.arange(P-2,0,-1):
+            pp=exp(Psi[p,:,:]+muR[p,:])
+            pp = pp / np.sum(pp) # Normalize
+            muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(axis=1))
+        pass
+        # Finally get the normalized potential
+        for p in np.arange(0,P-1):
+            pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
+            pp =pp / np.sum(pp)
+            self.eneg_phihat = self.eneg_phihat + 2 * pp.trace()
+            if p==0:
+                self.eneg_Uhat[:,0]=pp.sum(axis=1)
+            self.eneg_Uhat[:,p+1]=pp.sum(axis=0)
+        return self.eneg_Uhat
+
 
     def Mstep(self,stepsize = 0.1):
         """ Gradient update for SML or CD algorithm

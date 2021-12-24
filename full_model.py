@@ -65,7 +65,7 @@ class FullModel:
         else:
             return self, ll[:i+1, :].sum(axis=1), theta[:i+1, :]
 
-    def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False):
+    def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False, estep='sample'):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
         The emission model is still assumed to have E-step and Mstep.
         The arrangement model is has a postive and negative phase estep,
@@ -96,17 +96,19 @@ class FullModel:
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
-            Uhat,ll_A = self.arrange.epos_sample(emloglik)
+            if estep=='sample':
+                Uhat,ll_A = self.arrange.epos_sample(emloglik)
+                self.arrange.eneg_sample()
+            elif estep=='ssa':
+                Uhat,ll_A = self.arrange.epos_ssa(emloglik)
+                self.arrange.eneg_ssa()
+
             # Compute the expected complete logliklihood
             ll_E = np.sum(Uhat * emloglik,axis=(1,2))
             ll[i,0]=np.sum(ll_A)
             ll[i,1]=np.sum(ll_E)
 
-            if i==iter-1:
-                break
-
-            # Run the negative phase
-            self.arrange.eneg_sample()
+            # Run the Mstep
             self.emission.Mstep(Uhat)
             self.arrange.Mstep(stepsize)
 
@@ -120,7 +122,7 @@ class FullModel:
         Args:
             Y (nd-array): numsubj x N x P array of data
         Returns:
-            ELBO (nd-array): Evidence lower bound - should be relatively tight 
+            ELBO (nd-array): Evidence lower bound - should be relatively tight
             Uhat (nd-array): numsubj x K x P array of expectations
             ll_E (nd-array): emission logliklihood of data (numsubj,)
             ll_A (nd-array): arrangement logliklihood of data (numsubj,)
@@ -132,7 +134,7 @@ class FullModel:
             Uhat,ll_A,QQ = self.arrange.Estep(emloglik,return_joint=True)
             lq = np.sum(np.log(QQ)*QQ,axis=(1,2))
         except:
-            # Assume independence: 
+            # Assume independence:
             Uhat,ll_A = self.arrange.Estep(emloglik)
             lq = np.sum(np.log(Uhat)*Uhat,axis=(1,2))
             # This is the same as:
