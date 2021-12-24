@@ -375,10 +375,10 @@ class PottsModel(ArrangementModel):
         numsubj, K, P = emloglik.shape
         # Construct a linear Factor graph containing the factor (u1,u2),
         #(u2,u3),(u3,u4)....
-        Psi = np.zeros((P-1,K,K))
         Phi = np.zeros((numsubj,K,P)) # Messages for the forward pass
         Phis = np.zeros((numsubj,K,P)) # Messages for the backward pass
         for s in range(numsubj):
+            Psi = np.zeros((P-1,K,K))
             # Initialize the factors
             Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
             for p in range(P-1):
@@ -424,12 +424,12 @@ class PottsModel(ArrangementModel):
         numsubj, K, P = emloglik.shape
         # Construct a linear Factor graph containing the factor (u1,u2),
         #(u2,u3),(u3,u4)....
-        Psi = np.zeros((P-1,K,K)) # These are the original potentials
-        muL = np.zeros((P-1,K)) # Incoming messages from the left side
-        muR = np.zeros((P-1,K)) # Incoming messages from the right side
         self.epos_Uhat = np.zeros((numsubj, K, P))
         self.epos_phihat = np.zeros((numsubj,))
         for s in range(numsubj):
+            Psi = np.zeros((P-1,K,K)) # These are the original potentials
+            muL = np.zeros((P-1,K)) # Incoming messages from the left side
+            muR = np.zeros((P-1,K)) # Incoming messages from the right side
             # Initialize the factors
             Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
             for p in range(P-1):
@@ -469,6 +469,59 @@ class PottsModel(ArrangementModel):
         ll_A=ll_Ae+ll_Ap
 
         return self.epos_Uhat, ll_A
+
+
+    def epos_lbp(self, emloglik):
+        """ This implements loopy belief propagation
+        Constructing a general clique tree from the connectivity matrix
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        self.epos_Uhat = np.zeros((numsubj, K, P))
+        self.epos_phihat = np.zeros((numsubj,))
+
+        # Construct general factor graph containing the factor (u1,u2),
+        num_edge = self.W.sum()
+        inP,outP = np.where(self.W.nonzero())
+        update_order = np.array([0,2,4,6,7,5,3,1])
+        for s in range(numsubj):
+            muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
+            muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
+            mu = np.zeros((K,self.P))
+            bias = emloglik[s,:,:]+self.logpi
+            for e in update_order:
+                # Update the state of the input node
+                mu[:,inP[e]] = bias[:,inP[e]] + np.sum(muOut[:,inP[e]==outP],axis=1)
+                E = np.eye(K)*self.theta_w + mu[:,inP[e]].reshape(-1,1)
+                pp = exp(E)
+                pp = pp/ pp.sum()
+                outP[e]=log(pp.sum,axis=0)
+            # Finally get the normalized potential
+            for p in np.arange(0,P-1):
+                pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
+                pp =pp / np.sum(pp)
+                # For the sufficent statistics, we need to consider each potential twice in the
+                # Sum of the log-liklihoof sum_{i} sum_{j \neq i} <u_i u_j>
+                self.epos_phihat[s] = self.epos_phihat[s] + 2 * pp.trace()
+                if p==0:
+                    self.epos_Uhat[s,:,0]=pp.sum(axis=1)
+                self.epos_Uhat[s,:,p+1]=pp.sum(axis=0)
+        # Get the postive likelihood: Could we use standardization here?
+        ll_Ae = self.theta_w * self.epos_phihat
+        ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+        if self.rem_red:
+            Z = exp(self.logpi).sum(axis=0) # Local partition function
+            ll_Ap = ll_Ap - np.sum(log(Z))
+        ll_A=ll_Ae+ll_Ap
+
+        return self.epos_Uhat, ll_A
+
 
     def eneg_ssa(self):
         """ This implements a closed-form Estep using the Schafer Shenoy algorithm.

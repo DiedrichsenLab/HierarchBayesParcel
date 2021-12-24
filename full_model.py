@@ -97,8 +97,8 @@ class FullModel:
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
             if estep=='sample':
-                Uhat,ll_A = self.arrange.epos_sample(emloglik)
-                self.arrange.eneg_sample()
+                Uhat,ll_A = self.arrange.epos_sample(emloglik,num_chains=self.arrange.epos_numchains)
+                self.arrange.eneg_sample(num_chains=self.arrange.eneg_numchains)
             elif estep=='ssa':
                 Uhat,ll_A = self.arrange.epos_ssa(emloglik)
                 self.arrange.eneg_ssa()
