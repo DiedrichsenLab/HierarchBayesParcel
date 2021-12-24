@@ -493,7 +493,8 @@ class PottsModel(ArrangementModel):
         for s in range(numsubj):
             muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
             muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
-            mu = np.zeros((K,self.P))
+            mu = np.zeros((K,self.P)) # Message on each potential
+            phi_trace = np.zeros((num_edge,)) # Outgoing messages from Edges to nodes
             bias = emloglik[s,:,:]+self.logpi
             for e in update_order:
                 # Update the state of the input node
@@ -501,17 +502,10 @@ class PottsModel(ArrangementModel):
                 E = np.eye(K)*self.theta_w + mu[:,inP[e]].reshape(-1,1)
                 pp = exp(E)
                 pp = pp/ pp.sum()
+                phi_trace[e]=pp.trace()
                 outP[e]=log(pp.sum,axis=0)
-            # Finally get the normalized potential
-            for p in np.arange(0,P-1):
-                pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-                pp =pp / np.sum(pp)
-                # For the sufficent statistics, we need to consider each potential twice in the
-                # Sum of the log-liklihoof sum_{i} sum_{j \neq i} <u_i u_j>
-                self.epos_phihat[s] = self.epos_phihat[s] + 2 * pp.trace()
-                if p==0:
-                    self.epos_Uhat[s,:,0]=pp.sum(axis=1)
-                self.epos_Uhat[s,:,p+1]=pp.sum(axis=0)
+            self.epos_Uhat[s,:,:]=loglik2prob(mu)
+            self.epos_phihat[s]=phi_trace.sum()
         # Get the postive likelihood: Could we use standardization here?
         ll_Ae = self.theta_w * self.epos_phihat
         ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
