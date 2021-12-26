@@ -64,6 +64,43 @@ def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
     MT = FullModel(arrangeT,emissionT)
     return MT
 
+def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10):
+    """Make a branch model that can still be calculated with the
+    Junction-tree-algorithm (JTA)
+    Consists of 6 Nodes, connected like this
+    0\...../4
+    ..2 - 3
+    1/ ....\5
+    Args:
+        K (int): Number of states. Defaults to 4.
+        theta_w (float): Coupling strenght between nodes. Defaults to 1.
+        sigma2 (float): Output variance. Defaults to 0.1.
+        N (int): Number of observations. Defaults to 10.
+
+    Returns:
+        M (FullModel): Full initilized model
+    """
+    P=6
+    pi = np.ones((K,P))/K
+    pi[:,0]=[0.6,0.05,0.15,0.2]
+    pi[:,-1]=[0.2,0.15,0.05,0.6]
+    W = np.zeros((6,6))
+    inE=np.array([0,2,1,2,2,3,3,4,3,5])
+    ouE=np.array([2,0,2,1,3,2,4,3,5,3])
+    W[inE,ouE]=1
+    arrangeT = ar.PottsModel(W,K=K)
+    arrangeT.inE = inE
+    arrangeT.ouE = ouE
+    arrangeT.update_order = np.array([0,2,4,9,7,6,8,5,3,1])
+    emissionT = em.MixGaussian(K=K, N=N, P=P)
+
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
 
 def make_grid_model(K=4,theta_w=1,sigma2=0.1, grid=10,N=10,theta_mu=30):
     # Step 1: Create the true model
@@ -438,59 +475,102 @@ def eval_plot(data,crit,x=None):
         plt.text(i,max(y)*0.6,f"p={p:.3f}")
         plt.text(i,max(y)*0.4,f"n={n:.2f}")
 
-def estep_approximate(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
+def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
+    """Comparing different inference algorithms on a single chain of
+    Latent nodes - this test the general Schaefer-Shenoy Algorithm (ssa)
+
+    Args:
+        sigma2 (float, optional): [description]. Defaults to 0.1.
+        theta_w (int, optional): [description]. Defaults to 1.
+        num_subj (int, optional): [description]. Defaults to 1.
+        kind (str, optional): [description]. Defaults to 'duo'.
+    """
     if kind=='duo':
         M=make_duo_model(sigma2=sigma2,theta_w=theta_w)
     elif kind=='chain':
         M=make_chain_model(sigma2=sigma2,theta_w=theta_w,P=5)
-    else:
-        M=make_grid_model(sigma2=sigma2,theta_w=theta_w,grid=kind)
+
+    # Different positive steps
     U,Y=M.sample(num_subj)
     M.emission.initialize(Y)
     emloglik=M.emission.Estep()
     Uhat1 = M.arrange.epos_jta(emloglik)
 
     t1=time.time()
-    Uhat2,ll_A2 = M.arrange.epos_ssa(emloglik)
+    Uhat2,ll_A2 = M.arrange.epos_ssa_chain(emloglik)
     t2=time.time()
     print(f"pos ssa: {t2-t1}")
     ppos2 = M.arrange.epos_phihat
 
     t1=time.time()
-    Uhat3,ll_A3 = M.arrange.epos_sample(emloglik,num_chains=20,iter=20)
+    Uhat3,ll_A3 = M.arrange.epos_ssa(emloglik)
+    t2=time.time()
+    print(f"pos lbp: {t2-t1}")
+    ppos3 = M.arrange.epos_phihat
+
+    t1=time.time()
+    Uhat4,ll_A4 = M.arrange.epos_sample(emloglik,num_chains=20,iter=20)
     t2=time.time()
     print(f"pos sample: {t2-t1}")
-    ppos3 = M.arrange.epos_phihat
-    Uneg1 = M.arrange.epos_jta(np.zeros((1,4,5)))
-
-    t1=time.time()
-    Uhat4,ll_A4 = M.arrange.epos_ssa2(emloglik)
-    t2=time.time()
-    print(f"pos ss2: {t2-t1}")
     ppos4 = M.arrange.epos_phihat
 
+    # Different negative steps
     t1=time.time()
-    Uneg2 = M.arrange.eneg_ssa()
+    Uneg2 = M.arrange.eneg_ssa_chain()
     t2=time.time()
     print(f"neg ssa: {t2-t1}")
     pneg2 = M.arrange.eneg_phihat
 
     t1=time.time()
-    Uneg3 = M.arrange.eneg_sample(num_chains=200,iter=20)
+    Uneg3 = M.arrange.eneg_ssa()
     t2=time.time()
-    print(f"neg sample: {t2-t1}")
+    print(f"neg lbp: {t2-t1}")
     pneg3 = M.arrange.eneg_phihat
 
-    # Uhat3,ll_A = M.arrange.Estep(emloglik)
-    # Uhat1,h = M.arrange.epos_meanfield(emloglik,iter=10)
+    t1=time.time()
+    Uneg4 = M.arrange.eneg_sample(num_chains=200,iter=20)
+    t2=time.time()
+    print(f"neg sample: {t2-t1}")
+    pneg4 = M.arrange.eneg_phihat
     pass
 
+
+def estep_branch(sigma2=0.1,theta_w=1,num_subj=1):
+    """Comparing different inference algorithms on a single chain of
+    Latent nodes - this test the general Schaefer-Shenoy Algorithm (ssa)
+
+    Args:
+        sigma2 (float, optional): [description]. Defaults to 0.1.
+        theta_w (int, optional): [description]. Defaults to 1.
+        num_subj (int, optional): [description]. Defaults to 1.
+        kind (str, optional): [description]. Defaults to 'duo'.
+    """
+    M=make_branch_model(sigma2=sigma2,theta_w=theta_w)
+
+    # Different positive steps
+    U,Y=M.sample(num_subj)
+    M.emission.initialize(Y)
+    emloglik=M.emission.Estep()
+
+    Uhat1,ll_A1 = M.arrange.epos_ssa(emloglik,update_order=M.arrange.update_order)
+    ppos1 = M.arrange.epos_phihat
+
+    Uhat2,ll_A2 = M.arrange.epos_sample(emloglik,num_chains=100,iter=20)
+    ppos2 = M.arrange.epos_phihat
+
+    # Different negative steps
+    Uneg1 = M.arrange.eneg_ssa(update_order = M.arrange.update_order)
+    pneg1 = M.arrange.eneg_phihat
+
+    Uneg2 = M.arrange.eneg_sample(num_chains=100,iter=20)
+    pneg2 = M.arrange.eneg_phihat
+    pass
 
 
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     # evaluate_duo(theta_w = 2,sigma2=0.1)
-    estep_approximate(num_subj=5,sigma2=1,theta_w=2,kind='chain')
+    estep_branch(num_subj=1,sigma2=1,theta_w=2)
     # learn_potts_chain()
     pass

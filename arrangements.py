@@ -410,8 +410,8 @@ class PottsModel(ArrangementModel):
 
         return exp(Phis)
 
-    def epos_ssa(self, emloglik):
-        """ This implements a closed-form Estep using the Schafer Shenoy algorithm.
+    def epos_ssa_chain(self, emloglik):
+        """ This implements a closed-form Estep using the Schafer Shenoy algorithm on a chain
         This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
 
         Parameters:
@@ -471,53 +471,8 @@ class PottsModel(ArrangementModel):
         return self.epos_Uhat, ll_A
 
 
-    def epos_lbp(self, emloglik):
-        """ This implements loopy belief propagation
-        Constructing a general clique tree from the connectivity matrix
 
-        Parameters:
-            emloglik (np.array):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (np.array):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        self.epos_Uhat = np.zeros((numsubj, K, P))
-        self.epos_phihat = np.zeros((numsubj,))
-
-        # Construct general factor graph containing the factor (u1,u2),
-        num_edge = self.W.sum()
-        inP,outP = np.where(self.W.nonzero())
-        update_order = np.array([0,2,4,6,7,5,3,1])
-        for s in range(numsubj):
-            muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
-            muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
-            mu = np.zeros((K,self.P)) # Message on each potential
-            phi_trace = np.zeros((num_edge,)) # Outgoing messages from Edges to nodes
-            bias = emloglik[s,:,:]+self.logpi
-            for e in update_order:
-                # Update the state of the input node
-                mu[:,inP[e]] = bias[:,inP[e]] + np.sum(muOut[:,inP[e]==outP],axis=1)
-                E = np.eye(K)*self.theta_w + mu[:,inP[e]].reshape(-1,1)
-                pp = exp(E)
-                pp = pp/ pp.sum()
-                phi_trace[e]=pp.trace()
-                outP[e]=log(pp.sum,axis=0)
-            self.epos_Uhat[s,:,:]=loglik2prob(mu)
-            self.epos_phihat[s]=phi_trace.sum()
-        # Get the postive likelihood: Could we use standardization here?
-        ll_Ae = self.theta_w * self.epos_phihat
-        ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
-        if self.rem_red:
-            Z = exp(self.logpi).sum(axis=0) # Local partition function
-            ll_Ap = ll_Ap - np.sum(log(Z))
-        ll_A=ll_Ae+ll_Ap
-
-        return self.epos_Uhat, ll_A
-
-
-    def eneg_ssa(self):
+    def eneg_ssa_chain(self):
         """ This implements a closed-form Estep using the Schafer Shenoy algorithm.
         This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
         Calculates the expectation under the current verson of the model, without input data
@@ -559,6 +514,108 @@ class PottsModel(ArrangementModel):
             if p==0:
                 self.eneg_Uhat[:,0]=pp.sum(axis=1)
             self.eneg_Uhat[:,p+1]=pp.sum(axis=0)
+        return self.eneg_Uhat
+
+
+    def epos_ssa(self, emloglik, update_order=None):
+        """ Implements general Shenoy-Shaefer algorithm
+        Constructing a general clique tree from the connectivity matrix
+
+        Parameters:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        numsubj, K, P = emloglik.shape
+        self.epos_Uhat = np.zeros((numsubj, K, P))
+        self.epos_phihat = np.zeros((numsubj,))
+
+        # Construct general factor graph containing the factor (u1,u2),
+        if hasattr(self,'inE'):
+            inP = self.inE
+            outP = self.ouE
+            num_edge = len(inP)
+        else:
+            num_edge = (self.W>0).sum()
+            inP,outP = np.where(self.W>0)
+        if update_order is None:
+            update_order = np.array([0,2,4,6,7,5,3,1])
+        for s in range(numsubj):
+            muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
+            muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
+            mu = np.zeros((K,self.P)) # Message on each potential
+            phi_trace = np.zeros((num_edge,)) # Outgoing messages from Edges to nodes
+            bias = emloglik[s,:,:]+self.logpi
+            for e in update_order:
+                # Update the state of the input node
+                muIn[:,e] = bias[:,inP[e]] + np.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],axis=1)
+                E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1)
+                pp = exp(E)
+                pp = pp/ pp.sum()
+                muOut[:,e]=log(pp.sum(axis=0))
+            # Calcululate sufficient stats: This could be cut in half...
+            for e in range(num_edge):
+                opp = (inP[e]==outP) & (outP[e]==inP)
+                E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1) + muIn[:,opp].reshape(1,-1)
+                pp = exp(E)
+                pp = pp/ pp.sum()
+                self.epos_Uhat[s,:,outP[e]]=pp.sum(axis=0)
+                phi_trace[e]=pp.trace()
+                self.epos_phihat[s] = self.epos_phihat[s] + pp.trace()
+        # Get the postive likelihood: Could we use standardization here?
+        ll_Ae = self.theta_w * self.epos_phihat
+        ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+        if self.rem_red:
+            Z = exp(self.logpi).sum(axis=0) # Local partition function
+            ll_Ap = ll_Ap - np.sum(log(Z))
+        ll_A=ll_Ae+ll_Ap
+
+        return self.epos_Uhat, ll_A
+
+    def eneg_ssa(self, update_order=None):
+        """ Implements general Shenoy-Shaefer algorithm: Negative step
+        Constructing a general clique tree from the connectivity matrix
+
+        Returns:
+            Uhat (np.array):
+                posterior p(U|Y) a numsubj x K x P matrix
+        """
+        P = self.P
+        K = self.K
+
+        self.eneg_Uhat = np.zeros((K, P))
+        self.eneg_phihat = 0
+
+        # Construct general factor graph containing the factor (u1,u2),
+        if hasattr(self,'inE'):
+            inP = self.inE
+            outP = self.ouE
+            num_edge = len(inP)
+        else:
+            num_edge = (self.W>0).sum()
+            inP,outP = np.where(self.W>0)
+        if update_order is None:
+            update_order=np.arange(num_edge)
+        muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
+        muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
+        bias = self.logpi
+        for e in update_order:
+            # Update the state of the input node
+            muIn[:,e] = bias[:,inP[e]] + np.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],axis=1)
+            E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1)
+            pp = exp(E)
+            pp = pp/ pp.sum()
+            muOut[:,e]=log(pp.sum(axis=0))
+        # Calcululate sufficient stats: This could be cut in half...
+        for e in range(num_edge):
+            opp = (inP[e]==outP) & (outP[e]==inP)
+            E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1) + muIn[:,opp].reshape(1,-1)
+            pp = exp(E)
+            pp = pp/ pp.sum()
+            self.eneg_Uhat[:,outP[e]]=pp.sum(axis=0)
+            self.eneg_phihat = self.eneg_phihat + pp.trace()
         return self.eneg_Uhat
 
 
