@@ -129,6 +129,7 @@ class PottsModel(ArrangementModel):
         self.epos_U = None
         self.eneg_U = None
         self.fit_theta_w = True # Update smoothing parameter in Mstep
+        self.update_order=None
         self.set_param_list(['logpi','theta_w'])
 
     def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
@@ -194,7 +195,15 @@ class PottsModel(ArrangementModel):
         loglik = self.theta_w * np.sum(same,axis=0) + bias
         return(loglik2prob(loglik))
 
-    def sample_gibbs(self,U0 = None, num_chains=None, bias = None, iter=5, return_hist=False):
+    def calculate_neighbours(self):
+        """Calculate Neighbourhood
+        """
+        self.neighbours=np.empty((self.P,),dtype=object)
+        for p in range(self.P):
+            self.neighbours[p]= np.where(self.W[p,:]!=0)[0] # Find all the neighbors for node x (precompute!)
+
+
+    def sample_gibbs(self,U0 = None, num_chains=None, bias = None, iter=5, return_hist=False, track=None):
         """Samples a number of gibbs-chains simulatenously
         using the same bias term
 
@@ -214,7 +223,7 @@ class PottsModel(ArrangementModel):
         """
         # Check for initialization of chains
         if U0 is None:
-            U0 = np.empty((num_chains,self.P))
+            U0 = np.empty((num_chains,self.P),dtype=np.int16)
             prob = loglik2prob(bias)
             for p in range(self.P):
                 U0[:,p] = np.random.choice(self.K,p = prob[:,p],size = (num_chains,))
@@ -222,21 +231,34 @@ class PottsModel(ArrangementModel):
             num_chains = U0.shape[0]
 
         if return_hist:
-            # Initilize array of full history of sample
-            Uhist = np.zeros((iter+1,num_chains,self.P))
+            if track is None:
+                # Initilize array of full history of sample
+                Uhist = np.zeros((iter,num_chains,self.P),dtype=np.int16)
+            else:
+                Uhist = np.zeros((iter,self.K))
+        if not hasattr(self,'neighbours'):
+            self.calculate_neighbours()
 
         # Start the chains
         U = U0
+        u = np.arange(self.K)
+
         for i in range(iter):
             if return_hist:
-                Uhist[i,:,:]=U
+                if track is None:
+                    Uhist[i,:,:]=U
+                else:
+                    for k in range(self.K):
+                        Uhist[i,k]=np.mean(U[:,track]==k)
             # Now loop over chains: This loop can maybe be replaced
             for c in range(num_chains):
-                for p in range(self.P):
-                    prob = self.cond_prob(U[c,:],p,bias=bias[:,p])
+                for p in np.arange(self.P-1,-1,-1):
+                    nb_u = U[c,self.neighbours[p]] # Neighbors to node x
+                    same = np.equal(u,nb_u.reshape(-1,1))
+                    loglik = self.theta_w * np.sum(same,axis=0) + bias[:,p]
+                    prob = loglik2prob(loglik)
                     U[c,p]=np.random.choice(self.K,p=prob)
         if return_hist:
-            Uhist[-1,:,:]=U
             return U,Uhist
         else:
             return U
@@ -315,12 +337,13 @@ class PottsModel(ArrangementModel):
         Uses persistence across negative smapling steps
         """
         if self.eneg_U is None:
-            self.eneg_U = self.sample_gibbs(num_chains=num_chains,
+            self.eneg_U,hist = self.sample_gibbs(num_chains=num_chains,
                     bias = self.logpi,iter=iter)
+            # For tracking history: ,return_hist=True,track=0
         else:
             if (num_chains != self.eneg_U.shape[0]):
                 raise NameError('num_chains needs to stay constant')
-            self.mstep_state = self.sample_gibbs(self.eneg_U,
+            self.eneg_U = self.sample_gibbs(self.eneg_U,
                     bias = self.logpi,iter=iter)
 
         # Get Uhat from the sampled examples
@@ -470,8 +493,6 @@ class PottsModel(ArrangementModel):
 
         return self.epos_Uhat, ll_A
 
-
-
     def eneg_ssa_chain(self):
         """ This implements a closed-form Estep using the Schafer Shenoy algorithm.
         This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
@@ -541,7 +562,7 @@ class PottsModel(ArrangementModel):
             num_edge = (self.W>0).sum()
             inP,outP = np.where(self.W>0)
         if update_order is None:
-            update_order = np.array([0,2,4,6,7,5,3,1])
+            update_order = np.tile(np.arange(len(inP)),2)
         for s in range(numsubj):
             muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
             muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes

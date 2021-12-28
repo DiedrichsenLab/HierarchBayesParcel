@@ -11,6 +11,7 @@ import pandas as pd
 import seaborn as sns
 import scipy.stats as ss
 import time
+import cProfile as cP
 
 def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
     """Make a toy model with 2 nodes - can be analytically treated.
@@ -51,7 +52,7 @@ def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
 
     pi = np.ones((K,P))/K
     pi[:,0]=[0.6,0.05,0.15,0.2]
-    pi[:,-1]=[0.2,0.15,0.05,0.6]
+    # pi[:,-1]=[0.2,0.15,0.05,0.6]
     grid = sp.SpatialChain(P=P)
     arrangeT = ar.PottsModel(grid.W,K=K)
     emissionT = em.MixGaussian(K=K, N=N, P=P)
@@ -59,6 +60,9 @@ def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
     # Step 2: Initialize the parameters of the true model
     arrangeT.logpi=log(pi)-log(pi[-1,:])
     arrangeT.theta_w = theta_w
+    arrangeT.inE,arrangeT.ouE=np.where(arrangeT.W>0)
+    arrangeT.num_edges=len(arrangeT.inE)
+    arrangeT.update_order = np.concatenate([np.arange(arrangeT.num_edges,step=2),np.arange(arrangeT.num_edges-1,0,step=-2)])
     emissionT.random_params()
     emissionT.sigma2=sigma2
     MT = FullModel(arrangeT,emissionT)
@@ -83,7 +87,7 @@ def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10):
     P=6
     pi = np.ones((K,P))/K
     pi[:,0]=[0.6,0.05,0.15,0.2]
-    pi[:,-1]=[0.2,0.15,0.05,0.6]
+    # pi[:,-1]=[0.2,0.15,0.05,0.6]
     W = np.zeros((6,6))
     inE=np.array([0,2,1,2,2,3,3,4,3,5])
     ouE=np.array([2,0,2,1,3,2,4,3,5,3])
@@ -102,14 +106,19 @@ def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10):
     MT = FullModel(arrangeT,emissionT)
     return MT
 
-def make_grid_model(K=4,theta_w=1,sigma2=0.1, grid=10,N=10,theta_mu=30):
+def make_grid_model(K=4,theta_w=1,sigma2=0.1, width=10,N=10,theta_mu=30):
     # Step 1: Create the true model
-    grid = sp.SpatialGrid(width=grid,height=grid)
+    grid = sp.SpatialGrid(width=width,height=width)
     arrangeT = ar.PottsModel(grid.W, K=K)
+    arrangeT.inE,arrangeT.ouE=np.where(grid.W>0)
+    arrangeT.num_edges = len(arrangeT.inE)
     emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
 
     # Step 2: Initialize the parameters of the true model
     arrangeT.random_smooth_pi(grid.Dist,theta_mu=theta_mu)
+    pi = np.ones((K,width*width))/K
+    pi[:,0]=[0.6,0.05,0.15,0.2]
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
     arrangeT.theta_w = theta_w
     emissionT.random_params()
     emissionT.sigma2=sigma2
@@ -475,7 +484,7 @@ def eval_plot(data,crit,x=None):
         plt.text(i,max(y)*0.6,f"p={p:.3f}")
         plt.text(i,max(y)*0.4,f"n={n:.2f}")
 
-def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
+def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo',P=5):
     """Comparing different inference algorithms on a single chain of
     Latent nodes - this test the general Schaefer-Shenoy Algorithm (ssa)
 
@@ -488,7 +497,7 @@ def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
     if kind=='duo':
         M=make_duo_model(sigma2=sigma2,theta_w=theta_w)
     elif kind=='chain':
-        M=make_chain_model(sigma2=sigma2,theta_w=theta_w,P=5)
+        M=make_chain_model(sigma2=sigma2,theta_w=theta_w,P=P)
 
     # Different positive steps
     U,Y=M.sample(num_subj)
@@ -503,7 +512,7 @@ def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
     ppos2 = M.arrange.epos_phihat
 
     t1=time.time()
-    Uhat3,ll_A3 = M.arrange.epos_ssa(emloglik)
+    Uhat3,ll_A3 = M.arrange.epos_ssa(emloglik,update_order=M.arrange.update_order)
     t2=time.time()
     print(f"pos lbp: {t2-t1}")
     ppos3 = M.arrange.epos_phihat
@@ -528,7 +537,7 @@ def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
     pneg3 = M.arrange.eneg_phihat
 
     t1=time.time()
-    Uneg4 = M.arrange.eneg_sample(num_chains=200,iter=20)
+    Uneg4 = M.arrange.eneg_sample(num_chains=1000,iter=20)
     t2=time.time()
     print(f"neg sample: {t2-t1}")
     pneg4 = M.arrange.eneg_phihat
@@ -536,9 +545,9 @@ def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo'):
 
 
 def estep_branch(sigma2=0.1,theta_w=1,num_subj=1):
-    """Comparing different inference algorithms on a single chain of
-    Latent nodes - this test the general Schaefer-Shenoy Algorithm (ssa)
-
+    """Comparing different inference algorithms on branched tree
+     - this test the general Schaefer-Shenoy Algorithm (ssa)
+    Note that Gibbs sampling seems to take a long time to mix
     Args:
         sigma2 (float, optional): [description]. Defaults to 0.1.
         theta_w (int, optional): [description]. Defaults to 1.
@@ -555,22 +564,56 @@ def estep_branch(sigma2=0.1,theta_w=1,num_subj=1):
     Uhat1,ll_A1 = M.arrange.epos_ssa(emloglik,update_order=M.arrange.update_order)
     ppos1 = M.arrange.epos_phihat
 
-    Uhat2,ll_A2 = M.arrange.epos_sample(emloglik,num_chains=100,iter=20)
+    Uhat2,ll_A2 = M.arrange.epos_sample(emloglik,num_chains=10,iter=20)
     ppos2 = M.arrange.epos_phihat
 
     # Different negative steps
     Uneg1 = M.arrange.eneg_ssa(update_order = M.arrange.update_order)
     pneg1 = M.arrange.eneg_phihat
 
-    Uneg2 = M.arrange.eneg_sample(num_chains=100,iter=20)
+    Uneg2 = M.arrange.eneg_sample(num_chains=100,iter=500)
     pneg2 = M.arrange.eneg_phihat
     pass
+
+def estep_grid(width=3,sigma2=1,theta_w=1,num_subj=1):
+    """Comparing different inference algorithms on a grid
+
+    Args:
+        sigma2 (float, optional): [description]. Defaults to 0.1.
+        theta_w (int, optional): [description]. Defaults to 1.
+        num_subj (int, optional): [description]. Defaults to 1.
+        kind (str, optional): [description]. Defaults to 'duo'.
+    """
+    M=make_grid_model(width=width,sigma2=sigma2,theta_w=theta_w,theta_mu=width)
+
+    # Different positive steps
+    U,Y=M.sample(num_subj)
+    M.emission.initialize(Y)
+    emloglik=M.emission.Estep()
+    uo = np.arange(M.arrange.num_edges)
+    uo=np.tile(uo,5)
+    Uhat1,ll_A1 = M.arrange.epos_ssa(emloglik,update_order=uo)
+    ppos1 = M.arrange.epos_phihat
+
+    Uhat2,ll_A2 = M.arrange.epos_sample(emloglik,num_chains=100,iter=20)
+    ppos2 = M.arrange.epos_phihat
+
+    # Different negative steps
+    Uneg1 = M.arrange.eneg_ssa(update_order = uo)
+    pneg1 = M.arrange.eneg_phihat
+
+    Uneg2 = M.arrange.eneg_sample(num_chains=1000,iter=5)
+    pneg2 = M.arrange.eneg_phihat
+    pass
+
 
 
 
 if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     # evaluate_duo(theta_w = 2,sigma2=0.1)
-    estep_branch(num_subj=1,sigma2=1,theta_w=2)
+    # estep_chain(num_subj=1,sigma2=1,theta_w=4,P=5,kind="chain")
+    estep_branch(num_subj=1,sigma2=1,theta_w=4)
+    # estep_grid(width=3,num_subj=1,sigma2=2,theta_w=0.5)
     # learn_potts_chain()
     pass
