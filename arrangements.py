@@ -337,7 +337,7 @@ class PottsModel(ArrangementModel):
         Uses persistence across negative smapling steps
         """
         if self.eneg_U is None:
-            self.eneg_U,hist = self.sample_gibbs(num_chains=num_chains,
+            self.eneg_U = self.sample_gibbs(num_chains=num_chains,
                     bias = self.logpi,iter=iter)
             # For tracking history: ,return_hist=True,track=0
         else:

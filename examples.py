@@ -36,7 +36,7 @@ def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
     MT = FullModel(arrangeT,emissionT)
     return MT
 
-def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
+def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10,logpi='one_end'):
     """Make a chain model that can be calculated with the
     Junction-tree-algorithm (JTA)
     Args:
@@ -50,15 +50,22 @@ def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
         M (FullModel): Full initilized model
     """
 
-    pi = np.ones((K,P))/K
-    pi[:,0]=[0.6,0.05,0.15,0.2]
-    # pi[:,-1]=[0.2,0.15,0.05,0.6]
     grid = sp.SpatialChain(P=P)
     arrangeT = ar.PottsModel(grid.W,K=K)
     emissionT = em.MixGaussian(K=K, N=N, P=P)
 
     # Step 2: Initialize the parameters of the true model
-    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    pi = np.ones((K,P))/K
+    if logpi=='one_end':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        arrangeT.logpi=log(pi)
+    elif logpi=='two_ends':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        pi[:,-1]=[0.2,0.15,0.05,0.6]
+        arrangeT.logpi=log(pi)
+    else:
+        arrangeT.logpi=logpi
+    arrangeT.logpi=arrangeT.logpi-arrangeT.logpi[-1,:]
     arrangeT.theta_w = theta_w
     arrangeT.inE,arrangeT.ouE=np.where(arrangeT.W>0)
     arrangeT.num_edges=len(arrangeT.inE)
@@ -68,7 +75,7 @@ def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10):
     MT = FullModel(arrangeT,emissionT)
     return MT
 
-def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10):
+def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10,logpi='one_end'):
     """Make a branch model that can still be calculated with the
     Junction-tree-algorithm (JTA)
     Consists of 6 Nodes, connected like this
@@ -85,9 +92,6 @@ def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10):
         M (FullModel): Full initilized model
     """
     P=6
-    pi = np.ones((K,P))/K
-    pi[:,0]=[0.6,0.05,0.15,0.2]
-    # pi[:,-1]=[0.2,0.15,0.05,0.6]
     W = np.zeros((6,6))
     inE=np.array([0,2,1,2,2,3,3,4,3,5])
     ouE=np.array([2,0,2,1,3,2,4,3,5,3])
@@ -96,6 +100,17 @@ def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10):
     arrangeT.inE = inE
     arrangeT.ouE = ouE
     arrangeT.update_order = np.array([0,2,4,9,7,6,8,5,3,1])
+    pi = np.ones((K,P))/K
+    if logpi=='one_end':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        arrangeT.logpi=log(pi)
+    elif logpi=='two_ends':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        pi[:,-1]=[0.2,0.15,0.05,0.6]
+        arrangeT.logpi=log(pi)
+    else:
+        arrangeT.logpi=logpi
+
     emissionT = em.MixGaussian(K=K, N=N, P=P)
 
     # Step 2: Initialize the parameters of the true model
@@ -116,9 +131,6 @@ def make_grid_model(K=4,theta_w=1,sigma2=0.1, width=10,N=10,theta_mu=30):
 
     # Step 2: Initialize the parameters of the true model
     arrangeT.random_smooth_pi(grid.Dist,theta_mu=theta_mu)
-    pi = np.ones((K,width*width))/K
-    pi[:,0]=[0.6,0.05,0.15,0.2]
-    arrangeT.logpi=log(pi)-log(pi[-1,:])
     arrangeT.theta_w = theta_w
     emissionT.random_params()
     emissionT.sigma2=sigma2
@@ -554,7 +566,7 @@ def estep_branch(sigma2=0.1,theta_w=1,num_subj=1):
         num_subj (int, optional): [description]. Defaults to 1.
         kind (str, optional): [description]. Defaults to 'duo'.
     """
-    M=make_branch_model(sigma2=sigma2,theta_w=theta_w)
+    M=make_branch_model(sigma2=sigma2,theta_w=theta_w,logpi='two_ends')
 
     # Different positive steps
     U,Y=M.sample(num_subj)
@@ -584,14 +596,18 @@ def estep_grid(width=3,sigma2=1,theta_w=1,num_subj=1):
         num_subj (int, optional): [description]. Defaults to 1.
         kind (str, optional): [description]. Defaults to 'duo'.
     """
+    K=4
     M=make_grid_model(width=width,sigma2=sigma2,theta_w=theta_w,theta_mu=width)
+    pi = np.ones((K,width*width))/K
+    pi[:,0]=[0.6,0.05,0.15,0.2]
+    M.arrange.logpi=log(pi)-log(pi[-1,:])
 
     # Different positive steps
     U,Y=M.sample(num_subj)
     M.emission.initialize(Y)
     emloglik=M.emission.Estep()
     uo = np.arange(M.arrange.num_edges)
-    uo=np.tile(uo,5)
+    uo=np.tile(uo,20)
     Uhat1,ll_A1 = M.arrange.epos_ssa(emloglik,update_order=uo)
     ppos1 = M.arrange.epos_phihat
 
@@ -602,7 +618,7 @@ def estep_grid(width=3,sigma2=1,theta_w=1,num_subj=1):
     Uneg1 = M.arrange.eneg_ssa(update_order = uo)
     pneg1 = M.arrange.eneg_phihat
 
-    Uneg2 = M.arrange.eneg_sample(num_chains=1000,iter=5)
+    Uneg2 = M.arrange.eneg_sample(num_chains=100,iter=400)
     pneg2 = M.arrange.eneg_phihat
     pass
 
@@ -613,7 +629,7 @@ if __name__ == '__main__':
     # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
     # evaluate_duo(theta_w = 2,sigma2=0.1)
     # estep_chain(num_subj=1,sigma2=1,theta_w=4,P=5,kind="chain")
-    estep_branch(num_subj=1,sigma2=1,theta_w=4)
-    # estep_grid(width=3,num_subj=1,sigma2=2,theta_w=0.5)
+    # estep_branch(num_subj=1,sigma2=1,theta_w=4)
+    estep_grid(width=2,num_subj=1,sigma2=2,theta_w=-1)
     # learn_potts_chain()
     pass
