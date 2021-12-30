@@ -1,14 +1,16 @@
 import torch as pt
 import numpy as np
 import spatial as sp
+import matplotlib.pyplot as plt
 
 class RBM():
     def __init__(self, width):
-        grid = sp.SpatialGrid(width=width,height=width)
-        grid.W = grid.W + np.eye(grid.P)
-        nh = nv = grid.P
+        self.grid = sp.SpatialGrid(width=width,height=width)
+        self.grid.W = self.grid.W + np.eye(self.grid.P)
+        self.W = pt.tensor(self.grid.W,dtype=pt.float32)
+        nh = nv = self.grid.P
         self.bh = pt.randn(nh)
-        self.bv = pt.randn(nv)
+        self.bv = pt.zeros(nv)
 
     def sample_h(self, v):
         wv = pt.mm(v, self.W.t())
@@ -31,17 +33,20 @@ class RBM():
 
 def train_RBM():
     # Make true hidden data set
-    nv = 6
-    nh = 2
-    N = 100
-    rbm_t = RBM(nv, nh)
-    ph = pt.empty(N,nh).uniform_(0,1)
+    width = 10
+    N = 120
+    rbm_t = RBM(width)
+    P = width*width
+    ph = pt.empty(N,P).uniform_(0,1)
 
     h_train=pt.bernoulli(ph)
-    for k in range(5):
+    plt.figure()
+    for k in range(6):
         _,v_train=rbm_t.sample_v(h_train)
-        _,v_train=rbm_t.sample_v(h_train)
-
+        _,h_train=rbm_t.sample_v(v_train)
+        plt.subplot(2,3,k+1)
+        rbm_t.grid.plot_maps(v_train[0])
+    pass
     # Now generate new RBM and use for fitting
     rbm = RBM(nv, nh)
     nb_epoch = 10
