@@ -6,11 +6,10 @@ import matplotlib.pyplot as plt
 class RBM():
     def __init__(self, width):
         self.grid = sp.SpatialGrid(width=width,height=width)
-        self.grid.W = self.grid.W + np.eye(self.grid.P)
-        self.W = pt.tensor(self.grid.W,dtype=pt.float32)
         nh = nv = self.grid.P
+        self.W = pt.randn(nv,nh)
         self.bh = pt.randn(nh)
-        self.bv = pt.zeros(nv)
+        self.bv = pt.randn(nv)
 
     def sample_h(self, v):
         wv = pt.mm(v, self.W.t())
@@ -31,29 +30,53 @@ class RBM():
         self.bv += alpha * pt.sum((v0 - vk), 0)
         self.bh += alpha * pt.sum((ph0 - phk), 0)
 
+def plot_batch(v0,vk,ph0,phk,rbm):
+    plt.figure()
+    N=4
+    for n in range(N):
+        plt.subplot(4,N,n+1)
+        rbm.grid.plot_maps(v0[n],vmax=1,cmap='jet')
+        plt.subplot(4,N,n+N+1)
+        rbm.grid.plot_maps(ph0[n],vmax=1,cmap='jet')
+        plt.subplot(4,N,n+2*N+1)
+        rbm.grid.plot_maps(vk[n],vmax=1,cmap='jet')
+        plt.subplot(4,N,n+3*N+1)
+        rbm.grid.plot_maps(phk[n],vmax=1,cmap='jet')
+
+
 def train_RBM():
     # Make true hidden data set
-    width = 10
-    N = 120
+    width = 4
+    N = 200
     rbm_t = RBM(width)
-    P = width*width
+    P =rbm_t.grid.P
+    rbm_t.grid.W = 1*rbm_t.grid.W + 2*np.eye(P)
+    rbm_t.W = pt.tensor(rbm_t.grid.W,dtype=pt.float32)
+    rbm_t.bh = -pt.ones(P) * rbm_t.W.sum(0).mean()/2
+    rbm_t.bv = -pt.ones(P) * rbm_t.W.sum(0).mean()/2
     ph = pt.empty(N,P).uniform_(0,1)
-
     h_train=pt.bernoulli(ph)
-    plt.figure()
+    # plt.figure()
     for k in range(6):
-        _,v_train=rbm_t.sample_v(h_train)
-        _,h_train=rbm_t.sample_v(v_train)
-        plt.subplot(2,3,k+1)
-        rbm_t.grid.plot_maps(v_train[0])
+        # plt.subplot(2,6,k+1)
+        # rbm_t.grid.plot_maps(ph[0],cmap='jet',vmin=0,vmax=1)
+        pv,v_train=rbm_t.sample_v(h_train)
+        # plt.subplot(2,6,k+7)
+        # rbm_t.grid.plot_maps(pv[0],cmap='jet',vmin=0,vmax=1)
+        ph,h_train=rbm_t.sample_h(v_train)
     pass
     # Now generate new RBM and use for fitting
-    rbm = RBM(nv, nh)
-    nb_epoch = 10
-    batch_size = 10
-    for epoch in range(1, nb_epoch+1):
-        train_loss = 0
-        s = 0.0
+    rbm = RBM(width)
+    # rbm.grid.W = 2*rbm.grid.W + 4*np.eye(P)
+    # rbm.W = pt.tensor(rbm.grid.W,dtype=pt.float32)
+    # rbm.bh = -pt.ones(P) * rbm.W.sum(0).mean()/2
+    # rbm.bv = -pt.ones(P) * rbm.W.sum(0).mean()/2
+
+    nb_epoch = 20
+    batch_size = 20
+    loss_train = np.zeros(nb_epoch)
+
+    for epoch in range(nb_epoch):
         for n in range(0, N - batch_size, batch_size):
             vk = v_train[n: n+batch_size]
             v0 = v_train[n: n+batch_size]
@@ -61,14 +84,14 @@ def train_RBM():
             for k in range(10):
                 _, hk = rbm.sample_h(vk)
                 _, vk = rbm.sample_v(hk)
-                vk[v0<0] = v0[v0<0]
             phk, _ = rbm.sample_h(vk)
-            rbm.train(v0, vk, ph0, phk)
-        train_loss += pt.mean(pt.abs(v0-vk))
-        s += 1
-        print('epoch: '+str(epoch)+' loss: '+str(train_loss/s))
-
+            rbm.train(v0, vk, ph0, phk,alpha=0.01)
+            loss_train[epoch] += pt.mean(pt.abs(v0-vk))
+            # plot_batch(v0,vk,ph0,phk,rbm)
+            pass
+        print(f"Epoch {epoch}, Loss {loss_train[epoch]:.3f}")
     # Now generate test_loss
+    plt.plot(loss_train)
     test_loss = 0
     s = 0.
     for id_user in range(0, nb_users):
