@@ -276,7 +276,7 @@ class MixGaussianExp(EmissionModel):
                 for p in range(self.P):
                     # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
                     # given y_i and u_i(k)
-                    x = np.sort(np.random.uniform(0, 5, 1000))
+                    x = np.sort(np.random.uniform(0, 10, 1000))
                     loglike = - 0.5 * (1 / self.sigma2)*(-2*YV[p, k]*x + uVVu[k]*x**2) - self.beta*x
                     # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                     post = exp(loglike)/np.sum(exp(loglike))
@@ -292,7 +292,7 @@ class MixGaussianExp(EmissionModel):
             # self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, self.s[i, :, :])) + \
             #                     np.dot(VV, self.s2[i, :, :])
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+            LL[i, :, :] = -0.5*self.N*(log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + log(self.beta) - self.beta * self.s[i, :, :]
 
         return LL
@@ -317,20 +317,20 @@ class MixGaussianExp(EmissionModel):
             YUs = YUs + np.dot(self.Y[i, :, :], (U_hat[i, :, :]*self.s[i, :, :]).T)
             US = US + U_hat[i, :, :] * self.s[i, :, :]
             US2 = US2 + U_hat[i, :, :] * self.s2[i, :, :]
-            # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * U_hat[i, :, :] * self.s[i, :, :] + \
-            #                 U_hat[i, :, :] * self.s2[i, :, :] * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
-            ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
-                                np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
+            ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * U_hat[i, :, :] * self.s[i, :, :] + \
+                            U_hat[i, :, :] * self.s2[i, :, :] * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+            # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
+            #                     np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
 
         # 1. Updating the sigma squared.
         # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
         # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
         # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
-        # self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
+        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
 
         # 2. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
-        # self.V = YUs / np.sum(US2, axis=1)
+        self.V = YUs / np.sum(US2, axis=1)
 
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P*self.num_subj / np.sum(US)

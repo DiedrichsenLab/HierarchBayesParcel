@@ -60,7 +60,7 @@ def _plot_loglike(loglike, true_loglike, color='b'):
     plt.axhline(y=true_loglike, color='r', linestyle=':')
 
 
-def _plot_v_diff(theta_true, theta, K):
+def _plot_diff(theta_true, theta, K, name='V'):
     """ Plot the model parameters differences.
 
     Args:
@@ -81,7 +81,7 @@ def _plot_v_diff(theta_true, theta, K):
             diff[i, j] = dist
     plt.figure()
     plt.plot(diff)
-    plt.title('the differences: true Vs, estimated Vs')
+    plt.title('the differences: true %ss, estimated %ss' % (name, name))
 
 
 def _plt_single_param_diff(theta_true, theta, name=None):
@@ -123,14 +123,14 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     print('Done.')
 
 
-def _simulate_full_GME():
+def _simulate_full_GME(K=5, P=1000, N=40, num_sub=10, max_iter=100):
     # Step 1: Set the true model to some interesting value
-    arrangeT = ArrangeIndependent(K=1, P=100, spatial_specific=False)
-    emissionT = MixGaussianExp(K=1, N=40, P=100)
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False)
+    emissionT = MixGaussianExp(K=K, N=N, P=P)
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=10)
+    U = arrangeT.sample(num_subj=num_sub)
     Y, signal = emissionT.sample(U)
 
     # Step 2.1: Compute the log likelihood from the true model
@@ -141,14 +141,17 @@ def _simulate_full_GME():
     print(theta_true)
 
     # Step 3: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=1, P=100, spatial_specific=False)
-    emissionM = MixGaussianExp(K=1, N=40, P=100, data=Y)
-    emissionM.set_params([emissionT.V, emissionT.sigma2, emissionT.alpha, emissionM.beta])
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False)
+    emissionM = MixGaussianExp(K=K, N=N, P=P, data=Y)
+    emissionM.set_params([emissionM.V, emissionM.sigma2, emissionT.alpha, emissionM.beta])
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(iter=100, tol=0.001)
+    ll, theta = M.fit_em(iter=max_iter, tol=0.001)
     _plot_loglike(ll, loglike_true, color='b')
+    _plot_diff(theta_true[0:N], theta[:, 0:N], K, name='V')  # The mu changes
+    _plt_single_param_diff(theta_true[-4], theta[:, -4], name='sigma2')  # Sigma square
+    _plt_single_param_diff(theta_true[-2], theta[:, -2], name='beta')  # Alpha
     print('Done.')
 
 
@@ -184,4 +187,4 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
     # _simulate_full_GMM(K=5, P=1000, N=40, num_sub=10, max_iter=100)
-    _simulate_full_GME()
+    _simulate_full_GME(K=1, P=1000, N=20, num_sub=10, max_iter=200)
