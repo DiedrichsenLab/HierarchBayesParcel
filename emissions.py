@@ -131,7 +131,7 @@ class MixGaussianExp(EmissionModel):
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
-        super().__init__(K, N, P, data, params)
+        super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V','sigma2','alpha','beta'])
         if params is not None: 
@@ -145,6 +145,7 @@ class MixGaussianExp(EmissionModel):
         super().initialize(data)
         self.YY = self.Y ** 2
         self.s = np.empty((self.num_subj, self.K, self.P))
+        self.s2 = np.empty((self.num_subj, self.K, self.P))
         self.rss = np.empty((self.num_subj, self.K, self.P))
 
     def random_params(self):
@@ -160,28 +161,6 @@ class MixGaussianExp(EmissionModel):
         self.sigma2 = exp(np.random.normal(0, 0.3))
         self.alpha = 1
         self.beta = 1
-
-    # REmove this one here: 
-    def _norm_pdf_multivariate(self, x, mu, sigma):
-        """ pdf function for multivariate normal distribution
-        Note: X and mu are assumed to be column vector
-        :param x: multivariate data. Shape (n_dim, 1)
-        :param mu: theta mu of the distribution. Shape (n_dim, 1)
-        :param sigma: theta cov of the distribution. Shape (n_dim, n_dim)
-        :return: the probability of a data point in the given normal distribution
-        """
-        size = len(x)
-        if size == len(mu) and (size, size) == sigma.shape:
-            det = np.linalg.det(sigma)
-            if det == 0:
-                raise NameError("The covariance matrix can't be singular")
-            norm_const = 1.0 / (np.math.pow((2 * np.pi), float(size) / 2) * np.math.pow(det, 1.0 / 2))
-            x_mu = np.matrix(x - mu)
-            inv_ = np.linalg.inv(sigma)
-            result = np.math.pow(np.math.e, -0.5 * (x_mu.T * inv_ * x_mu))
-            return norm_const * result
-        else:
-            raise NameError("The dimensions of the input don't match")
 
     def Estep_max(self, sub=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
@@ -216,6 +195,7 @@ class MixGaussianExp(EmissionModel):
             sub = range(self.Y.shape[0])
         LL = np.empty((self.Y.shape[0], self.K, self.P))
         uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
+        VV = np.dot(self.V.T, self.V)
         for i in sub:
             YV = np.dot(self.Y[i, :, :].T, self.V)
             # Importance sampling from p(s_i|y_i, u_i)
@@ -225,17 +205,21 @@ class MixGaussianExp(EmissionModel):
                 for p in range(self.P):
                     # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
                     # given y_i and u_i(k)
-                    x = np.sort(np.random.uniform(0, 5, 1000))
-                    loglike = - 0.5 * (1 / self.sigma2)*(-2*YV[p, k]*x + uVVu[k]*x**2) - self.beta*x
+                    x = np.sort(np.random.uniform(0, 10, 1000))
+                    loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
                     # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
-                    post = exp(loglike)/np.sum(exp(loglike))
+                    post = exp(loglike) / np.sum(exp(loglike))
                     self.s[i, k, p] = np.sum(x * post)
+                    self.s2[i, k, p] = np.sum(x ** 2 * post)
                     # plt.plot(x, post)
                 # plt.show()
 
             self.s[i][self.s[i] < 0] = 0  # set all to non-negative
-            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2*YV.T*self.s[i, :, :] + \
-                                self.s[i, :, :]**2 * uVVu.reshape((self.K, 1))
+            self.s2[i][self.s2[i] < 0] = 0  # set all to non-negative
+            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * self.s[i, :, :] + \
+                                self.s2[i, :, :] * uVVu.reshape((self.K, 1))
+            # self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, self.s[i, :, :])) + \
+            #                     np.dot(VV, self.s2[i, :, :])
             # the log likelihood for emission model (GMM in this case)
             LL[i, :, :] = -0.5 * self.N * (log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + log(self.beta) - self.beta * self.s[i, :, :]
@@ -257,23 +241,26 @@ class MixGaussianExp(EmissionModel):
         ERSS = np.zeros((self.num_subj, self.K, self.P))
         for i in range(self.num_subj):
             YV = np.dot(self.Y[i, :, :].T, self.V)
-            YUs = YUs + np.dot(self.Y[i, :, :], (U_hat[i, :, :]*self.s[i, :, :]).T)
+            YUs = YUs + np.dot(self.Y[i, :, :], (U_hat[i, :, :] * self.s[i, :, :]).T)
             US = US + U_hat[i, :, :] * self.s[i, :, :]
-            US2 = US2 + U_hat[i, :, :] * (self.s[i, :, :]**2)
+            US2 = US2 + U_hat[i, :, :] * self.s2[i, :, :]
             ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * U_hat[i, :, :] * self.s[i, :, :] + \
-                            U_hat[i, :, :] * (self.s[i, :, :]**2) * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+                            U_hat[i, :, :] * self.s2[i, :, :] * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+            # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
+            #                     np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
 
-        # 1. Updating the V
+        # 1. Updating the sigma squared.
+        # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
+        # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
+        # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
+
+        # 2. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
         self.V = YUs / np.sum(US2, axis=1)
 
-        # 2. Updating the sigma squared.
-        # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
-        #       U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
-        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
-
         # 3. Updating the beta (Since this is an exponential model)
-        self.beta = self.P*self.num_subj / np.sum(US)
+        self.beta = self.P * self.num_subj / np.sum(US)
 
     def sample(self, U):
         """ Generate random data given this emission model and parameters
