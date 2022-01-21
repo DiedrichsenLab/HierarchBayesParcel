@@ -326,11 +326,11 @@ class MixGaussianExp(EmissionModel):
         # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
         # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
         # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
-        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
+        self.V = YUs / np.sum(US2, axis=1)
 
         # 2. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
-        self.V = YUs / np.sum(US2, axis=1)
+        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
 
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P*self.num_subj / np.sum(US)

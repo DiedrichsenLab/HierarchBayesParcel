@@ -149,9 +149,9 @@ def _simulate_full_GME(K=5, P=1000, N=40, num_sub=10, max_iter=100):
     M = FullModel(arrangeM, emissionM)
     ll, theta = M.fit_em(iter=max_iter, tol=0.001)
     _plot_loglike(ll, loglike_true, color='b')
-    _plot_diff(theta_true[0:N], theta[:, 0:N], K, name='V')  # The mu changes
-    _plt_single_param_diff(theta_true[-4], theta[:, -4], name='sigma2')  # Sigma square
-    _plt_single_param_diff(theta_true[-2], theta[:, -2], name='beta')  # Alpha
+    _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')  # The mu changes
+    _plt_single_param_diff(theta_true[-3-K], theta[:, -3-K], name='sigma2')  # Sigma square
+    _plt_single_param_diff(theta_true[-1-K], theta[:, -1-K], name='beta')  # beta
     print('Done.')
 
 
@@ -187,4 +187,4 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
     # _simulate_full_GMM(K=5, P=1000, N=40, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=1, P=1000, N=20, num_sub=10, max_iter=200)
+    _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100)
