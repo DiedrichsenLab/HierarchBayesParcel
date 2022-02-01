@@ -461,7 +461,7 @@ def train_mRBM_on_mRBM(width=4,K=4,N=100):
     rbm,ll_train,ll_test1,ll_test2 = train_mRBM(Vtrain,Vtest,
                 nb_epoch=nb_epoch,
                 loss=loss,
-                alpha=0.01,
+                alpha=0.001,
                 nh=40,
                 part=part)
     # Get true log likelihood
