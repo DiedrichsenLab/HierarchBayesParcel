@@ -1,4 +1,5 @@
-# Example Models
+# Example Models - for full, closed form inference via junction tree algorithm 
+# Or loopy belief propagation
 import numpy as np
 from numpy import exp,sqrt,log
 import matplotlib.pyplot as plt
