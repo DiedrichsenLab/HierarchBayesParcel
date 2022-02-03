@@ -704,17 +704,17 @@ class PottsModelDuo(PottsModel):
             return np.c_[p1,p2]
 
 class mpRBM():
-    """multinomial (categorial) restricted Boltzman machine 
+    """multinomial (categorial) restricted Boltzman machine
     for probabilistic input for learning of brain parcellations
-    Outer nodes (U): 
-        The outer (most peripheral nodes) are 
-        categorical with K possible categories. 
-        There are three different representations: 
+    Outer nodes (U):
+        The outer (most peripheral nodes) are
+        categorical with K possible categories.
+        There are three different representations:
         a) N x nv: integers between 0 and K-1 (u)
-        b) N x K x nv : indicator variables or probabilities (U) 
-        c) N x (K * nv):  Vectorized version of b- with all nodes of category 1 first, etc, 
+        b) N x K x nv : indicator variables or probabilities (U)
+        c) N x (K * nv):  Vectorized version of b- with all nodes of category 1 first, etc,
         If not otherwise noted, we will use presentation b)
-    Hidden nodes (h): 
+    Hidden nodes (h):
         In this version we will use binary hidden nodes - so to get the same capacity as a mmRBM, one would need to set the number of hidden nodes to nh
     """
     def __init__(self, K, P, nh):
@@ -724,9 +724,9 @@ class mpRBM():
         self.W = pt.randn(nh,P*K)
         self.bh = pt.randn(nh)
         self.bu = pt.randn(P*K)
-    
+
     def expand_mn(self,u):
-        """Expands a N x P multinomial vector 
+        """Expands a N x P multinomial vector
         to an N x K x P tensor of indictor variables
         Args:
             u (2d-tensor): N x nv matrix of samples from [int]
@@ -741,7 +741,7 @@ class mpRBM():
 
     def compress_mn(self,U):
         """Compresses a N x K x P tensor of indictor variables
-        to a N x P multinomial tensor 
+        to a N x P multinomial tensor
         Args:
             U (3d-tensor): N x K x P matrix of indicator variables
         Returns
@@ -753,10 +753,10 @@ class mpRBM():
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
         Args:
-            U (NxKxP tensor): Indicator or probability tensor of outer layer 
+            U (NxKxP tensor): Indicator or probability tensor of outer layer
         Returns:
-            p_h: (N x nh tensor): probability of the hidden nodes 
-            sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes 
+            p_h: (N x nh tensor): probability of the hidden nodes
+            sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
         """
         wv = pt.mm(U.reshape(U.shape[0],-1), self.W.t())
         activation = wv + self.bh
@@ -766,8 +766,8 @@ class mpRBM():
 
     def sample_u(self, h):
         """ Returns a sampled u as a unpacked indicator variable
-        Args: 
-            h tensor: Hidden states 
+        Args:
+            h tensor: Hidden states
         Returns:
             p_u: Probability of each node [N,K,nv] array
             sample_v: One-hot encoding of random sample [N,K,nv] array
@@ -775,10 +775,10 @@ class mpRBM():
         N = h.shape[0]
         wh = pt.mm(h, self.W)
         activation = wh + self.bu
-        p_u = pt.softmax(activation.reshape(N,self.K,self.nv),1)
-        r = pt.empty(N,1,self.nv).uniform_(0,1)
+        p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
+        r = pt.empty(N,1,self.P).uniform_(0,1)
         cdf_v = p_u.cumsum(1)
-        sample_v = pt.tensor(r < cdf_v,dtype= pt.float32) 
+        sample_v = pt.tensor(r < cdf_v,dtype= pt.float32)
         for k in np.arange(self.K-1,0,-1):
             sample_v[:,k,:]-=sample_v[:,k-1,:]
         return p_u, sample_v
@@ -791,14 +791,14 @@ class mpRBM():
             iter (int): Number of iterations until burn in
         """
         p = pt.ones(self.K)
-        u = pt.multinomial(p,num_subj*self.nv,replacement=True)
-        u = u.reshape(num_subj,self.nv)
-        u = self.expand_mn(u)
+        u = pt.multinomial(p,num_subj*self.P,replacement=True)
+        u = u.reshape(num_subj,self.P)
+        U = self.expand_mn(u)
         for i in range (iter):
-            _,h = self.sample_h(u)
-            _,u = self.sample_v(h)
-        U = self.compress_mn(u)
-        return U,h
+            _,h = self.sample_h(U)
+            _,U = self.sample_v(h)
+        u = self.compress_mn(U)
+        return u,h
 
     def epos(self, U):
         """[summary]
@@ -808,57 +808,57 @@ class mpRBM():
         Returns:
             epos_Eh: expectation of hidden variables [N x nh]
         """
-        self.epos_v = U
+        self.epos_u = U
         N = U.shape[0]
         wv = pt.mm(U.reshape(N,-1), self.W.t())
         activation = wv + self.bh
         self.epos_Eh = pt.sigmoid(activation)
         return self.epos_Eh
 
-    def eneg_CDk(self,u,iter = 1,ph=None):
+    def eneg_CDk(self,U,iter = 1):
         for i in range(iter):
-            _,h = self.sample_h(u)
-            _,u = self.sample_v(h)
-        self.eneg_Eh ,_ = self.sample_h(u)
-        self.eneg_v = u
-        return self.eneg_v,self.eneg_Eh
+            _,h = self.sample_h(U)
+            _,U = self.sample_v(h)
+        self.eneg_Eh ,_ = self.sample_h(U)
+        self.eneg_U = U
+        return self.eneg_U,self.eneg_Eh
 
     def eneg_pCD(self,num_chains=None,iter=3):
-        if (self.eneg_v is None) or (self.eneg_v.shape[0]!=num_chains):
-            u = pt.empty(num_chains,self.nv).uniform_(0,1)
-            u = u>0.5
+        if (self.eneg_U is None) or (self.eneg_U.shape[0]!=num_chains):
+            U = pt.empty(num_chains,self.P).uniform_(0,1)
+            U = u>0.5
         else:
-            u= self.eneg_v
+            U = self.eneg_U
         for i in range(iter):
             _,h = self.sample_h(u)
-            _,u = self.sample_v(h)
+            _,U = self.sample_v(h)
         self.eneg_Eh ,_ = self.sample_h(u)
-        self.eneg_v = u
-        return self.eneg_v,self.eneg_Eh
+        self.eneg_U = U
+        return self.eneg_U,self.eneg_Eh
 
     def Mstep(self,alpha=0.8):
         N = self.epos_Eh.shape[0]
         M = self.eneg_Eh.shape[0]
-        epos_v=self.epos_v.reshape(N,-1)
-        eneg_v=self.eneg_v.reshape(M,-1)
-        self.W += alpha * (pt.mm(self.epos_Eh.t(),epos_v) - N / M * pt.mm(self.eneg_Eh.t(),eneg_v))
-        self.bu += alpha * (pt.sum(epos_v,0) - N / M * pt.sum(eneg_v,0))
+        epos_U=self.epos_U.reshape(N,-1)
+        eneg_U=self.eneg_U.reshape(M,-1)
+        self.W += alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
+        self.bu += alpha * (pt.sum(epos_U,0) - N / M * pt.sum(eneg_U,0))
         self.bh += alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
 
     def evaluate_test(self,U,hidden,lossfcn='abserr'):
-        """Evaluates a test data set, based on hidden nodes 
+        """Evaluates a test data set, based on hidden nodes
         Args:
             U (N,K,nv tensor): Indicator representaiton of visible data
             hidden (N,nh tensor): State of the hidden nodes
             lossfcn (str, optional): [description]. Defaults to 'abserr'.
 
         Returns:
-            loss: returns single evaluation criterion 
+            loss: returns single evaluation criterion
         """
         N = U.shape[0]
         wh = pt.mm(hidden, self.W)
         activation = wh + self.bu
-        p_u = pt.softmax(activation.reshape(N,self.K,self.nv),1)
+        p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
 
         if lossfcn=='abserr':
             loss = pt.sum(pt.abs(U-p_u))
@@ -867,7 +867,7 @@ class mpRBM():
         return loss
 
     def evaluate_completion(self,U,part,lossfcn='abserr'):
-        """Evaluates a new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach. 
+        """Evaluates a new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
 
         Args:
             U (N,K,nv tensor): Indicator representaiton of visible data
@@ -875,18 +875,18 @@ class mpRBM():
             lossfcn (str, optional): 'loglik' or 'abserr'.
 
         Returns:
-            loss: single evaluation criterion 
+            loss: single evaluation criterion
         """
         N = U.shape[0]
         num_part = part.max()+1
-        loss = pt.zeros(self.nv)
+        loss = pt.zeros(self.P)
         for k in range(num_part):
             ind = part==k
             V0 = pt.clone(U)
             V0[:,:,ind] = 0.5 # Agnostic input
             p_h = pt.sigmoid(pt.mm(V0.reshape(N,-1), self.W.t()) + self.bh)
             activation = pt.mm(p_h, self.W) + self.bu
-            p_u = pt.softmax(activation.reshape(N,self.K,self.nv),1)
+            p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
             if lossfcn=='abserr':
                 loss[ind] = pt.sum(pt.abs(U[:,:,ind] - p_u[:,:,ind]),dim=(0,1))
             elif lossfcn=='loglik':
@@ -894,7 +894,7 @@ class mpRBM():
         return pt.sum(loss)
 
     def evaluate_baseline(self,U,lossfcn='abserr'):
-        p_u =pt.mean(U,dim=(0,2),keepdim=True) # Overall mean 
+        p_u =pt.mean(U,dim=(0,2),keepdim=True) # Overall mean
         if lossfcn=='abserr':
             loss = pt.sum(pt.abs(U-p_u))
         elif lossfcn=='loglik':

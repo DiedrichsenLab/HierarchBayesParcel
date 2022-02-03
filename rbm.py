@@ -2,7 +2,7 @@ import torch as pt
 import numpy as np
 import spatial as sp
 import matplotlib.pyplot as plt
-import arrangements as ar 
+import arrangements as ar
 import emissions as em
 import full_model as fm
 
@@ -106,7 +106,7 @@ class RBM():
         return pt.sum(loss)
 
     def evaluate_baseline(self,v,lossfcn='abserr'):
-        p_v =pt.mean(v) # Overall mean 
+        p_v =pt.mean(v) # Overall mean
         if lossfcn=='abserr':
             loss = pt.sum(pt.abs(v-p_v))
         elif lossfcn=='loglik':
@@ -114,17 +114,17 @@ class RBM():
         return loss
 
 class mRBM():
-    """multinomial (categorial) restricted Boltzman machine 
+    """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations
-    Visible nodes: 
-        The visible (most peripheral nodes) are 
-        categorical with K possible categories. 
-        There are three different representations: 
+    Visible nodes:
+        The visible (most peripheral nodes) are
+        categorical with K possible categories.
+        There are three different representations:
         a) N x nv: integers between 0 and K-1
-        b) N x K x nv : indicator variables or probabilities 
-        c) N x (K * nv):  Vectorized version of b- with all nodes of category 1 first, etc, 
+        b) N x K x nv : indicator variables or probabilities
+        c) N x (K * nv):  Vectorized version of b- with all nodes of category 1 first, etc,
         If not otherwise noted, we will use presentation b)
-    Hidden nodes: 
+    Hidden nodes:
         In this version we will use binary hidden nodes - so to get the same capacity as a mmRBM, one would need to set the number of hidden nodes to nh
     """
     def __init__(self, nh, nv, K):
@@ -134,9 +134,9 @@ class mRBM():
         self.W = pt.randn(nh,nv*K)
         self.bh = pt.randn(nh)
         self.bv = pt.randn(nv*K)
-    
+
     def expand_mn(self,v):
-        """Expands a N x nv multinomial vector 
+        """Expands a N x nv multinomial vector
         to an N x K x nv tensor of indictor variables
         Args:
             v (2d-tensor): N x nv matrix of samples from [int]
@@ -150,7 +150,7 @@ class mRBM():
         return V
 
     def compress_mn(self,V):
-        """Expands a N x nv multinomial vector 
+        """Expands a N x nv multinomial vector
         to an N x K x nv tensor of indictor variables
         Args:
             V (3d-tensor): N x K x nv matrix of indicator variables
@@ -169,8 +169,8 @@ class mRBM():
 
     def sample_v(self, h):
         """ Returns a sampled v as a unpacked indicator variable
-        Args: 
-            h tensor: Hidden states 
+        Args:
+            h tensor: Hidden states
         Returns:
             p_v: Probability of each node [N,K,nv] array
             sample_v: One-hot encoding of random sample [N,K,nv] array
@@ -181,7 +181,7 @@ class mRBM():
         p_v = pt.softmax(activation.reshape(N,self.K,self.nv),1)
         r = pt.empty(N,1,self.nv).uniform_(0,1)
         cdf_v = p_v.cumsum(1)
-        sample_v = pt.tensor(r < cdf_v,dtype= pt.float32) 
+        sample_v = pt.tensor(r < cdf_v,dtype= pt.float32)
         for k in np.arange(self.K-1,0,-1):
             sample_v[:,k,:]-=sample_v[:,k-1,:]
         return p_v, sample_v
@@ -249,14 +249,14 @@ class mRBM():
         self.bh += alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
 
     def evaluate_test(self,V,hidden,lossfcn='abserr'):
-        """Evaluates a test data set, based on hidden nodes 
+        """Evaluates a test data set, based on hidden nodes
         Args:
             V (N,K,nv tensor): Indicator representaiton of visible data
             hidden (N,nh tensor): State of the hidden nodes
             lossfcn (str, optional): [description]. Defaults to 'abserr'.
 
         Returns:
-            loss: returns single evaluation criterion 
+            loss: returns single evaluation criterion
         """
         N = V.shape[0]
         wh = pt.mm(hidden, self.W)
@@ -270,7 +270,7 @@ class mRBM():
         return loss
 
     def evaluate_completion(self,V,part,lossfcn='abserr'):
-        """Evaluates a new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach. 
+        """Evaluates a new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
 
         Args:
             V (N,K,nv tensor): Indicator representaiton of visible data
@@ -278,7 +278,7 @@ class mRBM():
             lossfcn (str, optional): 'loglik' or 'abserr'.
 
         Returns:
-            loss: single evaluation criterion 
+            loss: single evaluation criterion
         """
         N = V.shape[0]
         num_part = part.max()+1
@@ -297,7 +297,7 @@ class mRBM():
         return pt.sum(loss)
 
     def evaluate_baseline(self,V,lossfcn='abserr'):
-        p_v =pt.mean(V,dim=(0,2),keepdim=True) # Overall mean 
+        p_v =pt.mean(V,dim=(0,2),keepdim=True) # Overall mean
         if lossfcn=='abserr':
             loss = pt.sum(pt.abs(V-p_v))
         elif lossfcn=='loglik':
@@ -415,8 +415,8 @@ def train_mRBM(Vtrain,Vtest,loss='abserr',
                 batch_size=50,
                 alpha=0.001,
                 part=None):
-    """Train multivariate restricted Boltzman machine 
-    on observed categorial data  
+    """Train multivariate restricted Boltzman machine
+    on observed categorial data
 
     Args:
         Vtrain ([type]): [description]
@@ -450,7 +450,7 @@ def train_mRBM(Vtrain,Vtest,loss='abserr',
 
 def train_mRBM_on_mRBM(width=4,K=4,N=100):
     loss = 'abserr'
-    nb_epoch = 20 
+    nb_epoch = 20
     rbm_t = mRBM_grid(K=4,nh=40,width=width,type='random')
     vtrain, hidden = rbm_t.sample(N,iter=100)
     Vtrain = rbm_t.expand_mn(vtrain)
@@ -483,48 +483,6 @@ def train_mRBM_on_mRBM(width=4,K=4,N=100):
     plt.axhline(y=ll_base_test,color='b',ls=':',label='baseline test')
     plt.legend()
     pass
-
-def train_mRBM_on_MRF(width=10,K=5,N=200,theta_mu=1,theta_w=2,sigma2=0.5): 
-    # Step 1: Create the true model
-    grid = sp.SpatialGrid(width=width,height=width)
-    arrangeT = ar.PottsModel(grid.W, K=K)
-    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
-
-    # Step 2: Initialize the parameters of the true model
-    arrangeT.random_smooth_pi(grid.Dist,theta_mu=theta_mu)
-    arrangeT.theta_w = theta_w
-    emissionT.random_params()
-    emissionT.sigma2=sigma2
-    MT = fm.FullModel(arrangeT,emissionT)
- 
-    # Step 3: Plot the prior of the true mode
-    plt.figure(figsize=(7,4))
-    grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
-    cluster = np.argmax(arrangeT.logpi,axis=0)
-    grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
-
-    # Step 4: Generate data by sampling from the above model
-    U = MT.arrange.sample(num_subj=N,burnin=19)
-    U = MT.arrangeT.sample(num_subj=10)
-
-    # Plot sampling path for visualization purposes
-    # plt.figure(figsize=(10,4))
-    # grid.plot_maps(Uhist[:,0,:],cmap='tab10',vmax=9)
-    # Plot all the subjects
-    plt.figure(figsize=(10,4))
-    grid.plot_maps(U[0:10],cmap='tab10',vmax=9,grid=[2,5])
-
-    # Step 5: Generate new models for fitting
-    num_part = 4
-    p=pt.ones(num_part)/num_part
-    part = pt.multinomial(p,arrangeT.P,replacement=True)
-    rbm,ll_train,ll_test1,ll_test2 = train_mRBM(Vtrain,Vtest,
-                nb_epoch=nb_epoch,
-                loss=loss,
-                alpha=0.01,
-                nh=40,
-                part=part)
-
 
 
 if __name__ == '__main__':

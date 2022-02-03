@@ -51,7 +51,7 @@ class MixGaussian(EmissionModel):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V','sigma2'])
-        if params is not None: 
+        if params is not None:
             self.set_params(params)
 
     def initialize(self, data):
@@ -75,13 +75,14 @@ class MixGaussian(EmissionModel):
         self.V = V / sqrt(np.sum(V**2, axis=0))
         self.sigma2 = exp(np.random.normal(0, 0.3))
 
-    def Estep(self, sub=None):
+    def Estep(self, Y = None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
-        :param Y: the real data
-        :param sub: specify which subject to optimize
-        :return: the expected log likelihood for emission model, shape (nSubject * K * P)
+        specify which subject to optimize
+        return: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
+        if Y is not None:
+            self.initialize(Y)
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = np.empty((self.Y.shape[0], self.K, self.P))
@@ -134,7 +135,7 @@ class MixGaussianExp(EmissionModel):
         super().__init__(K, N, P, data, params)
         self.random_params()
         self.set_param_list(['V','sigma2','alpha','beta'])
-        if params is not None: 
+        if params is not None:
             self.set_params(params)
 
     def initialize(self, data):
@@ -161,7 +162,7 @@ class MixGaussianExp(EmissionModel):
         self.alpha = 1
         self.beta = 1
 
-    # REmove this one here: 
+    # REmove this one here:
     def _norm_pdf_multivariate(self, x, mu, sigma):
         """ pdf function for multivariate normal distribution
         Note: X and mu are assumed to be column vector
@@ -183,13 +184,15 @@ class MixGaussianExp(EmissionModel):
         else:
             raise NameError("The dimensions of the input don't match")
 
-    def Estep_max(self, sub=None):
+    def Estep_max(self, Y=None, sub=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         :param Y: the real data
         :param sub: specify which subject to optimize
         :return: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
+        if Y is not None:
+            self.initalize(Y)
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = np.empty((self.Y.shape[0], self.K, self.P))
@@ -302,7 +305,7 @@ class MixVMF(EmissionModel):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V','kappa'])
-        if params is not None: 
+        if params is not None:
             self.set_params(params)
 
     def initialize(self, data):
