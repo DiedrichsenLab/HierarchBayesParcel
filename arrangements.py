@@ -808,7 +808,7 @@ class mpRBM():
         Returns:
             epos_Eh: expectation of hidden variables [N x nh]
         """
-        self.epos_u = U
+        self.epos_U = U
         N = U.shape[0]
         wv = pt.mm(U.reshape(N,-1), self.W.t())
         activation = wv + self.bh
@@ -818,7 +818,7 @@ class mpRBM():
     def eneg_CDk(self,U,iter = 1):
         for i in range(iter):
             _,h = self.sample_h(U)
-            _,U = self.sample_v(h)
+            _,U = self.sample_u(h)
         self.eneg_Eh ,_ = self.sample_h(U)
         self.eneg_U = U
         return self.eneg_U,self.eneg_Eh

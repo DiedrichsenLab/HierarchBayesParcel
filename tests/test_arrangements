@@ -10,7 +10,7 @@ import full_model as fm
 import spatial as sp
 
 def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
-                    n_hidden = 100,n_epoch=20, batch_size=20,alpha=1):
+                    n_hidden = 100,n_epoch=20, batch_size=20,alpha=0.01):
     """Fits and RBM to observed activiy data, given a smooth true arrangement (mrf)
     Current version keeps the emission model stable and known
 
@@ -86,13 +86,14 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
         uerr_test2[epoch]= rbm.evaluate_completion(Utest,part,lossfcn=lossU)
         print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}, Test2: {uerr_test2[epoch]:.1f}')
 
-        for b in range(0,N-batch_size,batch_size):
+        for b in range(0,N-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
             rbm.epos(Utrain[ind,:,:])
             u,Eh=rbm.eneg_CDk(Utrain[ind,:,:],iter=1)
             rbm.Mstep(alpha=alpha)
 
     t=np.arange(0,n_epoch)
+    plt.figure(figsize=(6,4))
     plt.plot(t,uerr_train,'k--',label='training')
     plt.plot(t,uerr_test1,'r',label='test1')
     plt.plot(t,uerr_test2,'r:',label='test2')
