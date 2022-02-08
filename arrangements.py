@@ -115,7 +115,7 @@ class ArrangeIndependent(ArrangementModel):
         pi = np.mean(Uhat, axis=0)  # Averarging over subjects
         if not self.spatial_specific:
             pi = pi.mean(axis=1).reshape(-1, 1)
-        self.logpi = log(pi)
+        # self.logpi = log(pi)
 
     def sample(self, num_subj=10):
         """

@@ -64,6 +64,7 @@ class MixGaussian(EmissionModel):
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         super(MixGaussian, self).__init__(K, N, P, data, params)
         self.nparams = self.N * self.K + 1
+        self.name = "GMM"
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -183,6 +184,7 @@ class MixGaussianExp(EmissionModel):
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
         super(MixGaussianExp, self).__init__(K, N, P, data, params)
         self.nparams = self.N * self.K + 3  # V shape is (N, K) + sigma2 + alpha + beta
+        self.name = "GMM_exp"
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -277,6 +279,7 @@ class MixGaussianExp(EmissionModel):
                     # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
                     # given y_i and u_i(k)
                     x = np.sort(np.random.uniform(0, 10, 1000))
+                    # x = np.sort(np.random.exponential(1, 1000))
                     loglike = - 0.5 * (1 / self.sigma2)*(-2*YV[p, k]*x + uVVu[k]*x**2) - self.beta*x
                     # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                     post = exp(loglike)/np.sum(exp(loglike))
@@ -322,20 +325,20 @@ class MixGaussianExp(EmissionModel):
             # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
             #                     np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
 
-        # 1. Updating the sigma squared.
+        # 1. Updating the V
         # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
         # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
         # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
         self.V = YUs / np.sum(US2, axis=1)
 
-        # 2. Updating the V
+        # 2. Updating the sigma squared.
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
         self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
 
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P*self.num_subj / np.sum(US)
 
-    def sample(self, U):
+    def sample(self, U, signal=None):
         """ Generate random data given this emission model and parameters
 
         Args:
@@ -347,10 +350,16 @@ class MixGaussianExp(EmissionModel):
         """
         num_subj = U.shape[0]
         Y = np.empty((num_subj, self.N, self.P))
-        signal = np.empty((num_subj, self.P))
+        if signal is not None:
+            signal = signal
+            np.testing.assert_equal(signal.shape, (num_subj, self.P),
+                                    err_msg='The given signal must with a shape of (num_subj, P)')
+        else:
+            signal = np.random.exponential(self.beta, (num_subj, self.P))
+
         for s in range(num_subj):
             # Draw the signal strength for each node from a Gamma distribution
-            signal[s, :] = np.random.exponential(self.beta, (self.P,))
+            # signal[s, :] = np.random.gamma(self.alpha, self.beta, (self.P,))
             Y[s, :, :] = self.V[:, U[s, :].astype('int')] * signal[s, :]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
@@ -390,6 +399,7 @@ class MixVMF(EmissionModel):
         self.uniform = uniform
         super(MixVMF, self).__init__(K, N, P, data, params)
         self.nparams = self.N * self.K + self.K
+        self.name = "VMF"
 
     def initialize(self, data):
         """ Calculates the sufficient stats on the data that does not depend on U,
@@ -580,3 +590,257 @@ class MixVMF(EmissionModel):
             LL[i, :, :] = (logCnK + self.kappa * YV).T
 
         return LL
+
+
+class MixGaussianGamma(EmissionModel):
+    """
+    Mixture of Gaussians with signal strength (fit gamma distribution)
+    for each voxel. Scaling factor on the signal and a fixed noise variance
+    """
+    def __init__(self, K=4, N=10, P=20, data=None, params=None):
+        super().__init__(K, N, P, data, params)
+        self.nparams = self.N * self.K + 3  # V shape is (N, K) + sigma2 + alpha + beta
+        self.name = "GMM_gamma"
+
+    def initialize(self, data):
+        """Stores the data in emission model itself
+        Calculates sufficient stats on the data that does not depend on u,
+        and allocates memory for the sufficient stats that does.
+        """
+        super().initialize(data)
+        self.YY = self.Y ** 2
+        self.s = np.empty((self.num_subj, self.K, self.P))
+        self.s2 = np.empty((self.num_subj, self.K, self.P))
+        self.rss = np.empty((self.num_subj, self.K, self.P))
+        self.logs = np.empty((self.num_subj, self.K, self.P))
+
+    def get_params(self):
+        """ Get the parameters for the Gaussian mixture model
+
+        :return: the parcel-specific mean and uniformed sigma square, alpha, and beta
+        """
+        np.testing.assert_array_equal(self.K, self.V.shape[1])
+        return np.append(self.V.flatten('F'), (self.sigma2, self.alpha, self.beta))
+
+    def set_params(self, theta):
+        """ Set the model parameters by the given input thetas
+
+        :param theta: input parameters by fixed order
+                      N*K Vs + sigma2 + alpha + beta
+        :return: None
+        """
+        self.V = theta[0]
+        self.sigma2 = theta[1]
+        self.alpha = theta[2]
+        self.beta = theta[3]
+
+    def random_params(self):
+        """ In this mixture gaussians, the parameters are parcel-specific mean V_k
+            and variance. Here, we assume the variance is equal across different parcels.
+            Therefore, there are total k+1 parameters in this mixture model
+            set the initial random parameters for gaussian mixture
+        """
+        V = np.random.normal(0, 1, (self.N, self.K))
+        # standardise V to unit length
+        V = V - V.mean(axis=0)
+        self.V = V / sqrt(np.sum(V**2, axis=0))
+        self.sigma2 = exp(np.random.normal(0, 0.3))
+        self.alpha = 1
+        self.beta = 1
+
+
+    def Estep(self, sub=None):
+        """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
+            Collects the sufficient statistics for the M-step
+
+        Args:
+            sub: specify which subject to optimize
+
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        """
+        if sub is None:
+            sub = range(self.Y.shape[0])
+        LL = np.empty((self.Y.shape[0], self.K, self.P))
+        uVVu = np.sum(self.V ** 2, axis=0) # This is u.T V.T V u for each u
+        VV = np.dot(self.V.T, self.V)
+        for i in sub:
+            YV = np.dot(self.Y[i, :, :].T, self.V)
+            # Importance sampling from p(s_i|y_i, u_i)
+            # First try sample from uniformed distribution
+            # plt.figure()
+            for k in range(self.K):
+                for p in range(self.P):
+                    # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
+                    # given y_i and u_i(k)
+                    x = np.sort(np.random.uniform(0, 10, 1000))
+                    loglike = - 0.5 * (1 / self.sigma2)*(-2*YV[p, k]*x + uVVu[k]*x**2) + \
+                              (self.alpha-1)*log(x) - self.beta*x
+                    # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+                    post = exp(loglike)/np.sum(exp(loglike))
+                    self.s[i, k, p] = np.sum(x * post)
+                    self.s2[i, k, p] = np.sum(x**2 * post)
+                    self.logs[i, k, p] = np.sum(log(x) * post)
+                    # plt.plot(x, post)
+                # plt.show()
+
+            self.s[i][self.s[i] < 0] = 0  # set all to non-negative
+            self.s2[i][self.s2[i] < 0] = 0  # set all to non-negative
+            self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * self.s[i, :, :] + \
+                                self.s2[i, :, :] * uVVu.reshape((self.K, 1))
+            # self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, self.s[i, :, :])) + \
+            #                     np.dot(VV, self.s2[i, :, :])
+
+            # the log likelihood for emission model (GMM + Gamma in this case)
+            LL[i, :, :] = -0.5*self.N*(log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+                          + self.alpha*log(self.beta) - log(special.gamma(self.alpha)) + (self.alpha-1) * self.logs[i, :, :] - self.beta * self.s[i, :, :]
+
+        return LL
+
+    def Mstep(self, U_hat):
+        """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
+            In this emission model, the parameters need to be updated
+            are V, sigma2, alpha, and beta
+        Args:
+            U_hat: The expected emission log likelihood
+
+        Returns: Update all model parameters, self attributes
+
+        """
+        # SU = self.s * U_hat
+        YUs = np.zeros((self.N, self.K))
+        US = np.zeros((self.K, self.P))
+        US2 = np.zeros((self.K, self.P))
+        UlogS = np.zeros((self.K, self.P))
+        ERSS = np.zeros((self.num_subj, self.K, self.P))
+        for i in range(self.num_subj):
+            YV = np.dot(self.Y[i, :, :].T, self.V)
+            YUs = YUs + np.dot(self.Y[i, :, :], (U_hat[i, :, :]*self.s[i, :, :]).T)
+            US = US + U_hat[i, :, :] * self.s[i, :, :]
+            US2 = US2 + U_hat[i, :, :] * self.s2[i, :, :]
+            UlogS = UlogS + U_hat[i, :, :] * self.logs[i, :, :]
+            ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - 2 * YV.T * U_hat[i, :, :] * self.s[i, :, :] + \
+                            U_hat[i, :, :] * self.s2[i, :, :] * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+            # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
+            #                     np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
+
+        # 1. Updating the V
+        # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
+        # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
+        # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
+        self.V = YUs / np.sum(US2, axis=1)
+
+        # 2. Updating the sigma squared.
+        # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
+        self.sigma2 = np.sum(ERSS) / (self.N * self.P * self.num_subj)
+
+        # 3. Updating the alpha
+        self.alpha = 0.5 / (log(np.sum(US)/(self.num_subj*self.P)) - np.sum(UlogS) / (self.num_subj*self.P))
+        # self.alpha = self.alpha / self.beta  # first moment
+
+        # 4. Updating the beta
+        self.beta = (self.P*self.num_subj*self.alpha) / np.sum(US)
+        # self.beta = (self.alpha+1)*self.alpha / self.beta**2  # second moment
+
+    def sample(self, U, signal=None):
+        """ Generate random data given this emission model and parameters
+
+        Args:
+            U: The prior arrangement U from the arrangement model
+            V: Given the initial V. If None, then randomly generate
+
+        Returns: Sampled data Y
+
+        """
+        num_subj = U.shape[0]
+        Y = np.empty((num_subj, self.N, self.P))
+        if signal is not None:
+            signal = signal
+            np.testing.assert_equal(signal.shape, (num_subj, self.P),
+                                    err_msg='The given signal must with a shape of (num_subj, P)')
+        else:
+            signal = np.random.gamma(self.alpha, self.beta, (num_subj, self.P))
+
+        for s in range(num_subj):
+            # Draw the signal strength for each node from a Gamma distribution
+            # signal[s, :] = np.random.gamma(self.alpha, self.beta, (self.P,))
+            Y[s, :, :] = self.V[:, U[s, :].astype('int')] * signal[s, :]
+            # And add noise of variance 1
+            Y[s, :, :] = Y[s, :, :] + np.random.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
+        return Y, signal
+
+    def _loglikelihood(self, Y, signal, sub=None):
+        """ Compute the log likelihood given current parameters in the model
+
+        Returns: The current log likelihood
+        """
+        if sub is None:
+            sub = range(Y.shape[0])
+        LL = np.empty((Y.shape[0], self.K, self.P))
+        rss = np.empty((Y.shape[0], self.K, self.P))
+        uVVu = np.sum(self.V ** 2, axis=0)  # This is u.T V.T V u for each u
+        VV = np.dot(self.V.T, self.V)
+        for i in sub:
+            YV = np.dot(Y[i, :, :].T, self.V)
+            YY = Y**2
+
+            rss[i, :, :] = np.sum(YY[i, :, :], axis=0) - 2*YV.T*signal[i, :] + \
+                                signal[i, :]**2 * uVVu.reshape((self.K, 1))
+            # rss[i, :, :] = np.sum(YY[i, :, :], axis=0) - np.diag(np.dot(2 * YV, signal[i, :])) + \
+            #                np.dot(VV, signal[i, :]**2)
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5 * self.N * (log(2 * np.pi) + log(self.sigma2)) - 0.5 * (1 / self.sigma2) * rss[i, :, :] \
+                          + self.alpha*log(self.beta) - log(special.gamma(self.alpha)) + (self.alpha-1)*log(signal[i, :]) - self.beta * signal[i, :]
+
+        return LL
+
+
+def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
+    """Calculate the adjusted squared error for goodness of model fitting
+
+    Args:
+        data: the real mean-centered data, shape (n_subject, n_conditions, n_locations)
+        prediction: the predicted mu with shape (n_conditions, n_clusters)
+        U_hat: the probability of brain location i belongs to cluster k
+        adjusted: True - if calculate adjusted SSE; Otherwise, normal SSE
+        soft_assign: True - expected U over all k clusters; False - if take the argmax
+                     from the k probability
+
+    Returns:
+        The adjusted SSE
+    """
+    # Step 1: mean-centering the real data and the predicted mu
+    data = np.apply_along_axis(lambda x: x - np.mean(x), 1, data)
+    prediction = np.apply_along_axis(lambda x: x - np.mean(x), 0, prediction)
+
+    # Step 2: get axis information from raw data
+    n_sub, N, P = data.shape
+    K = prediction.shape[1]
+    sse = np.empty((n_sub, K, P))  # shape [nSubject, K, P]
+
+    # Step 3: if soft_assign is True, which means we will calculate the complete
+    # expected SSE for each brain location; Otherwise, we calculate the error only to
+    # the prediction that has the maximum probability argmax(p(u_i = k))
+    if not soft_assign:
+        out = np.zeros(U_hat.shape)
+        idx = U_hat.argmax(axis=1)
+        out[np.arange(U_hat.shape[0])[:, None], idx, np.arange(U_hat.shape[2])] = 1
+        U_hat = out
+
+    # Step 4: if adjusted is True, we calculate the adjusted SSE; Otherwise normal SSE
+    if adjusted:
+        mag = np.sqrt(np.sum(data[:, :, :] ** 2, axis=1))
+        mag = np.repeat(mag[:, np.newaxis, :], K, axis=1)
+    else:
+        mag = np.ones(sse.shape)
+
+    # Do real SSE calculation SSE = \sum_i\sum_k p(u_i=k)(y_real - y_predicted)^2
+    YY = data**2
+    uVVu = np.sum(prediction**2, axis=0)
+    for i in range(n_sub):
+        YV = np.dot(data[i, :, :].T, prediction)
+        sse[i, :, :] = np.sum(YY[i, :, :], axis=0) - 2*YV.T + uVVu.reshape((K, 1))
+        sse[i, :, :] = sse[i, :, :] * mag[i, :, :]
+
+    return np.sum(U_hat * sse)/(n_sub * P)
+
