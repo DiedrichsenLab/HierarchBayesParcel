@@ -724,6 +724,7 @@ class mpRBM():
         self.W = pt.randn(nh,P*K)
         self.bh = pt.randn(nh)
         self.bu = pt.randn(P*K)
+        self.eneg_U = None
 
     def expand_mn(self,u):
         """Expands a N x P multinomial vector
@@ -764,13 +765,13 @@ class mpRBM():
         sample_h = pt.bernoulli(p_h)
         return p_h, sample_h
 
-    def sample_u(self, h):
-        """ Returns a sampled u as a unpacked indicator variable
+    def sample_U(self, h):
+        """ Returns a sampled U as a unpacked indicator variable
         Args:
             h tensor: Hidden states
         Returns:
             p_u: Probability of each node [N,K,nv] array
-            sample_v: One-hot encoding of random sample [N,K,nv] array
+            sample_U: One-hot encoding of random sample [N,K,nv] array
         """
         N = h.shape[0]
         wh = pt.mm(h, self.W)
@@ -778,10 +779,10 @@ class mpRBM():
         p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
         r = pt.empty(N,1,self.P).uniform_(0,1)
         cdf_v = p_u.cumsum(1)
-        sample_v = pt.tensor(r < cdf_v,dtype= pt.float32)
+        sample = pt.tensor(r < cdf_v,dtype= pt.float32)
         for k in np.arange(self.K-1,0,-1):
-            sample_v[:,k,:]-=sample_v[:,k-1,:]
-        return p_u, sample_v
+            sample[:,k,:]-=sample[:,k-1,:]
+        return p_u, sample
 
     def sample(self,num_subj,iter=5):
         """Draw new subjects from the model
@@ -804,7 +805,7 @@ class mpRBM():
         """[summary]
 
         Args:
-            U : indicator-based input data [N,K,nv]
+            U : probability of input units [N,K,nv]
         Returns:
             epos_Eh: expectation of hidden variables [N x nh]
         """
@@ -818,21 +819,20 @@ class mpRBM():
     def eneg_CDk(self,U,iter = 1):
         for i in range(iter):
             _,h = self.sample_h(U)
-            _,U = self.sample_u(h)
+            _,U = self.sample_U(h)
         self.eneg_Eh ,_ = self.sample_h(U)
         self.eneg_U = U
         return self.eneg_U,self.eneg_Eh
 
     def eneg_pCD(self,num_chains=None,iter=3):
-        if (self.eneg_U is None) or (self.eneg_U.shape[0]!=num_chains):
-            U = pt.empty(num_chains,self.P).uniform_(0,1)
-            U = u>0.5
+        if (self.eneg_U is None):
+            U = pt.empty(num_chains,self.K,self.P).uniform_(0,1)
         else:
             U = self.eneg_U
         for i in range(iter):
-            _,h = self.sample_h(u)
-            _,U = self.sample_v(h)
-        self.eneg_Eh ,_ = self.sample_h(u)
+            _,h = self.sample_h(U)
+            _,U = self.sample_U(h)
+        self.eneg_Eh ,_ = self.sample_h(U)
         self.eneg_U = U
         return self.eneg_U,self.eneg_Eh
 
@@ -845,16 +845,44 @@ class mpRBM():
         self.bu += alpha * (pt.sum(epos_U,0) - N / M * pt.sum(eneg_U,0))
         self.bh += alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
 
-    def evaluate_test(self,U,hidden,lossfcn='abserr'):
+    def evaluate_train(self,emloglik,lossfcn='abserr'):
         """Evaluates a test data set, based on hidden nodes
         Args:
-            U (N,K,nv tensor): Indicator representaiton of visible data
+            emloglik (N,K,P tensor): log-likelihood of visible data
             hidden (N,nh tensor): State of the hidden nodes
             lossfcn (str, optional): [description]. Defaults to 'abserr'.
 
         Returns:
             loss: returns single evaluation criterion
         """
+        if type(emloglik) is np.ndarray: 
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        U = pt.softmax(emloglik,dim=1)
+        N = U.shape[0]
+
+        p_u = self.eneg_U.mean(dim=0)
+
+        if lossfcn=='abserr':
+            loss = pt.sum(pt.abs(U-p_u))
+        elif lossfcn=='loglik':
+            loss = pt.sum(U * pt.log(p_u))
+        elif lossfcn=='logpy': 
+             loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
+        return loss
+
+    def evaluate_test(self,emloglik,hidden,lossfcn='abserr'):
+        """Evaluates a test data set, based on hidden nodes
+        Args:
+            emloglik (N,K,P tensor): log-likelihood of visible data
+            hidden (N,nh tensor): State of the hidden nodes
+            lossfcn (str, optional): [description]. Defaults to 'abserr'.
+
+        Returns:
+            loss: returns single evaluation criterion
+        """
+        if type(emloglik) is np.ndarray: 
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        U = pt.softmax(emloglik,dim=1)
         N = U.shape[0]
         wh = pt.mm(hidden, self.W)
         activation = wh + self.bu
@@ -863,20 +891,25 @@ class mpRBM():
         if lossfcn=='abserr':
             loss = pt.sum(pt.abs(U-p_u))
         elif lossfcn=='loglik':
-            loss = pt.sum(U * pt.log(p_u) + (1-U) * pt.log(1-p_u))
+            loss = pt.sum(U * pt.log(p_u))
+        elif lossfcn=='logpy': 
+             loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
         return loss
 
-    def evaluate_completion(self,U,part,lossfcn='abserr'):
+    def evaluate_completion(self,emloglik,part,lossfcn='abserr'):
         """Evaluates a new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
 
         Args:
-            U (N,K,nv tensor): Indicator representaiton of visible data
+            U (N,K,nv tensor): loglik of visible data
             part (nv int tensor): determines the partition indentity of node
             lossfcn (str, optional): 'loglik' or 'abserr'.
 
         Returns:
             loss: single evaluation criterion
         """
+        if type(emloglik) is np.ndarray: 
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        U = pt.softmax(emloglik,dim=1)
         N = U.shape[0]
         num_part = part.max()+1
         loss = pt.zeros(self.P)
@@ -891,14 +924,19 @@ class mpRBM():
                 loss[ind] = pt.sum(pt.abs(U[:,:,ind] - p_u[:,:,ind]),dim=(0,1))
             elif lossfcn=='loglik':
                 loss[ind] = pt.sum(U[:,:,ind] * pt.log(p_u[:,:,ind]) + (1-U[:,:,ind]) * pt.log(1-p_u[:,:,ind]),dim=(0,1))
+            elif lossfcn=='logpy':
+                loss[ind] = pt.sum(pt.log(pt.sum(pt.exp(emloglik[:,:,ind]) * p_u[:,:,ind],dim=1)),dim=0)
         return pt.sum(loss)
 
-    def evaluate_baseline(self,U,lossfcn='abserr'):
+    def evaluate_baseline(self,emloglik,lossfcn='abserr'):
+        U=pt.softmax(emloglik,0)
         p_u =pt.mean(U,dim=(0,2),keepdim=True) # Overall mean
         if lossfcn=='abserr':
             loss = pt.sum(pt.abs(U-p_u))
         elif lossfcn=='loglik':
             loss = pt.sum(U * pt.log(p_u) + (1-U) * pt.log(1-p_u))
+        elif lossfcn=='logpy':
+             loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
         return loss
 
 

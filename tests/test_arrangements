@@ -8,9 +8,80 @@ import arrangements as ar
 import emissions as em
 import full_model as fm
 import spatial as sp
+import copy
+
+def train_rbm_cdk(rbm,emlog_train,emlog_test,part,lossU='logpy',
+             n_epoch=20,batch_size=20,alpha=0.01):
+    N = emlog_train.shape[0]
+    emlog_train=pt.tensor(emlog_train,dtype=pt.get_default_dtype())
+    emlog_test=pt.tensor(emlog_test,dtype=pt.get_default_dtype())
+    Utrain=pt.softmax(emlog_train,dim=1)
+    uerr_train = np.zeros(n_epoch)
+    uerr_test1 = np.zeros(n_epoch)
+    uerr_test2 = np.zeros(n_epoch)
+    for epoch in range(n_epoch):
+        # Get test error
+        Eh = rbm.epos(Utrain)
+        rbm.eneg_CDk(Utrain,iter=20) # Necessary only for uerr_train
+        uerr_train[epoch] = rbm.evaluate_train(emlog_train,lossfcn=lossU)
+        uerr_test1[epoch]= rbm.evaluate_test(emlog_test,Eh,lossfcn=lossU)
+        uerr_test2[epoch]= rbm.evaluate_completion(emlog_test,part,lossfcn=lossU)
+        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}, Test2: {uerr_test2[epoch]:.1f}')
+
+        for b in range(0,N-batch_size+1,batch_size):
+            ind = range(b,b+batch_size)
+            rbm.epos(Utrain[ind,:,:])
+            u,Eh=rbm.eneg_CDk(Utrain[ind,:,:],iter=1)
+            rbm.Mstep(alpha=alpha)
+    return rbm,uerr_train,uerr_test1,uerr_test2
+
+def train_rbm_pcd(rbm,emlog_train,emlog_test,part,lossU='logpy',
+             n_epoch=20,batch_size=20,num_chains=77,iter=2,alpha=0.01):
+    N = emlog_train.shape[0]
+    emlog_train=pt.tensor(emlog_train,dtype=pt.get_default_dtype())
+    emlog_test=pt.tensor(emlog_test,dtype=pt.get_default_dtype())
+    Utrain=pt.softmax(emlog_train,dim=1)
+    uerr_train = np.zeros(n_epoch)
+    uerr_test1 = np.zeros(n_epoch)
+    uerr_test2 = np.zeros(n_epoch)
+    # Intialize negative sampling
+    rbm.eneg_pCD(num_chains=num_chains,iter=20)
+    for epoch in range(n_epoch):
+        # Get test error
+        Eh = rbm.epos(Utrain)
+        uerr_train[epoch] = rbm.evaluate_train(emlog_train,lossfcn=lossU)
+        uerr_test1[epoch]= rbm.evaluate_test(emlog_test,Eh,lossfcn=lossU)
+        uerr_test2[epoch]= rbm.evaluate_completion(emlog_test,part,lossfcn=lossU)
+        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}, Test2: {uerr_test2[epoch]:.1f}')
+
+        for b in range(0,N-batch_size+1,batch_size):
+            ind = range(b,b+batch_size)
+            rbm.epos(Utrain[ind,:,:])
+            U,Eh=rbm.eneg_pCD(iter=2)
+            rbm.Mstep(alpha=alpha)
+    return rbm,uerr_train,uerr_test1,uerr_test2
+
+
+def train_ind(indepAr,emlog_train,emlog_test,lossU='logpy',n_epoch=20):
+    uerr_train = np.zeros(n_epoch)
+    uerr_test1 = np.zeros(n_epoch)
+    
+    for epoch in range(n_epoch): 
+        Uh,ll = indepAr.Estep(emlog_train)
+        if lossU == 'logpy': 
+            pi = ar.loglik2prob(indepAr.logpi)
+            uerr_train[epoch] = np.sum(np.log(np.sum(np.exp(emlog_train)*pi,axis=1)))
+            uerr_test1[epoch] = np.sum(np.log(np.sum(np.exp(emlog_test)*Uh,axis=1)))
+            
+        print(f'epoch {epoch:2d}, ll: {ll.sum():.1f}, Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}')
+        indepAr.Mstep()
+    pass
+    return indepAr, uerr_train, uerr_test1
+
+
 
 def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
-                    n_hidden = 100,n_epoch=20, batch_size=20,alpha=0.01):
+                    n_hidden = 30,n_epoch=20, batch_size=20,alpha=0.01):
     """Fits and RBM to observed activiy data, given a smooth true arrangement (mrf)
     Current version keeps the emission model stable and known
 
@@ -29,8 +100,7 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
         [type]: [description]
     """
 
-    lossU = 'abserr'
-    lossY = 'sqerr'
+    lossU = 'logpy'
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width,height=width)
     arrangeT = ar.PottsModel(grid.W, K=K)
@@ -45,10 +115,10 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     MT = fm.FullModel(arrangeT,emissionT)
 
     # Step 3: Plot the prior of the true mode
-    plt.figure(figsize=(7,4))
-    grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
-    cluster = np.argmax(arrangeT.logpi,axis=0)
-    grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
+    # plt.figure(figsize=(7,4))
+    # grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
+    # cluster = np.argmax(arrangeT.logpi,axis=0)
+    # grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
 
     # Step 4: Generate data by sampling from the above model
     U = MT.arrange.sample(num_subj=N,burnin=19) # These are the subjects
@@ -64,43 +134,40 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     p=pt.ones(num_part)/num_part
     part = pt.multinomial(p,arrangeT.P,replacement=True)
 
-    # Make the model for fittinh
+    # Make two versions of the model for fitting
     rbm = ar.mpRBM(K=K,P=P,nh=n_hidden)
-    yerr_train = np.zeros(n_epoch)
-    yerr_test1 = np.zeros(n_epoch)
-    yerr_test2 = np.zeros(n_epoch)
-    uerr_train = np.zeros(n_epoch)
-    uerr_test1 = np.zeros(n_epoch)
-    uerr_test2 = np.zeros(n_epoch)
+    rbm2 = copy.deepcopy(rbm)
 
-    emloglik_train = pt.tensor(MT.emission.Estep(Y=Ytrain),dtype=pt.get_default_dtype())
-    emloglik_test = pt.tensor(MT.emission.Estep(Y=Ytest),dtype=pt.get_default_dtype())
-    Utrain = pt.softmax(emloglik_train,1)
-    Utest =  pt.softmax(emloglik_test,1)
+    emloglik_train = MT.emission.Estep(Y=Ytrain)
+    emloglik_test = MT.emission.Estep(Y=Ytest)
 
-    for epoch in range(n_epoch):
-        # Get test error
-        Eh = rbm.epos(Utrain)
-        uerr_train[epoch] = rbm.evaluate_test(Utrain,Eh,lossfcn=lossU)
-        uerr_test1[epoch]= rbm.evaluate_test(Utest,Eh,lossfcn=lossU)
-        uerr_test2[epoch]= rbm.evaluate_completion(Utest,part,lossfcn=lossU)
-        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}, Test2: {uerr_test2[epoch]:.1f}')
+    # Test normal training of RBM using CDk=1
+    rbm, uerr_tr1,uerr_t1,uerr_c1 = train_rbm_cdk(rbm,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
+    # Test training using persistent CD 
+    
+    rbm2, uerr_tr2,uerr_t2,uerr_c2 = train_rbm_pcd(rbm2,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
 
-        for b in range(0,N-batch_size+1,batch_size):
-            ind = range(b,b+batch_size)
-            rbm.epos(Utrain[ind,:,:])
-            u,Eh=rbm.eneg_CDk(Utrain[ind,:,:],iter=1)
-            rbm.Mstep(alpha=alpha)
+    # Check the baseline for independent Arrangement model
+    indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
+
+    indepAr,uerr_tr3,uerr_t3 = train_ind(indepAr,emloglik_train,emloglik_test,n_epoch=n_epoch)
 
     t=np.arange(0,n_epoch)
-    plt.figure(figsize=(6,4))
-    plt.plot(t,uerr_train,'k--',label='training')
-    plt.plot(t,uerr_test1,'r',label='test1')
-    plt.plot(t,uerr_test2,'r:',label='test2')
-
-
+    plt.figure(figsize=(6,8))
+    plt.plot(t,uerr_tr1,'r',label='training')
+    plt.plot(t,uerr_t1,'r--',label='test1')
+    plt.plot(t,uerr_c1,'r:',label='test2')
+    plt.plot(t,uerr_tr2,'b',label='training')
+    plt.plot(t,uerr_t2,'b--',label='test1')
+    plt.plot(t,uerr_c2,'b:',label='test2')
+    plt.plot(t,uerr_tr3,'g',label='training')
+    plt.plot(t,uerr_t3,'g--',label='test1')
     pass
 
 if __name__ == '__main__':
-    train_rbm_to_mrf(N=20,batch_size=20)
+    train_rbm_to_mrf(N=60,batch_size=20)
     # train_RBM()
