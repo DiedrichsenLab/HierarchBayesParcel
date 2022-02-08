@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import nibabel as nb
 import os
+import torch as pt
 from scipy.linalg import toeplitz
 
 class SpatialLayout():
@@ -40,11 +41,11 @@ class SpatialGrid(SpatialLayout):
         """
         Makes a connectivity matrix and a mappin matrix for a simple rectangular grid
         """
-        XX, YY = np.meshgrid(range(self.width),range(self.height))
+        XX, YY = pt.meshgrid(pt.arange(self.width),pt.arange(self.height))
         self.xx = XX.reshape(-1)
         self.yy = YY.reshape(-1)
-        self.Dist = np.sqrt((self.xx - self.xx.reshape((-1,1)))**2 + (self.yy - self.yy.reshape((-1,1)))**2)
-        W = np.double(self.Dist==1) # Nearest neighbour connectivity
+        self.Dist = pt.sqrt((self.xx - self.xx.reshape((-1,1)))**2 + (self.yy - self.yy.reshape((-1,1)))**2)
+        W = pt.tensor(self.Dist==1,dtype=pt.get_default_dtype()) # Nearest neighbour connectivity
         return W
 
     def plot_maps(self,Y,cmap='tab20',vmin=0,vmax=19,grid=None,offset=1):
@@ -163,15 +164,15 @@ def eucl_distance(coord):
     """
     Calculates euclediand distances over some cooordinates
     Args:
-        coord (ndarray)
+        coord (pt.tensor)
             Nx3 array of x,y,z coordinates
     Returns:
-        dist (ndarray)
+        dist (pt.tensor)
             NxN array pf distances
     """
     num_points = coord.shape[0]
-    D = np.zeros((num_points,num_points))
+    D = pt.zeros((num_points,num_points))
     for i in range(3):
         D = D + (coord[:,i].reshape(-1,1)-coord[:,i])**2
-    return np.sqrt(D)
+    return pt.sqrt(D)
 

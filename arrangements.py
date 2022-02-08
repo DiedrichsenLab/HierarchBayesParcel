@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
-from numpy import exp,log,sqrt
+from torch import exp,log,sqrt
 from model import Model
 import torch as pt
 
@@ -30,10 +30,10 @@ class ArrangeIndependent(ArrangementModel):
         # If
         self.spatial_specific = spatial_specific
         if spatial_specific:
-            pi = np.ones((K, P)) / K
+            pi = pt.ones(K, P) / K
         else:
-            pi = np.ones((K, 1)) / K
-        self.logpi = np.log(pi)
+            pi = pt.ones(K, 1) / K
+        self.logpi = pi.log(pi)
         # Remove redundancy in parametrization
         self.rem_red = remove_redundancy
         if self.rem_red:
@@ -44,25 +44,22 @@ class ArrangeIndependent(ArrangementModel):
         """ Estep for the spatial arrangement model
 
         Parameters:
-            emloglik (np.array):
+            emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
-            ll_A (np.array):
+            ll_A (pt.tensor):
                 Expected log-liklihood of the arrangement model
         """
-        numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
-        self.estep_Uhat = np.empty(logq.shape)
-        for s in range(numsubj):
-            self.estep_Uhat[s] = loglik2prob(logq[s])
+        self.estep_Uhat = pt.softmax(logq)
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = np.sum(self.estep_Uhat * self.logpi,axis=(1,2))
+        ll_A = pt.sum(self.estep_Uhat * self.logpi,dim=(1,2))
         if self.rem_red:
-            pi_K = exp(self.logpi).sum(axis=0)
-            ll_A = ll_A - np.sum(log(pi_K))
+            pi_K = exp(self.logpi).sum(dim0)
+            ll_A = ll_A - pt.sum(log(pi_K))
 
         return self.estep_Uhat, ll_A
 
@@ -74,9 +71,9 @@ class ArrangeIndependent(ArrangementModel):
         Parameters:
         Returns:
         """
-        pi = np.mean(self.estep_Uhat, axis=0)  # Averarging over subjects
+        pi = pt.mean(self.estep_Uhat, dim=0)  # Averarging over subjects
         if not self.spatial_specific:
-            pi = pi.mean(axis=1).reshape(-1, 1)
+            pi = pi.mean(dim=1).reshape(-1, 1)
         self.logpi = log(pi)
         if self.rem_red:
             self.logpi = self.logpi-self.logpi[-1,:]
@@ -91,8 +88,8 @@ class ArrangeIndependent(ArrangementModel):
         :param num_subj: the number of subjects to sample
         :return: the sampled data for subjects
         """
-        U = np.zeros((num_subj, self.P))
-        pi = loglik2prob(self.logpi)
+        U = pt.zeros(num_subj, self.P)
+        pi = pt.softmax(self.logpi,dim=0)
         for i in range(num_subj):
             for p in range(self.P):
                 if self.spatial_specific:
@@ -105,7 +102,7 @@ class ArrangeIndependent(ArrangementModel):
         """Returns marginal probabilty for every node under the model
         Returns: p[] marginal probability under the model
         """
-        return loglik2prob(self.logpi)
+        return pt.softmax(self.logpi,dim=0)
 
 
 class PottsModel(ArrangementModel):
@@ -122,7 +119,7 @@ class PottsModel(ArrangementModel):
         self.P = W.shape[0]
         self.theta_w = 1 # Weight of the neighborhood relation - inverse temperature param
         self.rem_red = remove_redundancy
-        pi = np.ones((K, self.P)) / K
+        pi = pt.ones((K, self.P)) / K
         self.logpi = np.log(pi)
         if remove_redundancy:
             self.logpi = self.logpi - self.logpi[-1,:]
@@ -141,8 +138,8 @@ class PottsModel(ArrangementModel):
         if centroids is None:
             centroids = np.random.choice(self.P,(self.K,))
         d2 = Dist[centroids,:]**2
-        pi = np.exp(-d2/theta_mu)
-        pi = pi / pi.sum(axis=0)
+        pi = pt.exp(-d2/theta_mu)
+        pi = pi / pi.sum(dim=0)
         self.logpi = np.log(pi)
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1,:]
@@ -155,10 +152,10 @@ class PottsModel(ArrangementModel):
             y=y.reshape((-1,1))
         # Potential on states
         N = y.shape[0] # Number of observations
-        phi = np.zeros((self.numparam,N))
+        phi = pt.zeros((self.numparam,N))
         for i in range(N):
            S = np.equal(y[i,:],y[i,:].reshape((-1,1)))
-           phi[0,i]=np.sum(S*self.W)
+           phi[0,i]=pt.sum(S*self.W)
         return(phi)
 
     def loglike(self,U):
@@ -171,12 +168,12 @@ class PottsModel(ArrangementModel):
             ll (ndarray)): 1d array (N,) of likelihoods
         """
         N,P = U.shape
-        la = np.empty((N,))
-        lp = np.empty((N,))
+        la = pt.empty((N,))
+        lp = pt.empty((N,))
         for n in range(N):
             phi=np.equal(U[n,:],U[n,:].reshape((-1,1)))
-            la[n] = np.sum(self.theta_w * self.W * phi)
-            lp[n] = np.sum(self.logpi(U[n,:],range(self.P)))
+            la[n] = pt.sum(self.theta_w * self.W * phi)
+            lp[n] = pt.sum(self.logpi(U[n,:],range(self.P)))
         return(la + lp)
 
     def cond_prob(self,U,node,bias):
@@ -185,21 +182,21 @@ class PottsModel(ArrangementModel):
         Args:
             U (ndarray): Current state of the network
             node (int): Number of node to get the conditional prov for
-            bias (ndarray): (1,P) Log-Bias term for the node
+            bias (pt.tensor): (1,P) Log-Bias term for the node
         Returns:
-            p (ndarray): (K,) vector of conditional probabilities for the node
+            p (pt.tensor): (K,) vector of conditional probabilities for the node
         """
         x = np.arange(self.K)
         ind = np.where(self.W[node,:]>0) # Find all the neighbors for node x (precompute!)
         nb_x = U[ind] # Neighbors to node x
         same = np.equal(x,nb_x.reshape(-1,1))
-        loglik = self.theta_w * np.sum(same,axis=0) + bias
-        return(loglik2prob(loglik))
+        loglik = self.theta_w * pt.sum(same,dim=0) + bias
+        return(pt.softmax(loglik,dim=0))
 
     def calculate_neighbours(self):
         """Calculate Neighbourhood
         """
-        self.neighbours=np.empty((self.P,),dtype=object)
+        self.neighbours=pt.empty((self.P,),dtype=object)
         for p in range(self.P):
             self.neighbours[p]= np.where(self.W[p,:]!=0)[0] # Find all the neighbors for node x (precompute!)
 
@@ -224,19 +221,19 @@ class PottsModel(ArrangementModel):
         """
         # Check for initialization of chains
         if U0 is None:
-            U0 = np.empty((num_chains,self.P),dtype=np.int16)
-            prob = loglik2prob(bias)
+            U0 = pt.empty((num_chains,self.P),dtype=pt.int16)
+            prob = pt.softmax(bias,axis=0)
             for p in range(self.P):
-                U0[:,p] = np.random.choice(self.K,p = prob[:,p],size = (num_chains,))
+                U0[:,p] = np.random.choice(self.K,p = prob[:,p].numpy(),size = (num_chains,))
         else:
             num_chains = U0.shape[0]
 
         if return_hist:
             if track is None:
                 # Initilize array of full history of sample
-                Uhist = np.zeros((iter,num_chains,self.P),dtype=np.int16)
+                Uhist = pt.zeros((iter,num_chains,self.P),dtype=np.int16)
             else:
-                Uhist = np.zeros((iter,self.K))
+                Uhist = pt.zeros((iter,self.K))
         if not hasattr(self,'neighbours'):
             self.calculate_neighbours()
 
@@ -250,14 +247,14 @@ class PottsModel(ArrangementModel):
                     Uhist[i,:,:]=U
                 else:
                     for k in range(self.K):
-                        Uhist[i,k]=np.mean(U[:,track]==k)
+                        Uhist[i,k]=pt.mean(U[:,track]==k)
             # Now loop over chains: This loop can maybe be replaced
             for c in range(num_chains):
                 for p in np.arange(self.P-1,-1,-1):
                     nb_u = U[c,self.neighbours[p]] # Neighbors to node x
                     same = np.equal(u,nb_u.reshape(-1,1))
-                    loglik = self.theta_w * np.sum(same,axis=0) + bias[:,p]
-                    prob = loglik2prob(loglik)
+                    loglik = self.theta_w * pt.sum(same,dim=0) + bias[:,p]
+                    prob = pt.softmax(loglik,dim=0)
                     U[c,p]=np.random.choice(self.K,p=prob)
         if return_hist:
             return U,Uhist
@@ -270,7 +267,7 @@ class PottsModel(ArrangementModel):
             num_subj (int): Number of subjects. Defaults to 10.
             burnin (int): Number of . Defaults to 20.
         Returns:
-            U (ndarray): Labels for all subjects (numsubj x P) array
+            U (pt.tensor): Labels for all subjects (numsubj x P) array
         """
         U = self.sample_gibbs(bias = self.logpi, iter = burnin,
             num_chains = num_subj)
@@ -281,18 +278,18 @@ class PottsModel(ArrangementModel):
         Gets the expectations.
 
         Parameters:
-            emloglik (np.array):
+            emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
-            ll_A (np.array):
+            ll_A (pt.tensor):
                 Unnormalized log-likelihood of the arrangement model for each subject. Note that this does not contain the partition function
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
         if self.epos_U is None: # num_chains given: reinitialize
-            self.epos_U = np.empty((numsubj,num_chains,P))
+            self.epos_U = pt.empty((numsubj,num_chains,P))
             for s in range(numsubj):
                 self.epos_U[s,:,:] = self.sample_gibbs(num_chains=num_chains,
                     bias = bias[s],iter=iter)
@@ -304,32 +301,32 @@ class PottsModel(ArrangementModel):
                     bias = bias[s],iter=iter)
 
         # Get Uhat from the sampled examples
-        self.epos_Uhat = np.empty((numsubj,self.K,self.P))
+        self.epos_Uhat = pt.empty((numsubj,self.K,self.P))
         for k in range(self.K):
-            self.epos_Uhat[:,k,:]=np.sum(self.epos_U==k,axis=1)/num_chains
+            self.epos_Uhat[:,k,:]=pt.sum(self.epos_U==k,dim=1)/num_chains
 
         # Get the sufficient statistics for the potential functions
-        self.epos_phihat = np.zeros((numsubj,))
+        self.epos_phihat = pt.zeros((numsubj,))
         for s in range(numsubj):
-            phi = np.zeros((self.P,self.P))
+            phi = pt.zeros((self.P,self.P))
             for n in range(num_chains):
                 phi=phi+np.equal(self.epos_U[s,n,:],self.epos_U[s,n,:].reshape((-1,1)))
-            self.epos_phihat[s] = np.sum(self.W * phi)/num_chains
+            self.epos_phihat[s] = pt.sum(self.W * phi)/num_chains
 
         # The log likelihood for arrangement model p(U|theta_A) is not trackable-
         # So we can only return the unormalized potential functions
         if P>2:
             ll_Ae = self.theta_w * self.epos_phihat
-            ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+            ll_Ap = pt.sum(self.epos_Uhat*self.logpi,dim=(1,2))
             if self.rem_red:
-                Z = exp(self.logpi).sum(axis=0) # Local partition function
-                ll_Ap = ll_Ap - np.sum(log(Z))
+                Z = exp(self.logpi).sum(dim=0) # Local partition function
+                ll_Ap = ll_Ap - pt.sum(log(Z))
             ll_A=ll_Ae+ll_Ap
         else:
             # Calculate Z in the case of P=2
             pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
-            Z = np.sum(pp) # full partition function
-            ll_A = self.theta_w * self.epos_phihat + np.sum(self.epos_Uhat*self.logpi,axis=(1,2)) - log(Z)
+            Z = pt.sum(pp) # full partition function
+            ll_A = self.theta_w * self.epos_phihat + pt.sum(self.epos_Uhat*self.logpi,dim=(1,2)) - log(Z)
         return self.epos_Uhat,ll_A
 
     def eneg_sample(self,num_chains=None,iter=5):
@@ -348,15 +345,15 @@ class PottsModel(ArrangementModel):
                     bias = self.logpi,iter=iter)
 
         # Get Uhat from the sampled examples
-        self.eneg_Uhat = np.empty((self.K,self.P))
+        self.eneg_Uhat = pt.empty((self.K,self.P))
         for k in range(self.K):
-            self.eneg_Uhat[k,:]=np.sum(self.eneg_U==k,axis=0)/num_chains
+            self.eneg_Uhat[k,:]=pt.sum(self.eneg_U==k,dim=0)/num_chains
 
         # Get the sufficient statistics for the potential functions
-        phi = np.zeros((self.P,self.P))
+        phi = pt.zeros((self.P,self.P))
         for n in range(num_chains):
             phi=phi+np.equal(self.eneg_U[n,:],self.eneg_U[n,:].reshape((-1,1)))
-        self.eneg_phihat = np.sum(self.W * phi)/num_chains
+        self.eneg_phihat = pt.sum(self.W * phi)/num_chains
         return self.eneg_Uhat
 
     def epos_meanfield(self, emloglik,iter=5):
@@ -365,22 +362,22 @@ class PottsModel(ArrangementModel):
         As it simply uses the Uhat from the other node
 
         Parameters:
-            emloglik (np.array):
+            emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
-        self.epos_Uhat = loglik2prob(bias,axis=1)
-        h = np.empty((iter+1,))
+        self.epos_Uhat = pt.softmax(bias,dim=1)
+        h = pt.empty((iter+1,))
         for i in range(iter):
             h[i]=self.epos_Uhat[0,0,0]
             for p in range(P): # Serial updating across all subjects
-                nEng = self.theta_w*np.sum(self.W[:,p]*self.epos_Uhat,axis=2)
+                nEng = self.theta_w*pt.sum(self.W[:,p]*self.epos_Uhat,dim=2)
                 nEng = nEng + bias[:,:,p]
-                self.epos_Uhat[:,:,p]=loglik2prob(nEng,axis=1)
+                self.epos_Uhat[:,:,p]=pt.softmax(nEng,dim=1)
         h[i+1]=self.epos_Uhat[0,0,0]
         return self.epos_Uhat, h
 
@@ -390,19 +387,19 @@ class PottsModel(ArrangementModel):
         Uses the last node as root.
 
         Parameters:
-            emloglik (np.array):
+            emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         numsubj, K, P = emloglik.shape
         # Construct a linear Factor graph containing the factor (u1,u2),
         #(u2,u3),(u3,u4)....
-        Phi = np.zeros((numsubj,K,P)) # Messages for the forward pass
-        Phis = np.zeros((numsubj,K,P)) # Messages for the backward pass
+        Phi = pt.zeros((numsubj,K,P)) # Messages for the forward pass
+        Phis = pt.zeros((numsubj,K,P)) # Messages for the backward pass
         for s in range(numsubj):
-            Psi = np.zeros((P-1,K,K))
+            Psi = pt.zeros((P-1,K,K))
             # Initialize the factors
             Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
             for p in range(P-1):
@@ -417,8 +414,8 @@ class PottsModel(ArrangementModel):
             # Do the forward pass
             for p in np.arange(0,P-1):
                 pp=exp(Psi[p,:,:])
-                pp = pp / np.sum(pp) # Normalize
-                Phi[s,:,p+1]=np.log(pp.sum(axis=0))
+                pp = pp / pt.sum(pp) # Normalize
+                Phi[s,:,p+1]=np.log(pp.sum(dim=0))
                 if p<P-2:
                     Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1].reshape(-1,1) # Update the next factors
             pass
@@ -426,8 +423,8 @@ class PottsModel(ArrangementModel):
             Phis[s,:,P-1]=Phi[s,:,P-1]
             for p in np.arange(P-2,-1,-1):
                 pp=exp(Psi[p,:,:])
-                pp = pp / np.sum(pp) # Normalize
-                Phis[s,:,p]=np.log(pp.sum(axis=1))
+                pp = pp / pt.sum(pp) # Normalize
+                Phis[s,:,p]=np.log(pp.sum(dim=1))
                 if p>0:
                     Psi[p-1,:,:]=Psi[p-1,:,:]+Phis[s,:,p]-Phi[s,:,p] # Update the factors
             pass
@@ -439,21 +436,21 @@ class PottsModel(ArrangementModel):
         This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
 
         Parameters:
-            emloglik (np.array):
+            emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         numsubj, K, P = emloglik.shape
         # Construct a linear Factor graph containing the factor (u1,u2),
         #(u2,u3),(u3,u4)....
-        self.epos_Uhat = np.zeros((numsubj, K, P))
-        self.epos_phihat = np.zeros((numsubj,))
+        self.epos_Uhat = pt.zeros((numsubj, K, P))
+        self.epos_phihat = pt.zeros((numsubj,))
         for s in range(numsubj):
-            Psi = np.zeros((P-1,K,K)) # These are the original potentials
-            muL = np.zeros((P-1,K)) # Incoming messages from the left side
-            muR = np.zeros((P-1,K)) # Incoming messages from the right side
+            Psi = pt.zeros((P-1,K,K)) # These are the original potentials
+            muL = pt.zeros((P-1,K)) # Incoming messages from the left side
+            muR = pt.zeros((P-1,K)) # Incoming messages from the right side
             # Initialize the factors
             Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
             for p in range(P-1):
@@ -466,30 +463,30 @@ class PottsModel(ArrangementModel):
             # Do the forward pass
             for p in np.arange(0,P-2):
                 pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-                pp = pp / np.sum(pp) # Normalize
-                muL[p+1,:]=np.log(pp.sum(axis=0))
+                pp = pp / pt.sum(pp) # Normalize
+                muL[p+1,:]=np.log(pp.sum(dim=0))
             # Do the backwards pass
             for p in np.arange(P-2,0,-1):
                 pp=exp(Psi[p,:,:]+muR[p,:])
-                pp = pp / np.sum(pp) # Normalize
-                muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(axis=1))
+                pp = pp / pt.sum(pp) # Normalize
+                muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(dim=1))
             pass
             # Finally get the normalized potential
             for p in np.arange(0,P-1):
                 pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-                pp =pp / np.sum(pp)
+                pp =pp / pt.sum(pp)
                 # For the sufficent statistics, we need to consider each potential twice in the
                 # Sum of the log-liklihoof sum_{i} sum_{j \neq i} <u_i u_j>
                 self.epos_phihat[s] = self.epos_phihat[s] + 2 * pp.trace()
                 if p==0:
-                    self.epos_Uhat[s,:,0]=pp.sum(axis=1)
-                self.epos_Uhat[s,:,p+1]=pp.sum(axis=0)
+                    self.epos_Uhat[s,:,0]=pp.sum(dim=1)
+                self.epos_Uhat[s,:,p+1]=pp.sum(dim=0)
         # Get the postive likelihood: Could we use standardization here?
         ll_Ae = self.theta_w * self.epos_phihat
-        ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+        ll_Ap = pt.sum(self.epos_Uhat*self.logpi,dim=(1,2))
         if self.rem_red:
-            Z = exp(self.logpi).sum(axis=0) # Local partition function
-            ll_Ap = ll_Ap - np.sum(log(Z))
+            Z = exp(self.logpi).sum(dim=0) # Local partition function
+            ll_Ap = ll_Ap - pt.sum(log(Z))
         ll_A=ll_Ae+ll_Ap
 
         return self.epos_Uhat, ll_A
@@ -500,17 +497,17 @@ class PottsModel(ArrangementModel):
         Calculates the expectation under the current verson of the model, without input data
 
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         # Construct a linear Factor graph containing the factor (u1,u2),
         #(u2,u3),(u3,u4)....
         P = self.P
         K = self.K
-        Psi = np.zeros((P-1,K,K)) # These are the original potentials
-        muL = np.zeros((P-1,K)) # Incoming messages from the left side
-        muR = np.zeros((P-1,K)) # Incoming messages from the right side
-        self.eneg_Uhat = np.zeros((K, P))
+        Psi = pt.zeros((P-1,K,K)) # These are the original potentials
+        muL = pt.zeros((P-1,K)) # Incoming messages from the left side
+        muR = pt.zeros((P-1,K)) # Incoming messages from the right side
+        self.eneg_Uhat = pt.zeros((K, P))
         self.eneg_phihat = 0
         # Initialize the factors
         Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
@@ -520,22 +517,22 @@ class PottsModel(ArrangementModel):
         # Do the forward pass
         for p in np.arange(0,P-2):
             pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1))
-            pp = pp / np.sum(pp) # Normalize
-            muL[p+1,:]=np.log(pp.sum(axis=0))
+            pp = pp / pt.sum(pp) # Normalize
+            muL[p+1,:]=np.log(pp.sum(dim=0))
         # Do the backwards pass
         for p in np.arange(P-2,0,-1):
             pp=exp(Psi[p,:,:]+muR[p,:])
-            pp = pp / np.sum(pp) # Normalize
-            muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(axis=1))
+            pp = pp / pt.sum(pp) # Normalize
+            muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(dim=1))
         pass
         # Finally get the normalized potential
         for p in np.arange(0,P-1):
             pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-            pp =pp / np.sum(pp)
+            pp =pp / pt.sum(pp)
             self.eneg_phihat = self.eneg_phihat + 2 * pp.trace()
             if p==0:
-                self.eneg_Uhat[:,0]=pp.sum(axis=1)
-            self.eneg_Uhat[:,p+1]=pp.sum(axis=0)
+                self.eneg_Uhat[:,0]=pp.sum(dim=1)
+            self.eneg_Uhat[:,p+1]=pp.sum(dim=0)
         return self.eneg_Uhat
 
 
@@ -544,15 +541,15 @@ class PottsModel(ArrangementModel):
         Constructing a general clique tree from the connectivity matrix
 
         Parameters:
-            emloglik (np.array):
+            emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         numsubj, K, P = emloglik.shape
-        self.epos_Uhat = np.zeros((numsubj, K, P))
-        self.epos_phihat = np.zeros((numsubj,))
+        self.epos_Uhat = pt.zeros((numsubj, K, P))
+        self.epos_phihat = pt.zeros((numsubj,))
 
         # Construct general factor graph containing the factor (u1,u2),
         if hasattr(self,'inE'):
@@ -565,33 +562,33 @@ class PottsModel(ArrangementModel):
         if update_order is None:
             update_order = np.tile(np.arange(len(inP)),2)
         for s in range(numsubj):
-            muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
-            muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
-            mu = np.zeros((K,self.P)) # Message on each potential
-            phi_trace = np.zeros((num_edge,)) # Outgoing messages from Edges to nodes
+            muIn = pt.zeros((K,num_edge)) # Incoming messages from nodes to Edges
+            muOut = pt.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
+            mu = pt.zeros((K,self.P)) # Message on each potential
+            phi_trace = pt.zeros((num_edge,)) # Outgoing messages from Edges to nodes
             bias = emloglik[s,:,:]+self.logpi
             for e in update_order:
                 # Update the state of the input node
-                muIn[:,e] = bias[:,inP[e]] + np.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],axis=1)
+                muIn[:,e] = bias[:,inP[e]] + pt.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],dim=1)
                 E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1)
                 pp = exp(E)
                 pp = pp/ pp.sum()
-                muOut[:,e]=log(pp.sum(axis=0))
+                muOut[:,e]=log(pp.sum(dim=0))
             # Calcululate sufficient stats: This could be cut in half...
             for e in range(num_edge):
                 opp = (inP[e]==outP) & (outP[e]==inP)
                 E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1) + muIn[:,opp].reshape(1,-1)
                 pp = exp(E)
                 pp = pp/ pp.sum()
-                self.epos_Uhat[s,:,outP[e]]=pp.sum(axis=0)
+                self.epos_Uhat[s,:,outP[e]]=pp.sum(dim=0)
                 phi_trace[e]=pp.trace()
                 self.epos_phihat[s] = self.epos_phihat[s] + pp.trace()
         # Get the postive likelihood: Could we use standardization here?
         ll_Ae = self.theta_w * self.epos_phihat
-        ll_Ap = np.sum(self.epos_Uhat*self.logpi,axis=(1,2))
+        ll_Ap = pt.sum(self.epos_Uhat*self.logpi,dim=(1,2))
         if self.rem_red:
-            Z = exp(self.logpi).sum(axis=0) # Local partition function
-            ll_Ap = ll_Ap - np.sum(log(Z))
+            Z = exp(self.logpi).sum(dim=0) # Local partition function
+            ll_Ap = ll_Ap - pt.sum(log(Z))
         ll_A=ll_Ae+ll_Ap
 
         return self.epos_Uhat, ll_A
@@ -601,13 +598,13 @@ class PottsModel(ArrangementModel):
         Constructing a general clique tree from the connectivity matrix
 
         Returns:
-            Uhat (np.array):
+            Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
         """
         P = self.P
         K = self.K
 
-        self.eneg_Uhat = np.zeros((K, P))
+        self.eneg_Uhat = pt.zeros(K, P)
         self.eneg_phihat = 0
 
         # Construct general factor graph containing the factor (u1,u2),
@@ -620,23 +617,23 @@ class PottsModel(ArrangementModel):
             inP,outP = np.where(self.W>0)
         if update_order is None:
             update_order=np.arange(num_edge)
-        muIn = np.zeros((K,num_edge)) # Incoming messages from nodes to Edges
-        muOut = np.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
+        muIn = pt.zeros(K,num_edge) # Incoming messages from nodes to Edges
+        muOut = pt.zeros(K,num_edge) # Outgoing messages from Edges to nodes
         bias = self.logpi
         for e in update_order:
             # Update the state of the input node
-            muIn[:,e] = bias[:,inP[e]] + np.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],axis=1)
+            muIn[:,e] = bias[:,inP[e]] + pt.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],dim=1)
             E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1)
             pp = exp(E)
             pp = pp/ pp.sum()
-            muOut[:,e]=log(pp.sum(axis=0))
+            muOut[:,e]=log(pp.sum(dim=0))
         # Calcululate sufficient stats: This could be cut in half...
         for e in range(num_edge):
             opp = (inP[e]==outP) & (outP[e]==inP)
             E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1) + muIn[:,opp].reshape(1,-1)
             pp = exp(E)
             pp = pp/ pp.sum()
-            self.eneg_Uhat[:,outP[e]]=pp.sum(axis=0)
+            self.eneg_Uhat[:,outP[e]]=pp.sum(dim=0)
             self.eneg_phihat = self.eneg_phihat + pp.trace()
         return self.eneg_Uhat
 
@@ -650,11 +647,11 @@ class PottsModel(ArrangementModel):
         # Update logpi
         if self.rem_red:
             # The - pi can be dropped here as we follow the difference between pos and neg anyway
-            gradpos_logpi = self.epos_Uhat[:,:-1,:].mean(axis=0)
+            gradpos_logpi = self.epos_Uhat[:,:-1,:].mean(dim=0)
             gradneg_logpi = self.eneg_Uhat[:-1,:]
             self.logpi[:-1,:] = self.logpi[:-1,:] + stepsize * (gradpos_logpi - gradneg_logpi)
         else:
-            gradpos_logpi = self.epos_Uhat.mean(axis=0)
+            gradpos_logpi = self.epos_Uhat.mean(dim=0)
             gradneg_logpi = self.eneg_Uhat
             self.logpi = self.logpi + stepsize * (gradpos_logpi - gradneg_logpi)
         if self.fit_theta_w:
@@ -669,24 +666,24 @@ class PottsModelDuo(PottsModel):
     Closed-form solututions for checking the approximations
     """
     def __init__(self,K=3,remove_redundancy=True):
-        W = np.array([[0,1],[1,0]])
+        W = pt.tensor([[0,1],[1,0]])
         super().__init__(W,K,remove_redundancy)
 
     def Estep(self,emloglik,return_joint = False):
         numsubj, K, P = emloglik.shape
         logq = emloglik + self.logpi
-        self.estep_Uhat = np.empty((numsubj,K,P))
-        Uhat2 = np.empty((numsubj,K,K))
+        self.estep_Uhat = pt.empty((numsubj,K,P))
+        Uhat2 = pt.empty((numsubj,K,K))
         for s in range(numsubj):
             pp=exp(logq[s,:,0]+logq[s,:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
-            Z = np.sum(pp) # full partition function
+            Z = pt.sum(pp) # full partition function
             pp = pp/Z
-            self.estep_Uhat[s] = np.c_[pp.sum(axis=0),pp.sum(axis=1)]
+            self.estep_Uhat[s] = np.c_[pp.sum(dim=0),pp.sum(dim=1)]
             Uhat2[s]=pp
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         p,pp = self.marginal_prob(return_joint=True)
-        ll_A = np.sum(Uhat2 * log(pp),axis=(1,2))
+        ll_A = pt.sum(Uhat2 * log(pp),dim=(1,2))
         if return_joint:
             return self.estep_Uhat, ll_A,Uhat2
         else:
@@ -694,10 +691,10 @@ class PottsModelDuo(PottsModel):
 
     def marginal_prob(self,return_joint=False):
         pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
-        Z = np.sum(pp) # full partition function
+        Z = pt.sum(pp) # full partition function
         pp=pp/Z
-        p1 = pp.sum(axis=0)
-        p2 = pp.sum(axis=1)
+        p1 = pp.sum(dim=0)
+        p2 = pp.sum(dim=1)
         if return_joint:
             return np.c_[p1,p2],pp
         else:
@@ -941,7 +938,7 @@ class mpRBM():
 
 
 
-def loglik2prob(loglik,axis=0):
+def loglik2prob(loglik,dim=0):
     """Safe transformation and normalization of
     logliklihood
 
@@ -951,15 +948,17 @@ def loglik2prob(loglik,axis=0):
     Returns:
         prob (ndarray): Probability
     """
-    if (axis==0):
-        loglik = loglik-np.max(loglik,axis=0)+10
+    if (dim==0):
+        ml,_=pt.max(loglik,dim=0)
+        loglik = loglik-ml+10
         prob = np.exp(loglik)
-        prob = prob/np.sum(prob,axis=0)
+        prob = prob/pt.sum(prob,dim=0)
     else:
-        a = np.array(loglik.shape)
-        a[axis]=1 # Insert singleton dimension
-        loglik = loglik-np.max(loglik,axis=1).reshape(a)+10
-        prob = np.exp(loglik)
-        prob = prob/np.sum(prob,axis=1).reshape(a)
+        a = pt.tensor(loglik.shape)
+        a[dim]=1 # Insert singleton dimension
+        ml,_=pt.max(loglik,dim=0)
+        loglik = loglik-ml.reshape(a)+10
+        prob = pt.exp(loglik)
+        prob = prob/pt.sum(prob,dim=1).reshape(a)
     return prob
 
