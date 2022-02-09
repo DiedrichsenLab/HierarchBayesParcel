@@ -40,12 +40,14 @@ class ArrangeIndependent(ArrangementModel):
             self.logpi = self.logpi - self.logpi[-1, :]
         self.set_param_list(['logpi'])
 
-    def Estep(self, emloglik):
+    def Estep(self, emloglik, gather_ss=True):
         """ Estep for the spatial arrangement model
 
         Parameters:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss (bool): 
+                Gather Sufficient statistics for M-step (default = True)
         Returns:
             Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
@@ -55,15 +57,15 @@ class ArrangeIndependent(ArrangementModel):
         if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         logq = emloglik + self.logpi
-        self.estep_Uhat = pt.softmax(logq,dim=1)
-
+        Uhat = pt.softmax(logq,dim=1)
+        if gather_ss:
+            self.estep_Uhat = Uhat
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         ll_A = pt.sum(self.estep_Uhat * self.logpi,dim=(1,2))
         if self.rem_red:
             pi_K = exp(self.logpi).sum(dim=0)
             ll_A = ll_A - pt.sum(log(pi_K))
-
-        return self.estep_Uhat, ll_A
+        return Uhat, ll_A
 
     def Mstep(self):
         """ M-step for the spatial arrangement model
@@ -724,31 +726,6 @@ class mpRBM():
         self.bu = pt.randn(P*K)
         self.eneg_U = None
 
-    def expand_mn(self,u):
-        """Expands a N x P multinomial vector
-        to an N x K x P tensor of indictor variables
-        Args:
-            u (2d-tensor): N x nv matrix of samples from [int]
-        Returns
-            U (3d-tensor): N x K x nv matrix of indicator variables [default float]
-        """
-        N = u.shape[0]
-        P = u.shape[1]
-        U = pt.zeros(N,self.K,P)
-        U[np.arange(N).reshape((N,1)),u,np.arange(P)]=1
-        return U
-
-    def compress_mn(self,U):
-        """Compresses a N x K x P tensor of indictor variables
-        to a N x P multinomial tensor
-        Args:
-            U (3d-tensor): N x K x P matrix of indicator variables
-        Returns
-            u (2d-tensor): N x P matrix of category labels [int]
-        """
-        u=U.argmax(1)
-        return u
-
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
         Args:
@@ -777,7 +754,7 @@ class mpRBM():
         p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
         r = pt.empty(N,1,self.P).uniform_(0,1)
         cdf_v = p_u.cumsum(1)
-        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        sample = (r < cdf_v).float()
         for k in np.arange(self.K-1,0,-1):
             sample[:,k,:]-=sample[:,k-1,:]
         return p_u, sample
@@ -792,11 +769,11 @@ class mpRBM():
         p = pt.ones(self.K)
         u = pt.multinomial(p,num_subj*self.P,replacement=True)
         u = u.reshape(num_subj,self.P)
-        U = self.expand_mn(u)
+        U = expand_mn(u,self.K)
         for i in range (iter):
             _,h = self.sample_h(U)
             _,U = self.sample_v(h)
-        u = self.compress_mn(U)
+        u = compress_mn(U)
         return u,h
 
     def epos(self, U):
@@ -813,6 +790,36 @@ class mpRBM():
         activation = wv + self.bh
         self.epos_Eh = pt.sigmoid(activation)
         return self.epos_Eh
+
+    def Estep(self, emloglik,gather_ss=True):
+        """ Estep for the spatial arrangement model
+
+        Parameters:
+            emloglik (pt.tensor):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss (bool): 
+                Gather Sufficient statistics for M-step (default = True)
+
+        Returns:
+            Uhat (pt.tensor):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (pt.tensor):
+                Nan - returned for consistency
+        """
+        if type(emloglik) is np.ndarray:
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        N=emloglik.shape[0]
+        U = pt.softmax(emloglik,dim=1)
+        wv = pt.mm(U.reshape(N,-1), self.W.t())
+        activation = wv + self.bh
+        Eh = pt.sigmoid(activation)
+        wh = pt.mm(Eh, self.W)
+        activation = wh + self.bu
+        Uhat = pt.softmax(activation.reshape(N,self.K,self.P),1)
+        if gather_ss:
+            self.epos_U = U
+            self.epos_Eh = Eh
+        return Uhat, np.nan
 
     def eneg_CDk(self,U,iter = 1):
         for i in range(iter):
@@ -842,102 +849,6 @@ class mpRBM():
         self.W += alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
         self.bu += alpha * (pt.sum(epos_U,0) - N / M * pt.sum(eneg_U,0))
         self.bh += alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
-
-    def evaluate_train(self,emloglik,lossfcn='abserr'):
-        """Evaluates a test data set, based on hidden nodes
-        Args:
-            emloglik (N,K,P tensor): log-likelihood of visible data
-            hidden (N,nh tensor): State of the hidden nodes
-            lossfcn (str, optional): [description]. Defaults to 'abserr'.
-
-        Returns:
-            loss: returns single evaluation criterion
-        """
-        if type(emloglik) is np.ndarray:
-            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
-        U = pt.softmax(emloglik,dim=1)
-        N = U.shape[0]
-
-        p_u = self.eneg_U.mean(dim=0)
-
-        if lossfcn=='abserr':
-            loss = pt.sum(pt.abs(U-p_u))
-        elif lossfcn=='loglik':
-            loss = pt.sum(U * pt.log(p_u))
-        elif lossfcn=='logpy':
-             loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
-        return loss
-
-    def evaluate_test(self,emloglik,hidden,lossfcn='abserr'):
-        """Evaluates a test data set, based on hidden nodes
-        Args:
-            emloglik (N,K,P tensor): log-likelihood of visible data
-            hidden (N,nh tensor): State of the hidden nodes
-            lossfcn (str, optional): [description]. Defaults to 'abserr'.
-
-        Returns:
-            loss: returns single evaluation criterion
-        """
-        if type(emloglik) is np.ndarray:
-            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
-        U = pt.softmax(emloglik,dim=1)
-        N = U.shape[0]
-        wh = pt.mm(hidden, self.W)
-        activation = wh + self.bu
-        p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
-
-        if lossfcn=='abserr':
-            loss = pt.sum(pt.abs(U-p_u))
-        elif lossfcn=='loglik':
-            loss = pt.sum(U * pt.log(p_u))
-        elif lossfcn=='logpy':
-             loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
-        return loss
-
-    def evaluate_completion(self,emloglik,part,lossfcn='abserr'):
-        """Evaluates a new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
-
-        Args:
-            U (N,K,nv tensor): loglik of visible data
-            part (nv int tensor): determines the partition indentity of node
-            lossfcn (str, optional): 'loglik' or 'abserr'.
-
-        Returns:
-            loss: single evaluation criterion
-        """
-        if type(emloglik) is np.ndarray:
-            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
-        U = pt.softmax(emloglik,dim=1)
-        N = U.shape[0]
-        num_part = part.max()+1
-        loss = pt.zeros(self.P)
-        for k in range(num_part):
-            ind = part==k
-            V0 = pt.clone(U)
-            V0[:,:,ind] = 0.5 # Agnostic input
-            p_h = pt.sigmoid(pt.mm(V0.reshape(N,-1), self.W.t()) + self.bh)
-            activation = pt.mm(p_h, self.W) + self.bu
-            p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
-            if lossfcn=='abserr':
-                loss[ind] = pt.sum(pt.abs(U[:,:,ind] - p_u[:,:,ind]),dim=(0,1))
-            elif lossfcn=='loglik':
-                loss[ind] = pt.sum(U[:,:,ind] * pt.log(p_u[:,:,ind]) + (1-U[:,:,ind]) * pt.log(1-p_u[:,:,ind]),dim=(0,1))
-            elif lossfcn=='logpy':
-                loss[ind] = pt.sum(pt.log(pt.sum(pt.exp(emloglik[:,:,ind]) * p_u[:,:,ind],dim=1)),dim=0)
-        return pt.sum(loss)
-
-    def evaluate_baseline(self,emloglik,lossfcn='abserr'):
-        U=pt.softmax(emloglik,0)
-        p_u =pt.mean(U,dim=(0,2),keepdim=True) # Overall mean
-        if lossfcn=='abserr':
-            loss = pt.sum(pt.abs(U-p_u))
-        elif lossfcn=='loglik':
-            loss = pt.sum(U * pt.log(p_u) + (1-U) * pt.log(1-p_u))
-        elif lossfcn=='logpy':
-             loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
-        return loss
-
-
 
 def loglik2prob(loglik,dim=0):
     """Safe transformation and normalization of
@@ -976,7 +887,7 @@ def sample_multinomial(p_u,N=1,compress=False):
         K = p_u.shape[0]
         r = pt.empty(1,N).uniform_(0,1)
         cdf_v = p_u.cumsum(dim=0)
-        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        sample = (r < cdf_v).float()
         for k in np.arange(K-1,0,-1):
             sample[k,:]-=sample[k-1,:]
         dim =0
@@ -984,7 +895,7 @@ def sample_multinomial(p_u,N=1,compress=False):
         K,P = p_u.shape
         r = pt.empty(N,1,P).uniform_(0,1)
         cdf_v = p_u.cumsum(dim=0)
-        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        sample = (r < cdf_v).float()
         for k in np.arange(K-1,0,-1):
             sample[:,k,:]-=sample[:,k-1,:]
         dim = 1
@@ -992,7 +903,7 @@ def sample_multinomial(p_u,N=1,compress=False):
         N,K,P = p_u.shape
         r = pt.empty(N,1,P).uniform_(0,1)
         cdf_v = p_u.cumsum(dim=1)
-        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        sample = (r < cdf_v).float()
         for k in np.arange(K-1,0,-1):
             sample[:,k,:]-=sample[:,k-1,:]
         dim = 1
@@ -1000,3 +911,29 @@ def sample_multinomial(p_u,N=1,compress=False):
         return sample.argmax(dim=dim)
     else:
         return sample
+
+def expand_mn(u,K):
+    """Expands a N x P multinomial vector
+    to an N x K x P tensor of indictor variables
+    Args:
+        u (2d-tensor): N x nv matrix of samples from [int]
+        K (int): Number of categories
+    Returns
+        U (3d-tensor): N x K x nv matrix of indicator variables [default float]
+    """
+    N = u.shape[0]
+    P = u.shape[1]
+    U = pt.zeros(N,K,P)
+    U[np.arange(N).reshape((N,1)),u,np.arange(P)]=1
+    return U
+
+def compress_mn(U):
+    """Compresses a N x K x P tensor of indictor variables
+    to a N x P multinomial tensor
+    Args:
+        U (3d-tensor): N x K x P matrix of indicator variables
+    Returns
+        u (2d-tensor): N x P matrix of category labels [int]
+    """
+    u=U.argmax(1)
+    return u

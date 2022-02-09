@@ -9,9 +9,10 @@ import emissions as em
 import full_model as fm
 import spatial as sp
 import copy
+import evaluation as ev
 
-def train_rbm_cdk(rbm,emlog_train,emlog_test,part,lossU='logpy',
-             n_epoch=20,batch_size=20,alpha=0.01):
+def train_rbm_cdk(rbm,emlog_train,emlog_test,part,crit='logpY',
+             n_epoch=20,batch_size=20,alpha=0.05):
     N = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
     uerr_train = np.zeros(n_epoch)
@@ -19,12 +20,12 @@ def train_rbm_cdk(rbm,emlog_train,emlog_test,part,lossU='logpy',
     uerr_test2 = np.zeros(n_epoch)
     for epoch in range(n_epoch):
         # Get test error
-        Eh = rbm.epos(Utrain)
-        rbm.eneg_CDk(Utrain,iter=20) # Necessary only for uerr_train
-        uerr_train[epoch] = rbm.evaluate_train(emlog_train,lossfcn=lossU)
-        uerr_test1[epoch]= rbm.evaluate_test(emlog_test,Eh,lossfcn=lossU)
-        uerr_test2[epoch]= rbm.evaluate_completion(emlog_test,part,lossfcn=lossU)
-        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}, Test2: {uerr_test2[epoch]:.1f}')
+        EU,_ = rbm.Estep(emlog_train,gather_ss=False)
+        pi   = rbm.eneg_CDk(Utrain,iter=20) # Necessary only for uerr_train
+        uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,EU,crit=crit)
+        uerr_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
+        uerr_test2[epoch]= ev.evaluate_completion_arr(rbm,emlog_test,part,crit=crit)
+        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}, Test2: {uerr_test2[epoch]:.4f}')
 
         for b in range(0,N-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
@@ -33,7 +34,7 @@ def train_rbm_cdk(rbm,emlog_train,emlog_test,part,lossU='logpy',
             rbm.Mstep(alpha=alpha)
     return rbm,uerr_train,uerr_test1,uerr_test2
 
-def train_rbm_pcd(rbm,emlog_train,emlog_test,part,lossU='logpy',
+def train_rbm_pcd(rbm,emlog_train,emlog_test,part,crit='logpY',
              n_epoch=20,batch_size=20,num_chains=77,iter=2,alpha=0.01):
     N = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
@@ -44,11 +45,13 @@ def train_rbm_pcd(rbm,emlog_train,emlog_test,part,lossU='logpy',
     rbm.eneg_pCD(num_chains=num_chains,iter=20)
     for epoch in range(n_epoch):
         # Get test error
-        Eh = rbm.epos(Utrain)
-        uerr_train[epoch] = rbm.evaluate_train(emlog_train,lossfcn=lossU)
-        uerr_test1[epoch]= rbm.evaluate_test(emlog_test,Eh,lossfcn=lossU)
-        uerr_test2[epoch]= rbm.evaluate_completion(emlog_test,part,lossfcn=lossU)
-        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}, Test2: {uerr_test2[epoch]:.1f}')
+        EU,_ = rbm.Estep(emlog_train,gather_ss=False)
+        
+        pi   = pt.mean(rbm.eneg_U,dim=0)
+        uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,pi,crit=crit)
+        uerr_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
+        uerr_test2[epoch]= ev.evaluate_completion_arr(rbm,emlog_test,part,crit=crit)
+        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}, Test2: {uerr_test2[epoch]:.4f}')
 
         for b in range(0,N-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
@@ -58,21 +61,22 @@ def train_rbm_pcd(rbm,emlog_train,emlog_test,part,lossU='logpy',
     return rbm,uerr_train,uerr_test1,uerr_test2
 
 
-def train_ind(indepAr,emlog_train,emlog_test,lossU='logpy',n_epoch=20):
+def train_ind(indepAr,emlog_train,emlog_test,part,crit='logpY',n_epoch=20):
     uerr_train = np.zeros(n_epoch)
     uerr_test1 = np.zeros(n_epoch)
+    uerr_test2 = np.zeros(n_epoch)
 
     for epoch in range(n_epoch):
-        Uh,ll = indepAr.Estep(emlog_train)
-        if lossU == 'logpy':
-            pi = ar.loglik2prob(indepAr.logpi)
-            uerr_train[epoch] = pt.sum(log(pt.sum(exp(emlog_train)*pi,dim=1)))
-            uerr_test1[epoch] = pt.sum(log(pt.sum(exp(emlog_test)*Uh,dim=1)))
+        EU,ll = indepAr.Estep(emlog_train)
+        pi = pt.softmax(indepAr.logpi,dim=0)
+        uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,pi,crit=crit)
+        uerr_test1[epoch] = ev.evaluate_full_arr(emlog_train,EU,crit=crit)
+        uerr_test2[epoch] = ev.evaluate_completion_arr(indepAr,emlog_test,part,crit=crit)
 
-        print(f'epoch {epoch:2d}, ll: {ll.sum():.1f}, Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}')
+        print(f'epoch {epoch:2d}, ll: {ll.sum():.1f}, Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}')
         indepAr.Mstep()
     pass
-    return indepAr, uerr_train, uerr_test1
+    return indepAr, uerr_train, uerr_test1, uerr_test2
 
 
 
@@ -96,7 +100,7 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
         [type]: [description]
     """
 
-    lossU = 'logpy'
+    lossU = 'logpY'
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width,height=width)
     arrangeT = ar.PottsModel(grid.W, K=K)
@@ -152,7 +156,9 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     # Check the baseline for independent Arrangement model
     indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
 
-    indepAr,uerr_tr3,uerr_t3 = train_ind(indepAr,emloglik_train,emloglik_test,n_epoch=n_epoch)
+    indepAr,uerr_tr3,uerr_t3,uerr_c3 = train_ind(indepAr,
+            emloglik_train,emloglik_test,
+            part=part,n_epoch=n_epoch)
 
     t=np.arange(0,n_epoch)
     plt.figure(figsize=(6,8))
@@ -164,8 +170,27 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     plt.plot(t,uerr_c2,'b:',label='test2')
     plt.plot(t,uerr_tr3,'g',label='training')
     plt.plot(t,uerr_t3,'g--',label='test1')
+    plt.plot(t,uerr_c3,'g:',label='test1')
+
+    plt.figure(figsize=(6,8))
+    Utrue=ar.expand_mn(U,K)
+    pi = Utrue.mean(dim=0)
+    piE = pt.softmax(emloglik_train,dim=1).mean(dim=0)
+    pi1 = rbm.eneg_U.mean(dim=0)
+    pi2 = rbm2.eneg_U.mean(dim=0)
+    pi3 = pt.softmax(indepAr.logpi,dim=0)
+
+    plt.subplot(2,2,1)
+    plt.scatter(pi,pi1)
+    plt.subplot(2,2,2)
+    plt.scatter(pi,pi2)
+    plt.subplot(2,2,3)
+    plt.scatter(pi,pi3)
+    plt.subplot(2,2,4)
+    plt.scatter(pi,piE)
+
     pass
 
 if __name__ == '__main__':
-    train_rbm_to_mrf(N=60,batch_size=20)
+    train_rbm_to_mrf(N=60,batch_size=20,n_epoch=30,sigma2=0.01)
     # train_RBM()

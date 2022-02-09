@@ -41,11 +41,13 @@ class SpatialGrid(SpatialLayout):
         """
         Makes a connectivity matrix and a mappin matrix for a simple rectangular grid
         """
-        XX, YY = pt.meshgrid(pt.arange(self.width),pt.arange(self.height))
+        XX, YY = pt.meshgrid(pt.arange(self.width),
+                             pt.arange(self.height),
+                             indexing='ij')
         self.xx = XX.reshape(-1)
         self.yy = YY.reshape(-1)
         self.Dist = pt.sqrt((self.xx - self.xx.reshape((-1,1)))**2 + (self.yy - self.yy.reshape((-1,1)))**2)
-        W = pt.tensor(self.Dist==1,dtype=pt.get_default_dtype()) # Nearest neighbour connectivity
+        W = (self.Dist==1).float() # Nearest neighbour connectivity
         return W
 
     def plot_maps(self,Y,cmap='tab20',vmin=0,vmax=19,grid=None,offset=1):
