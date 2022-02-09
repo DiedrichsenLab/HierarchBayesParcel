@@ -33,7 +33,7 @@ class ArrangeIndependent(ArrangementModel):
             pi = pt.ones(K, P) / K
         else:
             pi = pt.ones(K, 1) / K
-        self.logpi = pi.log(pi)
+        self.logpi = pt.log(pi)
         # Remove redundancy in parametrization
         self.rem_red = remove_redundancy
         if self.rem_red:
@@ -52,13 +52,15 @@ class ArrangeIndependent(ArrangementModel):
             ll_A (pt.tensor):
                 Expected log-liklihood of the arrangement model
         """
+        if type(emloglik) is np.ndarray:
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         logq = emloglik + self.logpi
-        self.estep_Uhat = pt.softmax(logq)
+        self.estep_Uhat = pt.softmax(logq,dim=1)
 
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         ll_A = pt.sum(self.estep_Uhat * self.logpi,dim=(1,2))
         if self.rem_red:
-            pi_K = exp(self.logpi).sum(dim0)
+            pi_K = exp(self.logpi).sum(dim=0)
             ll_A = ll_A - pt.sum(log(pi_K))
 
         return self.estep_Uhat, ll_A
@@ -196,7 +198,7 @@ class PottsModel(ArrangementModel):
     def calculate_neighbours(self):
         """Calculate Neighbourhood
         """
-        self.neighbours=pt.empty((self.P,),dtype=object)
+        self.neighbours=np.empty((self.P,),dtype=object)
         for p in range(self.P):
             self.neighbours[p]= np.where(self.W[p,:]!=0)[0] # Find all the neighbors for node x (precompute!)
 
@@ -223,8 +225,7 @@ class PottsModel(ArrangementModel):
         if U0 is None:
             U0 = pt.empty((num_chains,self.P),dtype=pt.int16)
             prob = pt.softmax(bias,axis=0)
-            for p in range(self.P):
-                U0[:,p] = np.random.choice(self.K,p = prob[:,p].numpy(),size = (num_chains,))
+            U0 = sample_multinomial(prob,N = num_chains, compress=True)
         else:
             num_chains = U0.shape[0]
 
@@ -255,7 +256,7 @@ class PottsModel(ArrangementModel):
                     same = np.equal(u,nb_u.reshape(-1,1))
                     loglik = self.theta_w * pt.sum(same,dim=0) + bias[:,p]
                     prob = pt.softmax(loglik,dim=0)
-                    U[c,p]=np.random.choice(self.K,p=prob)
+                    U[c,p]=np.random.choice(self.K,p=prob.numpy())
         if return_hist:
             return U,Uhist
         else:
@@ -776,7 +777,7 @@ class mpRBM():
         p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
         r = pt.empty(N,1,self.P).uniform_(0,1)
         cdf_v = p_u.cumsum(1)
-        sample = pt.tensor(r < cdf_v,dtype= pt.float32)
+        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
         for k in np.arange(self.K-1,0,-1):
             sample[:,k,:]-=sample[:,k-1,:]
         return p_u, sample
@@ -852,7 +853,7 @@ class mpRBM():
         Returns:
             loss: returns single evaluation criterion
         """
-        if type(emloglik) is np.ndarray: 
+        if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         U = pt.softmax(emloglik,dim=1)
         N = U.shape[0]
@@ -863,7 +864,7 @@ class mpRBM():
             loss = pt.sum(pt.abs(U-p_u))
         elif lossfcn=='loglik':
             loss = pt.sum(U * pt.log(p_u))
-        elif lossfcn=='logpy': 
+        elif lossfcn=='logpy':
              loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
         return loss
 
@@ -877,7 +878,7 @@ class mpRBM():
         Returns:
             loss: returns single evaluation criterion
         """
-        if type(emloglik) is np.ndarray: 
+        if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         U = pt.softmax(emloglik,dim=1)
         N = U.shape[0]
@@ -889,7 +890,7 @@ class mpRBM():
             loss = pt.sum(pt.abs(U-p_u))
         elif lossfcn=='loglik':
             loss = pt.sum(U * pt.log(p_u))
-        elif lossfcn=='logpy': 
+        elif lossfcn=='logpy':
              loss = pt.sum(pt.log(pt.sum(pt.exp(emloglik) * p_u,dim=1)))
         return loss
 
@@ -904,7 +905,7 @@ class mpRBM():
         Returns:
             loss: single evaluation criterion
         """
-        if type(emloglik) is np.ndarray: 
+        if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         U = pt.softmax(emloglik,dim=1)
         N = U.shape[0]
@@ -962,3 +963,40 @@ def loglik2prob(loglik,dim=0):
         prob = prob/pt.sum(prob,dim=1).reshape(a)
     return prob
 
+def sample_multinomial(p_u,N=1,compress=False):
+    """Samples from a multinomial distribution
+    Fast smpling from matrix probability without looping
+
+    Args:
+        p_u (tensor): 1d (K), 2d- (KxP) or 3d-tensor (NxKxP)
+        N ([int]): If provided for 1d-sample give
+        compress: Return as int (True) or indicator (false)
+    """
+    if p_u.dim() == 1:
+        K = p_u.shape[0]
+        r = pt.empty(1,N).uniform_(0,1)
+        cdf_v = p_u.cumsum(dim=0)
+        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        for k in np.arange(K-1,0,-1):
+            sample[k,:]-=sample[k-1,:]
+        dim =0
+    elif p_u.dim() == 2:
+        K,P = p_u.shape
+        r = pt.empty(N,1,P).uniform_(0,1)
+        cdf_v = p_u.cumsum(dim=0)
+        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        for k in np.arange(K-1,0,-1):
+            sample[:,k,:]-=sample[:,k-1,:]
+        dim = 1
+    elif p_u.dim() == 3:
+        N,K,P = p_u.shape
+        r = pt.empty(N,1,P).uniform_(0,1)
+        cdf_v = p_u.cumsum(dim=1)
+        sample = pt.tensor(r < cdf_v,dtype= pt.get_default_dtype())
+        for k in np.arange(K-1,0,-1):
+            sample[:,k,:]-=sample[:,k-1,:]
+        dim = 1
+    if compress:
+        return sample.argmax(dim=dim)
+    else:
+        return sample

@@ -13,8 +13,6 @@ import copy
 def train_rbm_cdk(rbm,emlog_train,emlog_test,part,lossU='logpy',
              n_epoch=20,batch_size=20,alpha=0.01):
     N = emlog_train.shape[0]
-    emlog_train=pt.tensor(emlog_train,dtype=pt.get_default_dtype())
-    emlog_test=pt.tensor(emlog_test,dtype=pt.get_default_dtype())
     Utrain=pt.softmax(emlog_train,dim=1)
     uerr_train = np.zeros(n_epoch)
     uerr_test1 = np.zeros(n_epoch)
@@ -38,8 +36,6 @@ def train_rbm_cdk(rbm,emlog_train,emlog_test,part,lossU='logpy',
 def train_rbm_pcd(rbm,emlog_train,emlog_test,part,lossU='logpy',
              n_epoch=20,batch_size=20,num_chains=77,iter=2,alpha=0.01):
     N = emlog_train.shape[0]
-    emlog_train=pt.tensor(emlog_train,dtype=pt.get_default_dtype())
-    emlog_test=pt.tensor(emlog_test,dtype=pt.get_default_dtype())
     Utrain=pt.softmax(emlog_train,dim=1)
     uerr_train = np.zeros(n_epoch)
     uerr_test1 = np.zeros(n_epoch)
@@ -65,14 +61,14 @@ def train_rbm_pcd(rbm,emlog_train,emlog_test,part,lossU='logpy',
 def train_ind(indepAr,emlog_train,emlog_test,lossU='logpy',n_epoch=20):
     uerr_train = np.zeros(n_epoch)
     uerr_test1 = np.zeros(n_epoch)
-    
-    for epoch in range(n_epoch): 
+
+    for epoch in range(n_epoch):
         Uh,ll = indepAr.Estep(emlog_train)
-        if lossU == 'logpy': 
+        if lossU == 'logpy':
             pi = ar.loglik2prob(indepAr.logpi)
-            uerr_train[epoch] = np.sum(np.log(np.sum(np.exp(emlog_train)*pi,axis=1)))
-            uerr_test1[epoch] = np.sum(np.log(np.sum(np.exp(emlog_test)*Uh,axis=1)))
-            
+            uerr_train[epoch] = pt.sum(log(pt.sum(exp(emlog_train)*pi,dim=1)))
+            uerr_test1[epoch] = pt.sum(log(pt.sum(exp(emlog_test)*Uh,dim=1)))
+
         print(f'epoch {epoch:2d}, ll: {ll.sum():.1f}, Train: {uerr_train[epoch]:.1f}, Test1: {uerr_test1[epoch]:.1f}')
         indepAr.Mstep()
     pass
@@ -122,8 +118,8 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
 
     # Step 4: Generate data by sampling from the above model
     U = MT.arrange.sample(num_subj=N,burnin=19) # These are the subjects
-    Ytrain = MT.emission.sample(U) # This is the training data
-    Ytest = MT.emission.sample(U)  # Testing data
+    Ytrain = MT.emission.sample(U.numpy()) # This is the training data
+    Ytest = MT.emission.sample(U.numpy())  # Testing data
 
     # Plot first 10 samples
     plt.figure(figsize=(10,4))
@@ -140,13 +136,15 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
 
     emloglik_train = MT.emission.Estep(Y=Ytrain)
     emloglik_test = MT.emission.Estep(Y=Ytest)
+    emloglik_train=pt.tensor(emloglik_train,dtype=pt.get_default_dtype())
+    emloglik_test=pt.tensor(emloglik_test,dtype=pt.get_default_dtype())
 
     # Test normal training of RBM using CDk=1
     rbm, uerr_tr1,uerr_t1,uerr_c1 = train_rbm_cdk(rbm,
             emloglik_train,emloglik_test,
             part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
-    # Test training using persistent CD 
-    
+    # Test training using persistent CD
+
     rbm2, uerr_tr2,uerr_t2,uerr_c2 = train_rbm_pcd(rbm2,
             emloglik_train,emloglik_test,
             part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
