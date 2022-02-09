@@ -34,7 +34,36 @@ We will refer to the first term as the expected emission log-likelihood and the 
 
 This is a generative Potts model of brain activity data. The main idea is that the brain consists of $K$ regions, each with a specific activity profile $\mathbf{v}_k$ for a specific task set. The model consists of a arrangement model that tells us how the $K$ regions are arranged in a specific subject $s$, and an emission model that provides a probability of the measured data, given the individual arrangement of regions.
 
+### Independent Arrangement model 
+This is the simplest spatial arrangement model - it simply learns the probability at each location that the node is part of cluster K. These probabilities are simply learned as the parameters $\pi_{ik}=p(u_i=k)$, or after a re-parameterization in log space: $\eta_{ik}=\log \pi_{ik}$.  
+
+The independent arrangement model can be estimated using the EM-algorithm.
+
+In the Estep, we are integrating the evidence from the data and the prior: 
+$$
+p(u_i=k|\mathbf{y}_i)=\langle u_{ik}\rangle=\frac{\rm{exp}(log(p(\mathbf{y}_i|u_i=k)+\eta_{ik})}{\sum_{j}{\rm{exp}(log(p(\mathbf{y}_i|u_i=j)+\eta_{ij}})}
+$$
+
+Or in vector notation:
+
+$$
+\begin{align*}
+\langle \mathbf{u}_{i}\rangle =\rm{softmax}(log(p(\mathbf{y}_i|\mathbf{u}_i)+\boldsymbol{\eta}_i)
+\end{align*}
+$$
+For the M-step, we use the derivative in respect to the parameters $\eta$. For a good introduction, see: [https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/]. 
+
+So, for the parameters: 
+$$
+\frac{\part{p(u_k)}}{\part{\eta_j}}=p(u_k)(\delta_{kj}-p(u_j))
+$$
+
+
+
+
+
 ### Simple Potts model
+
 The brain is sampled in $P$ vertices (or voxels). Individual maps are aligned using anatomical normalization, such that each vertex refers to a (roughly) corresponding region in each individual brain. The assignment of each brain location to a specific parcel in subject $s$ is expressed as the random variable $u_i^{(s)}$.
 
 Across individual brains, we have the overall probability of a specific brain location being part of parcel $k$.
