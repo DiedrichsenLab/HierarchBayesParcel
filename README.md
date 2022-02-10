@@ -35,30 +35,50 @@ We will refer to the first term as the expected emission log-likelihood and the 
 This is a generative Potts model of brain activity data. The main idea is that the brain consists of $K$ regions, each with a specific activity profile $\mathbf{v}_k$ for a specific task set. The model consists of a arrangement model that tells us how the $K$ regions are arranged in a specific subject $s$, and an emission model that provides a probability of the measured data, given the individual arrangement of regions.
 
 ### Independent Arrangement model 
-This is the simplest spatial arrangement model - it simply learns the probability at each location that the node is part of cluster K. These probabilities are simply learned as the parameters $\pi_{ik}=p(u_i=k)$, or after a re-parameterization in log space: $\eta_{ik}=\log \pi_{ik}$.  
+This is the simplest spatial arrangement model - it simply learns the probability at each location that the node is part of cluster K. These probabilities are simply learned as the parameters $\pi_{ik}=p(u_i=k)$, or after a re-parameterization in log space: $\eta_{ik}=\log \pi_{ik}$.  Vice versa (not assuming that the etas are correctly scaled): 
+$$
+\pi_{ik}=\frac{\rm{exp}(\eta_{ik})}{\sum_{j}\rm{exp}(\eta_{ij})}
+$$
 
-The independent arrangement model can be estimated using the EM-algorithm.
+This independent arrangement model can be estimated using the EM-algorithm.
 
 In the Estep, we are integrating the evidence from the data and the prior: 
 $$
-p(u_i=k|\mathbf{y}_i)=\langle u_{ik}\rangle=\frac{\rm{exp}(log(p(\mathbf{y}_i|u_i=k)+\eta_{ik})}{\sum_{j}{\rm{exp}(log(p(\mathbf{y}_i|u_i=j)+\eta_{ij}})}
+p(u_i=k|\mathbf{y}_i)=\langle u_{ik}\rangle=\frac{\rm{exp}(log(p(\mathbf{y}_i|u_i=k))+\eta_{ik})}{\sum_{j}{\rm{exp}(log(p(\mathbf{y}_i|u_i=j))+\eta_{ij}})}
 $$
 
 Or in vector notation:
 
 $$
 \begin{align*}
-\langle \mathbf{u}_{i}\rangle =\rm{softmax}(log(p(\mathbf{y}_i|\mathbf{u}_i)+\boldsymbol{\eta}_i)
+\langle \mathbf{u}_{i}\rangle =\rm{softmax}(log(p(\mathbf{y}_i|\mathbf{u}_i))+\boldsymbol{\eta}_i)
 \end{align*}
 $$
-For the M-step, we use the derivative in respect to the parameters $\eta$. For a good introduction, see: [https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/]. 
+For the M-step, we use the derivative of the expected arrangement log-likelihood in respect to the parameters $\eta$:
 
-So, for the parameters: 
 $$
-\frac{\part{p(u_k)}}{\part{\eta_j}}=p(u_k)(\delta_{kj}-p(u_j))
+\mathcal{L}_A=\sum_{i}\sum_{k}\langle u_{i,k}\rangle  \rm{log}(\pi_{ik})\\
+=\sum_{i}\sum_{k}\langle u_{ik}\rangle(\eta_{ik}-\rm{log}\sum_j\rm{exp}(\eta_{ij}))\\
+=\sum_{i}\sum_{k}\langle u_{ik}\rangle\eta_{ik}-\sum_{i}\log\sum_j\exp(\eta_{i,j})\\
+$$
+
+So the derivative is 
+
+$$
+\begin{align}
+\frac{\part\mathcal{L}_A}{\part{\eta_{ik}}}&=\langle u_{ik}\rangle-\frac{\part}{\part\eta_{ik}}\log\sum_j\exp(\eta_{ij})\\
+&=\langle u_{ik}\rangle-\frac{1}{\sum_j\exp(\eta_{ij})}\frac{\part}{\part\eta_{ik}}\sum_j\exp(\eta_{ij})\\\
+&=\langle u_{ik}\rangle-\frac{\exp(\eta_{ik})}{\sum_j\exp(\eta_{ij})}\\
+&=\langle u_{ik}\rangle-\pi_{ik}
+\end{align}
 $$
 
 
+
+We can also get the same result directly by the application of chain rule: For a good introduction, see: [https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/].  
+$$
+\frac{\part{\pi_k}}{\eta_k}=\pi_k(\delta_{kj}-\pi_j)
+$$
 
 
 
