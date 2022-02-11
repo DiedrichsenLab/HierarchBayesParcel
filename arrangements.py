@@ -46,7 +46,7 @@ class ArrangeIndependent(ArrangementModel):
         Parameters:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-            gather_ss (bool): 
+            gather_ss (bool):
                 Gather Sufficient statistics for M-step (default = True)
         Returns:
             Uhat (pt.tensor):
@@ -703,9 +703,10 @@ class PottsModelDuo(PottsModel):
         else:
             return np.c_[p1,p2]
 
+
 class mpRBM():
     """multinomial (categorial) restricted Boltzman machine
-    for probabilistic input for learning of brain parcellations
+    for learning of brain parcellations for probabilistic input
     Outer nodes (U):
         The outer (most peripheral nodes) are
         categorical with K possible categories.
@@ -723,8 +724,9 @@ class mpRBM():
         self.nh = nh
         self.W = pt.randn(nh,P*K)
         self.bh = pt.randn(nh)
-        self.bu = pt.randn(P*K)
+        self.bu = pt.randn(K,P)
         self.eneg_U = None
+        self.Etype = 'prob'
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -749,9 +751,8 @@ class mpRBM():
             sample_U: One-hot encoding of random sample [N,K,nv] array
         """
         N = h.shape[0]
-        wh = pt.mm(h, self.W)
-        activation = wh + self.bu
-        p_u = pt.softmax(activation.reshape(N,self.K,self.P),1)
+        wh = pt.mm(h, self.W).reshape(N,self.K,self.P)
+        p_u = pt.softmax(wh + self.bu,1)
         r = pt.empty(N,1,self.P).uniform_(0,1)
         cdf_v = p_u.cumsum(1)
         sample = (r < cdf_v).float()
@@ -772,32 +773,17 @@ class mpRBM():
         U = expand_mn(u,self.K)
         for i in range (iter):
             _,h = self.sample_h(U)
-            _,U = self.sample_v(h)
+            _,U = self.sample_U(h)
         u = compress_mn(U)
         return u,h
 
-    def epos(self, U):
-        """[summary]
-
-        Args:
-            U : probability of input units [N,K,nv]
-        Returns:
-            epos_Eh: expectation of hidden variables [N x nh]
-        """
-        self.epos_U = U
-        N = U.shape[0]
-        wv = pt.mm(U.reshape(N,-1), self.W.t())
-        activation = wv + self.bh
-        self.epos_Eh = pt.sigmoid(activation)
-        return self.epos_Eh
-
     def Estep(self, emloglik,gather_ss=True):
-        """ Estep for the spatial arrangement model
+        """ Positive Estep for the multinomial boltzman model
 
         Parameters:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-            gather_ss (bool): 
+            gather_ss (bool):
                 Gather Sufficient statistics for M-step (default = True)
 
         Returns:
@@ -809,24 +795,25 @@ class mpRBM():
         if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         N=emloglik.shape[0]
-        U = pt.softmax(emloglik,dim=1)
+        U = pt.softmax(emloglik + self.bu,dim=1)
         wv = pt.mm(U.reshape(N,-1), self.W.t())
-        activation = wv + self.bh
-        Eh = pt.sigmoid(activation)
-        wh = pt.mm(Eh, self.W)
-        activation = wh + self.bu
-        Uhat = pt.softmax(activation.reshape(N,self.K,self.P),1)
+        Eh = pt.sigmoid(wv + self.bh)
+        wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
+        Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
-            self.epos_U = U
+            if self.Etype=='vis':
+                self.epos_U = U
+            elif self.Etype=='prob':
+                self.epos_U = Uhat
             self.epos_Eh = Eh
         return Uhat, np.nan
 
     def eneg_CDk(self,U,iter = 1):
         for i in range(iter):
-            _,h = self.sample_h(U)
-            _,U = self.sample_U(h)
-        self.eneg_Eh ,_ = self.sample_h(U)
-        self.eneg_U = U
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
         return self.eneg_U,self.eneg_Eh
 
     def eneg_pCD(self,num_chains=None,iter=3):
@@ -835,20 +822,42 @@ class mpRBM():
         else:
             U = self.eneg_U
         for i in range(iter):
-            _,h = self.sample_h(U)
-            _,U = self.sample_U(h)
-        self.eneg_Eh ,_ = self.sample_h(U)
-        self.eneg_U = U
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
         return self.eneg_U,self.eneg_Eh
 
+    def Eneg(self,U):
+        """
+        """
+        if self.train == 'CDk':
+            U,Eh=self.eneg_CDk(U , iter=self.eneg_iter)
+        if self.train =='pCD':
+            U,Eh=self.eneg_pCD(iter=self.eneg_iter)
+        return U,Eh
+
+    def get_pi(self,U):
+        if self.train == 'CDk':
+            U,Eh=self.eneg_CDk(U , iter=self.eneg_iter)
+        pi   = pt.mean(self.eneg_U,dim=0)
+        return pi
+
+
     def Mstep(self,alpha=0.8):
+        """Performs gradient step on the parameters
+
+        Args:
+            alpha (float, optional): [description]. Defaults to 0.8.
+        """
         N = self.epos_Eh.shape[0]
         M = self.eneg_Eh.shape[0]
         epos_U=self.epos_U.reshape(N,-1)
         eneg_U=self.eneg_U.reshape(M,-1)
         self.W += alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
-        self.bu += alpha * (pt.sum(epos_U,0) - N / M * pt.sum(eneg_U,0))
+        self.bu += alpha * (pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0))
         self.bh += alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
+
 
 def loglik2prob(loglik,dim=0):
     """Safe transformation and normalization of

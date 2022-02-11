@@ -11,43 +11,20 @@ import spatial as sp
 import copy
 import evaluation as ev
 
-def train_rbm_cdk(rbm,emlog_train,emlog_test,part,crit='logpY',
+def train_rbm(rbm,emlog_train,emlog_test,part,crit='logpY',
              n_epoch=20,batch_size=20,alpha=0.05):
     N = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
     uerr_train = np.zeros(n_epoch)
     uerr_test1 = np.zeros(n_epoch)
     uerr_test2 = np.zeros(n_epoch)
-    for epoch in range(n_epoch):
-        # Get test error
-        EU,_ = rbm.Estep(emlog_train,gather_ss=False)
-        pi   = rbm.eneg_CDk(Utrain,iter=20) # Necessary only for uerr_train
-        uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,EU,crit=crit)
-        uerr_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
-        uerr_test2[epoch]= ev.evaluate_completion_arr(rbm,emlog_test,part,crit=crit)
-        print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}, Test2: {uerr_test2[epoch]:.4f}')
-
-        for b in range(0,N-batch_size+1,batch_size):
-            ind = range(b,b+batch_size)
-            rbm.epos(Utrain[ind,:,:])
-            u,Eh=rbm.eneg_CDk(Utrain[ind,:,:],iter=1)
-            rbm.Mstep(alpha=alpha)
-    return rbm,uerr_train,uerr_test1,uerr_test2
-
-def train_rbm_pcd(rbm,emlog_train,emlog_test,part,crit='logpY',
-             n_epoch=20,batch_size=20,num_chains=77,iter=2,alpha=0.01):
-    N = emlog_train.shape[0]
-    Utrain=pt.softmax(emlog_train,dim=1)
-    uerr_train = np.zeros(n_epoch)
-    uerr_test1 = np.zeros(n_epoch)
-    uerr_test2 = np.zeros(n_epoch)
     # Intialize negative sampling
-    rbm.eneg_pCD(num_chains=num_chains,iter=20)
+    if rbm.train == 'pCD':
+        rbm.eneg_pCD(num_chains=rbm.eneg_numchains,iter=20)
     for epoch in range(n_epoch):
         # Get test error
         EU,_ = rbm.Estep(emlog_train,gather_ss=False)
-        
-        pi   = pt.mean(rbm.eneg_U,dim=0)
+        pi = rbm.get_pi(Utrain)
         uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,pi,crit=crit)
         uerr_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
         uerr_test2[epoch]= ev.evaluate_completion_arr(rbm,emlog_test,part,crit=crit)
@@ -55,11 +32,10 @@ def train_rbm_pcd(rbm,emlog_train,emlog_test,part,crit='logpY',
 
         for b in range(0,N-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
-            rbm.epos(Utrain[ind,:,:])
-            U,Eh=rbm.eneg_pCD(iter=2)
+            rbm.Estep(emlog_train[ind,:,:])
+            u,Eh = rbm.Eneg(Utrain[ind,:,:])
             rbm.Mstep(alpha=alpha)
     return rbm,uerr_train,uerr_test1,uerr_test2
-
 
 def train_ind(indepAr,emlog_train,emlog_test,part,crit='logpY',n_epoch=20):
     uerr_train = np.zeros(n_epoch)
@@ -135,23 +111,22 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     part = pt.multinomial(p,arrangeT.P,replacement=True)
 
     # Make two versions of the model for fitting
-    rbm = ar.mpRBM(K=K,P=P,nh=n_hidden)
-    rbm2 = copy.deepcopy(rbm)
+    rbm1 = ar.mpRBM(K=K,P=P,nh=n_hidden)
+    rbm1.Etype='vis'
+    rbm1.train = 'pCD'
+    rbm1.eneg_iter = 3
+    rbm1.eneg_numchains = 77
+
+    rbm2 = copy.deepcopy(rbm1)
+    rbm2.Etype='prob'
+    rbm2.train = 'pCD'
+    rbm2.eneg_iter = 3
+    rbm2.eneg_numchains = 77
 
     emloglik_train = MT.emission.Estep(Y=Ytrain)
     emloglik_test = MT.emission.Estep(Y=Ytest)
     emloglik_train=pt.tensor(emloglik_train,dtype=pt.get_default_dtype())
     emloglik_test=pt.tensor(emloglik_test,dtype=pt.get_default_dtype())
-
-    # Test normal training of RBM using CDk=1
-    rbm, uerr_tr1,uerr_t1,uerr_c1 = train_rbm_cdk(rbm,
-            emloglik_train,emloglik_test,
-            part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
-    # Test training using persistent CD
-
-    rbm2, uerr_tr2,uerr_t2,uerr_c2 = train_rbm_pcd(rbm2,
-            emloglik_train,emloglik_test,
-            part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
 
     # Check the baseline for independent Arrangement model
     indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
@@ -159,6 +134,19 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     indepAr,uerr_tr3,uerr_t3,uerr_c3 = train_ind(indepAr,
             emloglik_train,emloglik_test,
             part=part,n_epoch=n_epoch)
+
+    # Test normal training of RBM using CDk=1
+    rbm, uerr_tr1,uerr_t1,uerr_c1 = train_rbm(rbm1,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
+
+    # Test training using persistent CD
+    rbm2.bu=indepAr.logpi.copy()
+
+    rbm2, uerr_tr2,uerr_t2,uerr_c2 = train_rbm(rbm2,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch,alpha=alpha)
+
 
     t=np.arange(0,n_epoch)
     plt.figure(figsize=(6,8))
@@ -192,5 +180,5 @@ def train_rbm_to_mrf(width=10,K=5,N=200,theta_mu=20,theta_w=2,sigma2=0.5,
     pass
 
 if __name__ == '__main__':
-    train_rbm_to_mrf(N=60,batch_size=20,n_epoch=30,sigma2=0.01)
+    train_rbm_to_mrf(N=60,batch_size=20,n_epoch=60,sigma2=0.01)
     # train_RBM()
