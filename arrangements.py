@@ -23,7 +23,9 @@ class ArrangeIndependent(ArrangementModel):
         Either with a spatially uniform prior
         or a spatially-specific prior. Pi is saved in form of log-pi.
     """
-    def __init__(self, K=3, P=100, spatial_specific=False, remove_redundancy=True):
+    def __init__(self, K=3, P=100, 
+                 spatial_specific=False, 
+                 remove_redundancy=True):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
@@ -61,12 +63,15 @@ class ArrangeIndependent(ArrangementModel):
         if gather_ss:
             self.estep_Uhat = Uhat
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        ll_A = pt.sum(self.estep_Uhat * self.logpi,dim=(1,2))
-        if self.rem_red:
-            pi_K = exp(self.logpi).sum(dim=0)
-            ll_A = ll_A - pt.sum(log(pi_K))
+        pi = pt.softmax(self.logpi,dim=1)
+        ll_A = pt.sum(Uhat * pt.log(pi),dim=(1,2))
         return Uhat, ll_A
 
+    def Eneg(self,emloglik):
+        """ Negative phase of e-step: do nothing
+        """
+        return np.nan, np.nan
+    
     def Mstep(self):
         """ M-step for the spatial arrangement model
             Update the pi for arrangement model
@@ -102,7 +107,7 @@ class ArrangeIndependent(ArrangementModel):
                     U[i, p] = np.random.choice(self.K, p=pi[:,p].reshape(-1))
         return U
 
-    def marginal_prob(self):
+    def marginal_prob(self,U=None):
         """Returns marginal probabilty for every node under the model
         Returns: p[] marginal probability under the model
         """
@@ -704,9 +709,10 @@ class PottsModelDuo(PottsModel):
             return np.c_[p1,p2]
 
 
-class mpRBM():
+class mpRBM(ArrangementModel):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
+    Uses Contrastive-Divergence k for learning  
     Outer nodes (U):
         The outer (most peripheral nodes) are
         categorical with K possible categories.
@@ -719,6 +725,7 @@ class mpRBM():
         In this version we will use binary hidden nodes - so to get the same capacity as a mmRBM, one would need to set the number of hidden nodes to nh
     """
     def __init__(self, K, P, nh):
+        super().__init__(K, P)
         self.K = K
         self.P = P
         self.nh = nh
@@ -727,6 +734,7 @@ class mpRBM():
         self.bu = pt.randn(K,P)
         self.eneg_U = None
         self.Etype = 'prob'
+        self.alpha = 0.01
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -802,49 +810,20 @@ class mpRBM():
         Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
             if self.Etype=='vis':
-                self.epos_U = U
+                self.epos_U = pt.softmax(emloglik,dim=1)
             elif self.Etype=='prob':
                 self.epos_U = Uhat
             self.epos_Eh = Eh
         return Uhat, np.nan
 
-    def eneg_CDk(self,U,iter = 1):
-        for i in range(iter):
-            Eh,h = self.sample_h(U)
-            EU,U = self.sample_U(h)
-        self.eneg_Eh = Eh
-        self.eneg_U = EU
-        return self.eneg_U,self.eneg_Eh
-
-    def eneg_pCD(self,num_chains=None,iter=3):
-        if (self.eneg_U is None):
-            U = pt.empty(num_chains,self.K,self.P).uniform_(0,1)
-        else:
-            U = self.eneg_U
-        for i in range(iter):
-            Eh,h = self.sample_h(U)
-            EU,U = self.sample_U(h)
-        self.eneg_Eh = Eh
-        self.eneg_U = EU
-        return self.eneg_U,self.eneg_Eh
-
-    def Eneg(self,U):
-        """
-        """
-        if self.train == 'CDk':
-            U,Eh=self.eneg_CDk(U , iter=self.eneg_iter)
-        if self.train =='pCD':
-            U,Eh=self.eneg_pCD(iter=self.eneg_iter)
-        return U,Eh
-
-    def get_pi(self,U):
-        if self.train == 'CDk':
-            U,Eh=self.eneg_CDk(U , iter=self.eneg_iter)
-        pi   = pt.mean(self.eneg_U,dim=0)
+    def marginal_prob(self,U=None):
+        if U is not None: 
+            U,Eh=self.Eneg(U)
+        pi  = pt.mean(self.eneg_U,dim=0)
         return pi
 
 
-    def Mstep(self,alpha=0.8):
+    def Mstep(self):
         """Performs gradient step on the parameters
 
         Args:
@@ -854,9 +833,53 @@ class mpRBM():
         M = self.eneg_Eh.shape[0]
         epos_U=self.epos_U.reshape(N,-1)
         eneg_U=self.eneg_U.reshape(M,-1)
-        self.W += alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
-        self.bu += alpha * (pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0))
-        self.bh += alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
+        self.W += self.alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
+        self.bu += self.alpha * (pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0))
+        self.bh += self.alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
+
+
+class mpRBM_pCD(mpRBM):
+    """multinomial (categorial) restricted Boltzman machine
+    for learning of brain parcellations for probabilistic input
+    Uses persistent Contrastive-Divergence k for learning  
+    """ 
+    
+    def __init__(self, K, P, nh, eneg_iter=3,eneg_numchains=77):
+        super().__init__(K, P,nh)
+        self.eneg_iter = eneg_iter
+        self.eneg_numchains = eneg_numchains
+
+
+    def Eneg(self, U=None):
+        if (self.eneg_U is None):
+            U = pt.empty(self.eneg_numchains,self.K,self.P).uniform_(0,1)
+        else:
+            U = self.eneg_U
+        for i in range(self.eneg_iter):
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
+        return self.eneg_U,self.eneg_Eh
+
+class mpRBM_CDk(mpRBM):
+    """multinomial (categorial) restricted Boltzman machine
+    for learning of brain parcellations for probabilistic input
+    Uses persistent Contrastive-Divergence k for learning  
+    """ 
+    
+    def __init__(self, K, P, nh, eneg_iter=1):
+        super().__init__(K, P,nh)
+        self.eneg_iter = eneg_iter
+
+    def Eneg(self,U):
+        for i in range(self.eneg_iter):
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
+        return self.eneg_U,self.eneg_Eh
+
 
 
 def loglik2prob(loglik,dim=0):
