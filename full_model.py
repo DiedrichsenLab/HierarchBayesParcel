@@ -266,7 +266,7 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
     # print(theta_true)
     T = FullModel(arrangeT, emissionT)
-    T, ll, theta = T.fit_em(Y=Y, iter=1, tol=0.00001)
+    T, ll, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
     loglike_true = ll
 
     # Step 3: Generate new models for fitting
@@ -275,7 +275,7 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     print('Done.')
 
@@ -329,7 +329,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
     # print(theta_true)
     T = FullModel(arrangeT, emissionT)
-    T, ll, theta = T.fit_em(Y=Y, iter=1, tol=0.00001)
+    T, ll, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
     loglike_true = ll
 
     # Step 3: Generate new models for fitting
@@ -339,13 +339,12 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     print('Done.')
 
 
 if __name__ == '__main__':
-    # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
+    _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-
+    # _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100)
