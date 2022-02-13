@@ -1,13 +1,11 @@
-from numpy.typing import _16Bit
 from arrangements import ArrangeIndependent
-from emissions import MixGaussian, MixGaussianExp, MixVMF
+from emissions import MixGaussian, MixGaussianExp, MixVMF, MixGaussianGamma, mean_adjusted_sse
 import os # to handle path information
 import numpy as np
+import torch as pt
 import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn import plotting
-import sys
-# sys.path.insert(0, "D:/python_workspace/")
 
 class FullModel:
     def __init__(self, arrange,emission):
@@ -38,22 +36,22 @@ class FullModel:
 
         """
         # Initialize the tracking
-        ll = np.zeros((iter,2))
+        ll = np.zeros((iter, 2))
         theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
         self.emission.initialize(Y)
         for i in range(iter):
             # Track the parameters
-            theta[i, :] = np.concatenate([self.arrange.get_params(),self.emission.get_params()])
+            theta[i, :] = np.concatenate([self.arrange.get_params(), self.emission.get_params()])
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
             Uhat, ll_A = self.arrange.Estep(emloglik)
             # Compute the expected complete logliklihood
-            ll_E = np.sum(Uhat * emloglik, axis=(1, 2))
-            ll[i,0]=np.sum(ll_A)
-            ll[i,1]=np.sum(ll_E)
+            ll_E = pt.sum(Uhat * emloglik, dim=(1, 2))
+            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 1] = pt.sum(ll_E)
             # Check convergence
-            if i==iter-1 or ((i > 1) and (ll[i,:].sum() - ll[i-1,:].sum() < tol)):
+            if i == iter-1 or ((i > 1) and (ll[i,:].sum() - ll[i-1,:].sum() < tol)):
                 break
 
             # Updates the parameters
@@ -61,9 +59,9 @@ class FullModel:
             self.arrange.Mstep()
 
         if seperate_ll:
-            return self, ll[:i+1, :], theta[:i+1, :]
+            return self, ll, theta, Uhat
         else:
-            return self, ll[:i+1, :].sum(axis=1), theta[:i+1, :]
+            return self, ll.sum(axis=1), theta, Uhat
 
     def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False, estep='sample'):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
@@ -197,51 +195,49 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # Uhat, ll_a = arrangeT.Estep(emll_true)
     # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
     # print(theta_true)
-    emissionT.initialize(Y)
-    emll_true = emissionT.Estep()
-    Uhat, ll_a = arrangeT.Estep(emll_true)
-    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
-    print(theta_true)
+    T = FullModel(arrangeT, emissionT)
+    T, ll, theta = T.fit_em(Y=Y, iter=1, tol=0.00001)
+    loglike_true = ll
 
     # Step 3: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False)
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussian(K=K, N=N, P=P)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta = M.fit_em(Y, iter=max_iter, tol=0.001)
-    _plot_loglike(ll, loglike_true, color='b')
+    M, ll, theta = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+    _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     print('Done.')
 
 
-def _simulate_full_GME():
+def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
     # Step 1: Set the true model to some interesting value
-    arrangeT = ArrangeIndependent(K=5, P=100, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixGaussianExp(K=5, N=40, P=100)
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionT = MixGaussianExp(K=K, N=N, P=P)
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
-    U = arrangeT.sample(num_subj=10)
+    U = arrangeT.sample(num_subj=num_sub)
     Y, signal = emissionT.sample(U)
 
     # Step 2.1: Compute the log likelihood from the true model
     theta_true = np.concatenate([arrangeT.get_params(), emissionT.get_params()])
     emissionT.initialize(Y)
-    emissionT.s = signal
-    emll_true = emissionT.Estep_grid()
+    emll_true = emissionT.Estep(signal=signal)
     Uhat, ll_a = arrangeT.Estep(emll_true)
-    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+    loglike_true = pt.sum(Uhat * emll_true) + pt.sum(ll_a)
     print(theta_true)
 
     # Step 3: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=5, P=100, spatial_specific=False)
-    emissionM = MixGaussianExp(K=5, N=40, P=100)
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionM = MixGaussianExp(K=K, N=N, P=P)
     # emissionM.set_params([emissionT.V, emissionT.sigma2, emissionT.alpha, emissionM.beta])
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    ll, theta = M.fit_em(Y, iter=50, tol=0.001)
-    _plot_loglike(ll, loglike_true, color='b')
+    M, ll, theta, U_hat = M.fit_em(Y=Y, iter=max_iter, tol=0.0001)
+    _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
+    SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
     print('Done.')
 
 
@@ -256,7 +252,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
     Y = emissionT.sample(U)
 
     # Step 2.1: Compute the log likelihood from the true model
-    theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
+    theta_true = np.concatenate([arrangeT.get_params(), emissionT.get_params()])
     # emissionT.initialize(Y)
     # emll_true = emissionT.Estep()
     # Uhat, ll_a = arrangeT.Estep(emll_true)
@@ -267,18 +263,18 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
     loglike_true = ll
 
     # Step 3: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False)
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixVMF(K=K, N=N, P=P, uniform=False)
     # emissionM.set_params([emissionM.V, emissionM.kappa])
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
     M, ll, theta = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
-    _plot_loglike(ll, loglike_true, color='b')
+    _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     print('Done.')
 
 
 if __name__ == '__main__':
-    _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
-    # _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=100)
-    # _simulate_full_GME()
+    # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
+    # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
+    _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100)

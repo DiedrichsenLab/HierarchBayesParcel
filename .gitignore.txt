@@ -1,8 +1,9 @@
 ### Intellij ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio and Webstorm
 
-# User-specific stuff (pycharm):
-.idea/
+# User-specific stuff (pycharm and vscode):
+.idea/*
+.vscode/*
 
 # Mongo Explorer plugin:
 .idea/mongoSettings.xml

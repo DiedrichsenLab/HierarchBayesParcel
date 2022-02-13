@@ -104,7 +104,7 @@ class ArrangeIndependent(ArrangementModel):
                 if self.spatial_specific:
                     U[i, p] = np.random.choice(self.K, p=pi[:,p])
                 else:
-                    U[i, p] = np.random.choice(self.K, p=pi[:,p].reshape(-1))
+                    U[i, p] = np.random.choice(self.K, p=pi[:].reshape(-1))
         return U
 
     def marginal_prob(self,U=None):
