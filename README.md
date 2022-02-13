@@ -1,4 +1,4 @@
-# Generative Frameworks
+# Generative Framework
 A generative modelling framework for individual brain organization across a number of different data. The Model is partitioned into a model that determines the probability of the spatial arrangement of regions in each subject s, $p(\mathbf{U}^{(s)};\theta_A)$ and the probability of observing a set of data at each given brain location. We introduce the Markov property that the observations are mutually independent, given the spatial arrangement. 
 $$
 p(\mathbf{Y}^{(s)}|\mathbf{U}^{(s)};\theta_E)=\prod_i p(\mathbf{y}_i^{(s)}|\mathbf{u}_i^{(s)};\theta_E)
@@ -14,7 +14,7 @@ $$
 &=\log\sum_{\mathbf{U}}q(\mathbf{U})\frac{p(\mathbf{Y},\mathbf{U}|\theta)}{q(\mathbf{U})}\\
 &\geqslant \sum_{\mathbf{U}} q(\mathbf{U}) \log \frac{p(\mathbf{Y},\mathbf{U}|\theta)}{q(\mathbf{U})} \tag{Jensen's inequality}\\ 
 &=\langle \log p(\mathbf{Y},\mathbf{U}|\theta) - \log q(\mathbf{U})\rangle_q
-\triangleq \mathcal{L}(q, \theta)
+\triangleq \mathcal{L}(q, \theta) - \log \langle q(\mathbf{U})\rangle_q
 \end{align*}
 $$
 
@@ -34,18 +34,67 @@ We will refer to the first term as the expected emission log-likelihood and the 
 
 This is a generative Potts model of brain activity data. The main idea is that the brain consists of $K$ regions, each with a specific activity profile $\mathbf{v}_k$ for a specific task set. The model consists of a arrangement model that tells us how the $K$ regions are arranged in a specific subject $s$, and an emission model that provides a probability of the measured data, given the individual arrangement of regions.
 
+### Independent Arrangement model 
+This is the simplest spatial arrangement model - it simply learns the probability at each location that the node is part of cluster K. These probabilities are simply learned as the parameters $\pi_{ik}=p(u_i=k)$, or after a re-parameterization in log space: $\eta_{ik}=\log \pi_{ik}$.  Vice versa (not assuming that the etas are correctly scaled): 
+$$
+\pi_{ik}=\frac{\rm{exp}(\eta_{ik})}{\sum_{j}\rm{exp}(\eta_{ij})}
+$$
+
+This independent arrangement model can be estimated using the EM-algorithm.
+
+In the Estep, we are integrating the evidence from the data and the prior: 
+$$
+p(u_i=k|\mathbf{y}_i)=\langle u_{ik}\rangle=\frac{\rm{exp}(log(p(\mathbf{y}_i|u_i=k))+\eta_{ik})}{\sum_{j}{\rm{exp}(log(p(\mathbf{y}_i|u_i=j))+\eta_{ij}})}
+$$
+
+Or in vector notation:
+
+$$
+\begin{align*}
+\langle \mathbf{u}_{i}\rangle =\rm{softmax}(log(p(\mathbf{y}_i|\mathbf{u}_i))+\boldsymbol{\eta}_i)
+\end{align*}
+$$
+For the M-step, we use the derivative of the expected arrangement log-likelihood in respect to the parameters $\eta$:
+
+$$
+\mathcal{L}_A=\sum_{i}\sum_{k}\langle u_{i,k}\rangle  \rm{log}(\pi_{ik})\\
+=\sum_{i}\sum_{k}\langle u_{ik}\rangle(\eta_{ik}-\rm{log}\sum_j\rm{exp}(\eta_{ij}))\\
+=\sum_{i}\sum_{k}\langle u_{ik}\rangle\eta_{ik}-\sum_{i}\log\sum_j\exp(\eta_{i,j})\\
+$$
+
+So the derivative is 
+
+$$
+\begin{align}
+\frac{\part\mathcal{L}_A}{\part{\eta_{ik}}}&=\langle u_{ik}\rangle-\frac{\part}{\part\eta_{ik}}\log\sum_j\exp(\eta_{ij})\\
+&=\langle u_{ik}\rangle-\frac{1}{\sum_j\exp(\eta_{ij})}\frac{\part}{\part\eta_{ik}}\sum_j\exp(\eta_{ij})\\\
+&=\langle u_{ik}\rangle-\frac{\exp(\eta_{ik})}{\sum_j\exp(\eta_{ij})}\\
+&=\langle u_{ik}\rangle-\pi_{ik}
+\end{align}
+$$
+
+
+
+We can also get the same result directly by the application of chain rule: For a good introduction, see: [https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/].  
+$$
+\frac{\part{\pi_k}}{\eta_k}=\pi_k(\delta_{kj}-\pi_j)
+$$
+
+
+
 ### Simple Potts model
+
 The brain is sampled in $P$ vertices (or voxels). Individual maps are aligned using anatomical normalization, such that each vertex refers to a (roughly) corresponding region in each individual brain. The assignment of each brain location to a specific parcel in subject $s$ is expressed as the random variable $u_i^{(s)}$.
 
 Across individual brains, we have the overall probability of a specific brain location being part of parcel $k$.
 $$
-p(u_i = k) = \mu_{ki}
+p(u_i = k) = \pi_{ki}
 $$
 
 The spatial interdependence of brain locations is expressed as a Potts model. In this model, the overall probability of a specific assignment of brain locations to parcels (the vector $\mathbf{u}$) is expressed as the product of the overall prior and the product of all possible pairwise potentenials ($\psi_{ij}$). 
 
 $$
-p(\mathbf{u}) \propto \prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
+p(\mathbf{u}) = \frac{1}{Z(\theta)} \prod_{i}\pi_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
 $$
 
 Each local potential is defined by an exponential over all other that are connected to node $i$, i.e. nodes with connectivity weights of $w_{ji}=w_{ij}>0$.
@@ -65,16 +114,91 @@ w_{ij}=\begin{cases}
 $$
 This formulation would enforce local smoothness of the map. However, we could also express in these potential more medium range potentials (two specific parietal and premotor areas likely belong to the same parcel), as well as cross-hemispheric symmetry. Given this, the matrix $\mathbf{W}$ could be simply derived from the underlying grid or be learned to reflect known brain-connectivity. 
 
-In summary, we can express the prior probability of a specific arrangement in terms of a set of conditional probabilities 
+The expected arrangement log-likelihood therefore becomes: 
 $$
-p(u_i|u_{j\neq i}) \propto \prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
-$$
-  and we the corresponding conditional log-probability
-$$
-l(u_i|u_{j\neq i}) \propto \rm{log}\mu_{u_i,i}+ \theta_{w}\sum_{i\neq j}{\mathbf{u}_i^T\mathbf{u}_j w_{ij}}
+\begin{align*}
+\mathcal{L}_A=\sum_i \langle\mathbf{u}_i\rangle^T \log{\boldsymbol{\pi}_{i}}+\theta_w \sum_i \sum_j w_{ij} \langle\mathbf{u}_i^T\mathbf{u}_j\rangle - \log Z 
+\end{align*}
 $$
 
+####  Inference using stochastic maximum likelihood / contrastive divergence
+
+We can approximate the gradient of the parameters using a contrastive divergence-type algorithm. We view the arrangement log likelihood as a sum of the unnormalized part ($\tilde{\mathcal{L}}_A$) and the log partition function. For each parameter $\theta$ we then follow the gradient 
+$$
+\begin{align*}
+\grad_\theta \mathcal{L}_A&=\grad_\theta \tilde{\mathcal{L}}_A-\grad_\theta \log Z\\
+&=\grad_\theta \tilde{\mathcal{L}}_A-\mathrm{E}_p [\grad_\theta \tilde{\mathcal{L}}_A]\\
+&=\grad_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_q -
+\grad_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_p 
+\end{align*}
+$$
+Thus, we can use the gradient of the unnormalized expected log-likelihood (given a distribution $q(\mathbf{U}) = p(\mathbf{U}|\mathbf{Y};\theta)$, minus the  gradient of the unnormalized expected log-likelihood in respect to the expectation under the model parameters, without seeing the data, $q(\mathbf{U}) = p(\mathbf{U}|\mathbf{Y};\theta)$. This motivates the use of sampling / approximate inference for both of these steps. See Deep Learning (18.1).
+
+#### Sampling from the prior or posterior distribution
+
+The problem is that the two expectations under the prior (p) and the posterior (q) distribution of the model cannot be easily be computed. We can evaluate the prior probability of a parcellation $p(\mathbf{U})$ or the posterior distribution $p(\mathbf{U}|\mathbf{Y})$ up to a constant of proportionality, with for example 
+$$
+p(\mathbf{U}|\mathbf{Y};\theta) = \frac{1}{Z(\theta)}\prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }\prod_{i}p(\mathbf{y}_i|u_i)
+$$
+Calculating the normalization constant $Z(\theta)$ (partition function, Zustandssumme, or sum over states) would involve summing this probability over all possible states, which for $P$ brain locations and $K$ parcels is $K^P$, which is intractable. 
+
+However, the conditional probability for each node, given all the other nodes, can be easily computed. Here the normalizaton constant is just the sum of the potential functions over the $K$ possible states for this node
+
+$$
+p(u_i|u_{j \neq i},\mathbf{y}_i;\theta) = \frac{1}{Z(\theta)}\mu_{u_i,i} \; p(\mathbf{y}_i|u_i) \prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
+$$
+With Gibbs sampling, we start with a pattern $\mathbf{u}^{(0)}$ and then update $u_1^{(1)}$ by sampling from $p(u_1|u_2^{(0)}...u_P^{(0)})$. We then sample $u_2^{(1)}$ by sampling from $p(u_2|u_1^{(1)}, u_3^{(0)}...u_P^{(0)})$ and so on, until we have sampled each node once. Then we return to the beginning and restart the process. After some burn-in period, the samples will come from desired overall distribution. If we want to sample from the prior, rather than from the posterior, we simply drop the $p(\mathbf{y}_i|u_i)$ term from the conditional probability above. 
+
+#### Gradient for different parametrization of the Potts model
+
+For the edge-energy parameters $\theta_w$ we clearly want to use the natural parametrization with the derivate: 
+$$
+\frac{\part \tilde{\mathcal{L}}_A}{\part \theta_w}=\sum_i\sum_j w_{ij}\langle\mathbf{u}_i^T\mathbf{u}_j\rangle
+$$
+For the prior probability of each parcel $k$ at each location $i$  ($\pi_{ik}$) we have a number of options. 
+
+First ,we can use the probabilities themselves as parameters:
+$$
+\frac{\part \tilde{\mathcal{L}}_A}{\part \pi_{ik}}=\frac{\langle u_{ik}\rangle}{\pi_{ik}}
+$$
+
+This is unconstrained (that is probabilities do not need to sum to 1), and the normalization would happen through the partition function. 
+
+Secondly, we can use a re-parameterization in log space, which is more natural: $\eta_{ik}=\log \pi_{ik}$. In this case the derivative of the non-normalized part just becomes: 
+$$
+\frac{\part \tilde{\mathcal{L}}_A}{\part \eta_{ik}}=\langle u_{ik}\rangle
+$$
+Finally, we can implement the constraint that the probabilities at each location sum to one by the following re-parametrization:
+$$
+\begin{align*}
+\pi_{iK}&=1-\sum_{k=1}^{K-1}\pi_{ik}\\
+\eta_{ik}&=\log(\frac{\pi_{ik}}{\pi_{iK}})=\log{\pi_{ik}}-\log({1-\sum_{k=1}^{K-1}\pi_{ik}})\\
+\pi_{ik}&=\frac{\exp(\eta_{ik})}{1+\sum_{k=1}^{K-1}\exp(\eta_{ik})}\\
+\pi_{iK}&=\frac{1}{1+\sum_{k=1}^{K-1}\exp(\eta_{ik})}
+\end{align*}
+$$
+In the implementation, we can achieve this parametrization easily by defining a non-flexible parameter $\eta_{iK}\triangleq0$. Then we can treat the last probability like all the other ones. 
+
+With this constrained parameterization, we can rewrite the unnormalized part of the expected log-likelihood as: 
+
+$$
+\begin{align*}
+\tilde{\mathcal{L}}_A&=\sum_i \sum_{k}^{K-1}\langle u_{ik}\rangle  \log \pi_{ik}+[1-\sum_{k}^{K-1}\langle u_{ik}\rangle]\log{\pi_{iK}}+C\\
+&=\sum_i \sum_{k}^{K-1}\langle u_{ik}\rangle  (\log \pi_{ik}-\log \pi_{iK})+\log{\pi_{iK}}+C\\
+&=\sum_i \sum_{k}^{K-1}\langle u_{ik}\rangle \eta_{ik}-\log(1+\sum_{k=1}^{K-1}\exp(\eta_{ik}))+C\\
+\end{align*}
+$$
+where C is the part of the normalized log-likelihood that does not depend on $\pi$. Taking derivative in respect to $\eta_{ik}$ yields: 
+$$
+\begin{align*}
+\frac{\part\tilde{\mathcal{L}}_A}{\part\eta_{ik}}&=\langle u_{ik}\rangle - \frac{\exp(\eta_{ik})}{1+\sum_k^{K-1}\exp(\eta_{ik})}\\
+&=\langle u_{ik}\rangle - \pi_{ik}
+\end{align*}
+$$
+So in this parameterization in the iid case, $Z=1$ and we don't need the negative step. In general, however, we cannot simply set the above derivative to zero and solve it, as the parameter $\theta_w$ will also have an influences on $\langle u_{ik} \rangle$.
+
 ## Emission models
+
 Given the Markov property, the emission models specify the log probability of the observed data as a function of $\mathbf{u}$.  
 
 $$
@@ -218,19 +342,24 @@ where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels),
 $$
 \begin{align*}
 \mathcal{L}_E &=\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q\\
-&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle \log C_N(\kappa)+\langle u_{i}^{(k)}\rangle\kappa{\mu^{(k)}}^{T}\mathbf{y}_i
+&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa{\mu^{(k)}}^{T}\mathbf{y}_i
 \end{align*}
 $$
-Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa)$. (Note: the updates only consider a single subject).
+Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
 
 1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
    \begin{align*}
+<<<<<<< HEAD
    \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\bar{\mathbf{y}}_{k}||
+=======
+   \mathbf{v}_{k}^{(t)} &=\frac{\mathbf{y}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \mathbf{y}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\;\; r_k=||\mathbf{y}_{k}||
+>>>>>>> main
    \end{align*}
    $$
 
 2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005): 
+<<<<<<< HEAD
 
 
 $$
@@ -239,21 +368,14 @@ $$
 $$
 
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
+=======
+>>>>>>> main
 
-### Sampling from the prior or posterior distribution
-
-The problem with determine the overall prior or posterior distribution of the model (for purposes of data generation or inference) cannot be easily be computed. We can evaluate the prior probability of a parcellation $p(\mathbf{U})$ or the posterior distribution $p(\mathbf{U}|\mathbf{Y})$ up to a constant of proportionality, with for example 
-$$
-p(\mathbf{U}|\mathbf{Y};\theta) = \frac{1}{Z(\theta)}\prod_{i}\mu_{u_i,i}\prod_{i\neq j}{\psi_{ij}(u_i,u_j) }\prod_{i}p(\mathbf{y}_i|u_i)
-$$
-Calculating the normalization constant $Z(\theta)$ (partition function, Zustandssumme, or sum over states) would involve summing this probability over all possible states, which for $P$ brain locations and $K$ parcels is $K^P$, which is intractable. 
-
-However, the conditional probability for each node, given all the other nodes, can be easily computed. Here the normalizaton constant is just the sum of the potential functions over the $K$ possible states for this node
 
 $$
-p(u_i|u_{j \neq i},\mathbf{y}_i;\theta) = \frac{1}{Z(\theta)}\mu_{u_i,i} \; p(\mathbf{y}_i|u_i) \prod_{i\neq j}{\psi_{ij}(u_i,u_j) }
+\kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\
+\bar{r}_k=\frac{r_k}{\sum_i \langle u_i^{(k)} \rangle_q}
 $$
-With Gibbs sampling, we start with a pattern $\mathbf{u}^{(0)}$ and then update $u_1^{(1)}$ by sampling from $p(u_1|u_2^{(0)}...u_P^{(0)})$. We then sample $u_2^{(1)}$ by sampling from $p(u_2|u_1^{(1)}, u_3^{(0)}...u_P^{(0)})$ and so on, until we have sampled each node once. Then we return to the beginning and restart the process. After some burn-in period, the samples will come from desired overall distribution. If we want to sample from the prior, rather than from the posterior, we simply drop the $p(\mathbf{y}_i|u_i)$ term from the conditional probability above. 
 
-
+The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
 

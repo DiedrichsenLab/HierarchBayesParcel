@@ -3,7 +3,10 @@
 """
 Created on 12/14/2021
 Supplementary functions for von-Mises Fisher distribution
+<<<<<<< HEAD
 
+=======
+>>>>>>> main
 Author: DZHI
 """
 import numpy as np
@@ -17,6 +20,7 @@ def rand_uniform_hypersphere(N, p):
     """
         rand_uniform_hypersphere(N,p)
         =============================
+<<<<<<< HEAD
 
         Generate random samples from the uniform distribution on the (p-1)-dimensional
         hypersphere $\mathbb{S}^{p-1} \subset \mathbb{R}^{p}$. We use the method by
@@ -24,12 +28,19 @@ def rand_uniform_hypersphere(N, p):
 
         INPUT:
 
+=======
+        Generate random samples from the uniform distribution on the (p-1)-dimensional
+        hypersphere $\mathbb{S}^{p-1} \subset \mathbb{R}^{p}$. We use the method by
+        Muller [1], see also Ref. [2] for other methods.
+        INPUT:
+>>>>>>> main
             * N (int) - Number of samples
             * p (int) - The dimension of the generated samples on the (p-1)-dimensional hypersphere.
                 - p = 2 for the unit circle $\mathbb{S}^{1}$
                 - p = 3 for the unit sphere $\mathbb{S}^{2}$
             Note that the (p-1)-dimensional hypersphere $\mathbb{S}^{p-1} \subset \mathbb{R}^{p}$ and the
             samples are unit vectors in $\mathbb{R}^{p}$ that lie on the sphere $\mathbb{S}^{p-1}$.
+<<<<<<< HEAD
 
     References:
 
@@ -38,6 +49,12 @@ def rand_uniform_hypersphere(N, p):
 
     [2] https://mathworld.wolfram.com/SpherePointPicking.html
 
+=======
+    References:
+    [1] Muller, M. E. "A Note on a Method for Generating Points Uniformly on N-Dimensional Spheres."
+    Comm. Assoc. Comput. Mach. 2, 19-20, Apr. 1959.
+    [2] https://mathworld.wolfram.com/SpherePointPicking.html
+>>>>>>> main
     """
 
     if (p <= 0) or not isinstance(p, int):
@@ -61,11 +78,16 @@ def rand_t_marginal(kappa, p, N=1):
     """
         rand_t_marginal(kappa,p,N=1)
         ============================
+<<<<<<< HEAD
 
         Samples the marginal distribution of t using rejection sampling of Wood [3].
 
         INPUT:
 
+=======
+        Samples the marginal distribution of t using rejection sampling of Wood [3].
+        INPUT:
+>>>>>>> main
             * kappa (float) - concentration
             * p (int) - The dimension of the generated samples on the (p-1)-dimensional hypersphere.
                 - p = 2 for the unit circle $\mathbb{S}^{1}$
@@ -73,9 +95,13 @@ def rand_t_marginal(kappa, p, N=1):
             Note that the (p-1)-dimensional hypersphere $\mathbb{S}^{p-1} \subset \mathbb{R}^{p}$ and the
             samples are unit vectors in $\mathbb{R}^{p}$ that lie on the sphere $\mathbb{S}^{p-1}$.
             * N (int) - number of samples
+<<<<<<< HEAD
 
         OUTPUT:
 
+=======
+        OUTPUT:
+>>>>>>> main
             * samples (array of floats of shape (N,1)) - samples of the marginal distribution of t
     """
 
@@ -125,6 +151,7 @@ def rand_von_mises_fisher(mu, kappa, N=1):
     """
         rand_von_mises_fisher(mu,kappa,N=1)
         ===================================
+<<<<<<< HEAD
 
         Samples the von Mises-Fisher distribution with mean direction mu and concentration kappa.
 
@@ -136,6 +163,14 @@ def rand_von_mises_fisher(mu, kappa, N=1):
 
         OUTPUT:
 
+=======
+        Samples the von Mises-Fisher distribution with mean direction mu and concentration kappa.
+        INPUT:
+            * mu (array of floats of shape (p,1)) - mean direction. This should be a unit vector.
+            * kappa (float) - concentration.
+            * N (int) - Number of samples.
+        OUTPUT:
+>>>>>>> main
             * samples (array of floats of shape (N,p)) - samples of the von Mises-Fisher distribution
             with mean direction mu and concentration kappa.
     """
@@ -192,6 +227,7 @@ def rand_von_Mises(mu, kappa, N=1):
     """
         rand_von_Mises(N,mu,kappa)
         ==========================
+<<<<<<< HEAD
 
         Generates theta an Nx1 array of samples of a von Mises distribution
         with mean direction mu and concentration kappa.
@@ -219,6 +255,24 @@ def rand_von_Mises(mu, kappa, N=1):
 
          [2] N. I. Fisher, Statistical analysis of circular data, Cambridge University Press, (1993).
 
+=======
+        Generates theta an Nx1 array of samples of a von Mises distribution
+        with mean direction mu and concentration kappa.
+        INPUT:
+            * N - number of samples to be generated (integer)
+            * mu - mean direction (float)
+            * kappa - concentration (float)
+        OUTPUT:
+            * theta - an Nx1 array of samples of a von Mises distribution with mean
+            direction mu and concentration kappa.
+         References:
+         ===========
+         Algorithm first given in
+         [1] D. J. Best and N. I. Fisher, Efficient Simulation of the von Mises
+         Distribution, Applied Statistics, 28, 2, 152--157, (1979).
+         Also given in the following textbook/monograph
+         [2] N. I. Fisher, Statistical analysis of circular data, Cambridge University Press, (1993).
+>>>>>>> main
     """
 
     # Checks
@@ -276,5 +330,9 @@ def rand_von_Mises(mu, kappa, N=1):
             theta[counter] = np.mod(np.sign(U3 - 0.5) * np.arccos(f) + mu, 2*np.pi)
             counter += 1
 
+<<<<<<< HEAD
     return theta
 
+=======
+    return theta
+>>>>>>> main

@@ -1,196 +1,636 @@
-# Example Models
+# Example Models - for full, closed form inference via junction tree algorithm 
+# Or loopy belief propagation
 import numpy as np
+from numpy import exp,sqrt,log
 import matplotlib.pyplot as plt
 import copy
-# import seaborn as sns
+import emissions as em
+import arrangements as ar
+import spatial as sp
+from full_model import FullModel
+import pandas as pd
+import seaborn as sns
+import scipy.stats as ss
+import time
+import cProfile as cP
 
-def get_grid(width,height):
-    """
-        Returns a connectivity matrix and a mappin matrix for a simple rectangular grid
-    """
-    XX, YY = np.meshgrid(range(width),range(height))
-    xx = XX.reshape(-1)
-    yy = YY.reshape(-1)
-    D = (xx - xx.reshape((-1,1)))**2 + (yy - yy.reshape((-1,1)))**2
-    W = np.double(D==1)
-    return xx,yy,D,W
-
-def combinations(K,P):
-    """
-        Returns all possible states of a system
-
+def make_duo_model(K=4,theta_w =1, sigma2=0.1,N=10):
+    """Make a toy model with 2 nodes - can be analytically treated.
     Args:
-        K ([int]): Number of states (or list of states)
-        P ([int]): Number of nodes
+        K (int): Number of states. Defaults to 4.
+        theta_w (float): Coupling strenght between nodes. Defaults to 1.
+        sigma2 (float): Output variance. Defaults to 0.1.
+        N (int): Number of observations. Defaults to 10.
 
     Returns:
-        Y : np-array: NxP array of possible states
+        M (FullModel): Full initilized model
     """
-    N = K**P  # This is the number of combinations
-    Y = np.zeros((N,P),np.int8)
-    k = np.arange(K)
-    for p in range (P):
-        Y[:,p]=np.tile(np.repeat(k,K**p),K**(P-p-1))
-    return Y
+    pi = np.array([[0.6,0.25],[0.05,0.25],[0.15,0.25],[0.2,0.25]])
+    arrangeT = ar.PottsModelDuo(K=K)
+    emissionT = em.MixGaussian(K=K, N=N, P=2)
 
-class Ising:
-    def __init__(self,width=5,height=5):
-        self.xx, self.yy, self.D, self.W = get_grid(width,height)
-        self.P = self.xx.shape[0]
-        self.b = np.random.normal(0,1,(self.P,))
-        self.b = np.zeros((self.N,))
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
 
-    def loglike(self,Y):
-        """
-            Returns the energy term of the network
-            up to a constant the loglikelihood of the state
-        Args:
-            Y ([np-array]): 1d or 2d array of network states
-        """
-        return -0.5 * np.sum((Y @ self.W)* Y,axis=1)  + np.sum(self.b * Y,axis=1)
+def make_chain_model(P=5,K=4,theta_w =1, sigma2=0.1,N=10,logpi='one_end'):
+    """Make a chain model that can be calculated with the
+    Junction-tree-algorithm (JTA)
+    Args:
+        P (int): Number of nodes. Defaults to 5.
+        K (int): Number of states. Defaults to 4.
+        theta_w (float): Coupling strenght between nodes. Defaults to 1.
+        sigma2 (float): Output variance. Defaults to 0.1.
+        N (int): Number of observations. Defaults to 10.
 
-class Potts:
+    Returns:
+        M (FullModel): Full initilized model
     """
-    Potts models (Markov random field on multinomial variable)
-    with K possible states
-    Potential function is determined by linkages
-    parameterization is joint between all linkages, although it could be split
-    into different parameter functions
+
+    grid = sp.SpatialChain(P=P)
+    arrangeT = ar.PottsModel(grid.W,K=K)
+    emissionT = em.MixGaussian(K=K, N=N, P=P)
+
+    # Step 2: Initialize the parameters of the true model
+    pi = np.ones((K,P))/K
+    if logpi=='one_end':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        arrangeT.logpi=log(pi)
+    elif logpi=='two_ends':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        pi[:,-1]=[0.2,0.15,0.05,0.6]
+        arrangeT.logpi=log(pi)
+    else:
+        arrangeT.logpi=logpi
+    arrangeT.logpi=arrangeT.logpi-arrangeT.logpi[-1,:]
+    arrangeT.theta_w = theta_w
+    arrangeT.inE,arrangeT.ouE=np.where(arrangeT.W>0)
+    arrangeT.num_edges=len(arrangeT.inE)
+    arrangeT.update_order = np.concatenate([np.arange(arrangeT.num_edges,step=2),np.arange(arrangeT.num_edges-1,0,step=-2)])
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
+
+def make_branch_model(K=4,theta_w =1, sigma2=0.1,N=10,logpi='one_end'):
+    """Make a branch model that can still be calculated with the
+    Junction-tree-algorithm (JTA)
+    Consists of 6 Nodes, connected like this
+    0\...../4
+    ..2 - 3
+    1/ ....\5
+    Args:
+        K (int): Number of states. Defaults to 4.
+        theta_w (float): Coupling strenght between nodes. Defaults to 1.
+        sigma2 (float): Output variance. Defaults to 0.1.
+        N (int): Number of observations. Defaults to 10.
+
+    Returns:
+        M (FullModel): Full initilized model
     """
-    def __init__(self,K=3,width=5,height=5):
-        self.xx, self.yy, self.D, self.W = get_grid(width,height)
-        self.dim = (height,width)
-        self.P = self.xx.shape[0]
-        self.K = K # Number of states
-        self.b = np.random.normal(0,1,(self.P,self.K))
-        self.numparam = 1 # Number of weight parameters
-        self.theta = np.ones((self.numparam,))
+    P=6
+    W = np.zeros((6,6))
+    inE=np.array([0,2,1,2,2,3,3,4,3,5])
+    ouE=np.array([2,0,2,1,3,2,4,3,5,3])
+    W[inE,ouE]=1
+    arrangeT = ar.PottsModel(W,K=K)
+    arrangeT.inE = inE
+    arrangeT.ouE = ouE
+    arrangeT.update_order = np.array([0,2,4,9,7,6,8,5,3,1])
+    pi = np.ones((K,P))/K
+    if logpi=='one_end':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        arrangeT.logpi=log(pi)
+    elif logpi=='two_ends':
+        pi[:,0]=[0.6,0.05,0.15,0.2]
+        pi[:,-1]=[0.2,0.15,0.05,0.6]
+        arrangeT.logpi=log(pi)
+    else:
+        arrangeT.logpi=logpi
 
-    def potential(self,y):
-        """
-        returns the potential functions for the log-linear form of the model
-        """
-        if y.ndim==1:
-            y=y.reshape((-1,1))
-        # Potential on states
-        N = y.shape[0] # Number of observations
-        phi = np.zeros((self.numparam,N))
-        for i in range(N):
-           S = np.equal(y[i,:],y[i,:].reshape((-1,1)))
-           phi[0,i]=np.sum(S*self.W)
-        return(phi)
+    emissionT = em.MixGaussian(K=K, N=N, P=P)
 
-    def possible_states(self,fixed=None):
-        """
-            returns a matrix of all possible states
-        """
-        if fixed is None:
-            fixed = np.empty((self.P,))
-            fixed[:]= np.nan
-        fixIn = np.where(np.logical_not(np.isnan(fixed)))[0]
-        freeIn = np.where(np.isnan(fixed))[0]
-        num_states = freeIn.shape[0]
-        Y = np.empty((self.K**num_states,self.P))
-        Y[:,freeIn] = combinations(self.K,num_states)
-        Y[:,fixIn] = fixed[fixIn]
-        return Y
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.logpi=log(pi)-log(pi[-1,:])
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    MT = FullModel(arrangeT,emissionT)
+    return MT
 
-    def loglike(self,Y):
-        """
-            Returns the energy term of the network
-            up to a constant the loglikelihood of the state
-        Args:
-            Y ([np-array]): 1d or 2d array of network states
-        """
-        phi=self.potential(Y)
-        l = self.theta @ phi
-        return(l)
+def make_grid_model(K=4,theta_w=1,sigma2=0.1, width=10,N=10,theta_mu=30):
+    # Step 1: Create the true model
+    grid = sp.SpatialGrid(width=width,height=width)
+    arrangeT = ar.PottsModel(grid.W, K=K)
+    arrangeT.inE,arrangeT.ouE=np.where(grid.W>0)
+    arrangeT.num_edges = len(arrangeT.inE)
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
 
-    def cond_prob(self,Y,node):
-        """
-            Returns the conditional probabity vector for node x, given Y
-        """
-        x = np.arange(self.K)
-        ind = np.where(self.W[node,:]>0) # Find all the neighbors for node x (precompute!)
-        nb_x = Y[ind] # Neighbors to node x
-        same = np.equal(x,nb_x.reshape(-1,1))
-        loglik = self.theta * np.sum(same,axis=0)
-        p = np.exp(loglik)
-        p = p / np.sum(p)
-        return(p)
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.random_smooth_pi(grid.Dist,theta_mu=theta_mu)
+    arrangeT.theta_w = theta_w
+    emissionT.random_params()
+    emissionT.sigma2=sigma2
+    M = FullModel(arrangeT,emissionT)
+    return M
 
-    def sample_gibbs(self,num_chains=10,Y0=None,fixed=None,iter=100):
-        if fixed is None:
-            fixed = np.empty((self.P,))
-            fixed[:]= np.nan
-        fixIn = np.where(np.logical_not(np.isnan(fixed)))[0]
-        samIn = np.where(np.isnan(fixed))[0]
-        Y = np.zeros((iter,self.P,num_chains))
-        if Y0 is None:
-            Y0 = np.random.choice(self.K,(self.P,num_chains))
-        Y[0,:,:] = Y0
-        Y[0,fixIn,:] = fixed[fixIn].reshape((-1,1)) # Set the fixed elements to the right values
-        for i in range(iter):
-            for s in samIn:
-                for n in range(num_chains): # Loop over chains
-                    p = self.cond_prob(Y[i,:,n],s)
-                    Y[i,s,n]=np.random.choice(self.K,p=p)
-            if i+1<iter:
-                Y[i+1,:,:]=Y[i,:,:] # Start the new sample from the old one
-        return(Y)
+def simulate_potts_gauss_grid():
+    # Step 1: Make ht model
+    MT=make_grid_model(K=5,theta_w=2,sigma2=1)
+    # Step 3: Plot the prior of the true mode
+    plt.figure(figsize=(7,4))
+    grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
+    cluster = np.argmax(arrangeT.logpi,axis=0)
+    grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
 
-    def plot_samples(self,Y):
-        """
-            Plots a set of map samples as an image grid
-        """
-        N,P = Y.shape
-        rows = np.ceil(np.sqrt(N))
-        for n in range(N):
-            plt.subplot(rows,rows,n+1)
-            plt.imshow(Y[n,:].reshape(self.dim))
+    # Step 4: Generate data by sampling from the above model
+    U = MT.arrange.sample(num_subj=10,burnin=19)
+    # U = arrangeT.sample(num_subj=10)
+    Y = MT.emission.sample(U)
 
-    def fit(self,Y,iter=100,fixed=None):
-        """
-            Fitting the parameters of the model using divergent gradients on fully observed data
-            This version relies on the closed form
-        """
-        N = Y.shape[0] # Number of data points
-        Yp = self.possible_states(fixed) # Get array of possible states to integrate over
-        Phi_emp = self.potential(Y) - 20
-        Phi_th  = self.potential(Yp) - 20
-        theta = np.empty((self.numparam,iter))
-        ll = np.empty((iter,))
-        for i in range(iter):
-            theta[:,i]=self.theta
-            p = np.exp(np.sum(self.theta*Phi_th,axis=0))
-            Z = np.sum(p) # Partition function (normalizing constant)
-            p = p / Z
-            ll[i] = np.sum(np.sum(self.theta*Phi_emp,axis=0) - np.log(Z))
-            E_th = np.sum(Phi_th * p,axis=1) # Theoretical expectation of potentials
-            E_emp = np.sum(Phi_emp,axis=1)/N   # Empirical expectaction of potentials
-            grad = E_emp - E_th
-            self.theta = self.theta + 0.01 * grad
-        RES = {'theta':theta,'ll':ll}
-        return RES
+    # Plot sampling path for visualization purposes
+    # plt.figure(figsize=(10,4))
+    # grid.plot_maps(Uhist[:,0,:],cmap='tab10',vmax=9)
+    # Plot all the subjects
+    plt.figure(figsize=(10,4))
+    grid.plot_maps(U,cmap='tab10',vmax=9,grid=[2,5])
+
+    # Step 5: Generate new models for fitting
+    arrangeM = ar.PottsModel(grid.W, K=5)
+    emissionM = em.MixGaussian(K=5, N=40, P=grid.P)
+    arrangeM.random_smooth_pi(grid.Dist,theta_mu=4)
+    emissionM.random_params()
+
+    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    M = FullModel(arrangeM, emissionM)
+    M.emission.initialize(Y)
+    # Get the (approximate) posterior p(U|Y)
+    emloglik = M.emission.Estep()
+    Uhat, ll_A = M.arrange.Estep(emloglik)
+    Umax = np.argmax(Uhat,axis=1)
+    plt.figure(figsize=(7,4))
+    grid.plot_maps(Umax,cmap='tab10',vmax=9,grid=[2,5])
+
+    # ll, theta = M.fit_em(Y, iter=1000, tol=0.001)
+    plt.lineplot(ll, color='b')
+    print(theta)
+
+
+def plot_duo_fit(theta,ll,theta_true=None,ll_true=None):
+    plt.subplot(2,1,1)
+    color = ['r','r','b','b','g','g','k','k']
+    style = ['-',':','-',':','-',':','-.',':']
+    marker = ['o','s','o','s','o','s','*','v']
+
+    numiter, nparams = theta.shape
+    iter = range(numiter)
+
+    for i in range(nparams):
+        plt.plot(iter,theta[:,i],color[i]+style[i])
+        if theta_true is not None:
+            plt.plot(numiter+5,theta_true[i],color[i]+marker[i])
+    pass
+    plt.xlabel('Iteration')
+    plt.ylabel('Theta')
+
+    # Plot the likelihood
+    plt.subplot(2,1,2)
+    plt.plot(iter,ll[:,0]-ll[0,0],'k')
+    plt.plot(iter,ll[:,1]-ll[0,1],'b')
+    if ll_true is not None:
+        plt.plot(numiter+5,ll_true[0]-ll[0,0],'k*')
+        plt.plot(numiter+5,ll_true[1]-ll[0,1],'b*')
+    plt.legend(['arrange','emmision'])
+    plt.xlabel('Iteration')
+    plt.ylabel('Likelihood')
+
+
+def simulate_potts_gauss_duo(theta_w=2,
+                             sigma2 = 0.01,
+                             num_subj = 100,
+                             eneg_numchains=200,
+                             epos_numchains=20,
+                             numiter = 40,
+                             stepsize = 0.8,
+                             fit_theta_w=True):
+    """Basic simulation of a two-node potts model
+    with a fixed Mixed-Gaussian emission model
+
+    Args:
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.01.
+        num_subj (int, optional): [description]. Defaults to 100.
+        eneg_numchains (int, optional): [description]. Defaults to 200.
+        epos_numchains (int, optional): [description]. Defaults to 20.
+        niter (int, optional): [description]. Defaults to 60.
+        stepsize (float, optional): [description]. Defaults to 0.8.
+        fit_theta_w (bool, optional): [description]. Defaults to True.
+
+    Returns:
+        [type]: [description]
+    """
+    # Make true model
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
+
+    # Step 3: Generate data by sampling from the above model
+    U,Y = MT.sample(num_subj=num_subj)
+
+    # Plot the joint distribution of the hidden variables
+    df = pd.DataFrame({'U1':U[:,0],'U2':U[:,1]})
+    T=pd.pivot_table(df,index='U1',values='U1',columns='U2',aggfunc=len)
+    print(T)
+    print(T.sum(axis=1).T/num_subj)
+    print(T.sum(axis=0).T/num_subj)
+
+    # Step 4: Generate new models for fitting
+    arrangeM = ar.PottsModel(MT.arrange.W, K=4)
+    arrangeM.theta_w =0
+    arrangeM.fit_theta_w = fit_theta_w
+    emissionM = copy.deepcopy(MT.emission)
+
+    # Step 5: Get the emission log-liklihood:
+    M = FullModel(arrangeM, emissionM)
+    M.emission.initialize(Y)
+    # Get the (approximate) posterior p(U|Y)
+    emloglik = M.emission.Estep()
+
+    # Step 6: Get baseline for the emission and arrangement likelihood by fitting a Indepenent model
+    arrangeI = ar.ArrangeIndependent(K=4,P=2,spatial_specific=True)
+    Uhat,ll_A_in = arrangeI.Estep(emloglik)
+    arrangeI.Mstep()
+    Uhat,ll_A_in = arrangeI.Estep(emloglik)
+    pass
+
+    # Step 7: Get he the baseline for emission and arrangement model
+    # from the true model
+    Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
+    ll_E_true=np.sum(emloglik*Uhat,axis=(1,2))
+
+    # Step 8: With fixed emission model, fit the arrangement model
+    theta = np.empty((numiter,M.arrange.nparams))
+    ll_E = np.empty((numiter,num_subj))
+    ll_A = np.empty((numiter,num_subj))
+    for i in range(numiter):
+        theta[i,:]=M.arrange.get_params()
+        Uhat,ll_A[i,:] = M.arrange.epos_sample(emloglik,num_chains = epos_numchains,iter=5)
+        ll_E[i,:]=np.sum(emloglik*Uhat,axis=(1,2))
+        M.arrange.eneg_sample(num_chains=eneg_numchains, iter =5)
+        M.arrange.Mstep(stepsize)
+
+    thetaT = MT.arrange.get_params()
+    indT1 = MT.arrange.get_param_indices('logpi')
+    indT2 = MT.arrange.get_param_indices('theta_w')
+    ind = np.concatenate([indT1[0:6],indT2])
+
+    ll = np.c_[ll_A.sum(axis=1),ll_E.sum(axis=1)]
+    ll_true = np.array([ll_A_true.sum(),ll_E_true.sum()])
+    plot_duo_fit(theta[:,ind],ll,theta_true=thetaT[ind],ll_true=ll_true)
+
+    return theta,iter,thetaT
+
+
+
+def learn_potts_duo(theta_w=2,
+                    sigma2 = 0.01,
+                    num_subj = 100,
+                    eneg_numchains=200,
+                    epos_numchains=20,
+                    numiter = 60,
+                    stepsize = 0.8,
+                    fit_theta_w=True):
+    """Simulation of a two-node potts model
+    with a flexible Mixed-Gaussian emission model
+
+    Args:
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.01.
+        num_subj (int, optional): [description]. Defaults to 100.
+        eneg_numchains (int, optional): [description]. Defaults to 200.
+        epos_numchains (int, optional): [description]. Defaults to 20.
+        niter (int, optional): [description]. Defaults to 60.
+        stepsize (float, optional): [description]. Defaults to 0.8.
+        fit_theta_w (bool, optional): [description]. Defaults to True.
+
+    Returns:
+        [type]: [description]
+    """
+    # Step 1: Create the true model
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
+
+    # Generate the data
+    U,Y = MT.sample(num_subj=num_subj)
+
+    # Get the likelihood of the data under the MT
+    MT.emission.initialize(Y)
+    emloglik = MT.emission.Estep()
+    Uhat,ll_A_true = MT.arrange.epos_sample(emloglik)
+    ll_E_true = np.sum(emloglik * Uhat,axis=(1,2))
+    ll_true = [ll_A_true.sum(),ll_E_true.sum()]
+
+    # Step 4: Generate indepedent models for fitting
+    arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True)
+    emissionI = copy.deepcopy(MT.emission)
+    emissionI.sigma2=0.5
+    # Add a small perturbation to paramters
+    emissionI.V = emissionI.V + np.random.normal(0,0.1,emissionI.V.shape)
+    emissionM = copy.deepcopy(emissionI)
+    MI = FullModel(arrangeI, emissionI)
+
+    # Step 5: Fit independent model to the data and plot
+    plt.figure()
+    indT1 = MT.get_param_indices('arrange.logpi')
+    indT2 = MT.get_param_indices('emission.sigma2')
+    indT3 = MT.get_param_indices('arrange.theta_w')
+    indI1 = MI.get_param_indices('arrange.logpi')
+    indI2 = MI.get_param_indices('emission.sigma2')
+
+    tI_I = np.concatenate([indI1[0:6],indI2])
+    tI_T = np.concatenate([indT1[0:6],indT2])
+    MI,ll,theta = MI.fit_em(Y,iter=30,tol=0.001,seperate_ll=True)
+    plot_duo_fit(theta[:,tI_I],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
+
+    # Step 6: Generate Potts model for fitting
+    arrangeM = ar.PottsModel(MT.arrange.W, K=4)
+    arrangeM.theta_w =0
+    arrangeM.eneg_numchains=eneg_numchains
+    arrangeM.epos_numchains=epos_numchains
+    MP = FullModel(arrangeM, emissionM)
+
+    # Step 7: Use stochastic gradient descent to fit the combined model
+    plt.figure()
+    tI_T = np.concatenate([indT1[0:6],indT2,indT3])
+    MP,ll,theta = MP.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True)
+    plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T],ll_true=ll_true)
+    pass
+    return theta,iter
+
+
+def learn_potts_chain(P=5,
+                    theta_w=2,
+                    sigma2 = 0.1,
+                    num_subj = 100,
+                    eneg_numchains=200,
+                    epos_numchains=20,
+                    numiter = 60,
+                    stepsize = 0.8,
+                    fit_theta_w=True):
+    """Simulation of a chain potts model
+    with a flexible Mixed-Gaussian emission model
+
+    Args:
+        P (int): Number of nodes
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.01.
+        num_subj (int, optional): [description]. Defaults to 100.
+        eneg_numchains (int, optional): [description]. Defaults to 200.
+        epos_numchains (int, optional): [description]. Defaults to 20.
+        niter (int, optional): [description]. Defaults to 60.
+        stepsize (float, optional): [description]. Defaults to 0.8.
+        fit_theta_w (bool, optional): [description]. Defaults to True.
+
+    Returns:
+        [type]: [description]
+    """
+    # Step 1: Create the true model
+    MT = make_chain_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
+    indT1 = MT.get_param_indices('arrange.logpi')
+    indT2 = MT.get_param_indices('emission.sigma2')
+    indT3 = MT.get_param_indices('arrange.theta_w')
+
+    # Generate the data
+    U,Y = MT.sample(num_subj=num_subj)
+
+    # Step 6: Generate Potts models for fitting
+    M1 = copy.deepcopy(MT)
+    M1.arrange.theta_w =0
+    M1.arrange.epos_numchains=epos_numchains
+    M1.arrange.eneg_numchains=eneg_numchains
+    M1.arrange.logpi= np.zeros((M1.arrange.K,M1.arrange.P))
+    M1.emission.sigma2 = 1
+    M1.emission.V = M1.emission.V + np.random.normal(0,1,M1.emission.V.shape)
+    M2 = copy.deepcopy(M1)
+
+    # Step 7: Use stochastic gradient descent to fit the combined model
+    # plt.figure()
+    tI_T = np.concatenate([indT1[0:6],indT2,indT3])
+    # M1,ll,theta = M1.fit_sml(Y,iter=40,stepsize=0.8,seperate_ll=True,estep='sample')
+    # plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T])
+
+    # Step 8: Use stochastic gradient descent to fit the combined model
+    plt.figure()
+    M2,ll,theta = M2.fit_sml(Y,iter=100,stepsize=0.8,seperate_ll=True,estep='ssa')
+    plot_duo_fit(theta[:,tI_T],ll,theta_true = theta_true[tI_T])
+
+    return theta,iter
+
+
+
+def evaluate_duo(theta_w=0,sigma2=0.01,num_subj=1000):
+    """Test diffferent evlautions
+    """
+    MT = make_duo_model(K=4,theta_w=theta_w,sigma2=sigma2)
+    theta_true = MT.get_params()
+    p=MT.arrange.marginal_prob()
+    arrangeI = ar.ArrangeIndependent(K=4, P=2,spatial_specific=True,remove_redundancy=True)
+    arrangeI.logpi=log(p)
+    emissionI = copy.deepcopy(MT.emission)
+    MI = FullModel(arrangeI, emissionI)
+    M = [MI,MT]
+
+    # different evaluations on data coming forim independent
+    T = pd.DataFrame()
+    for i in range(2):
+        U,Y = M[i].sample(num_subj=num_subj)
+        Y_rep = M[i].emission.sample(U)
+        ll_A = np.empty((num_subj,2))
+        ll_E = np.empty((num_subj,2))
+        lq = np.empty((num_subj,2))
+        ll_E_rep = np.empty((num_subj,2))
+        marg_log_rep = np.empty((num_subj,2))
+        ELBO = np.empty((num_subj,2))
+        for j in range(2):
+            # Get the likelihoods from the fitting data
+            ELBO[:,j], Uhat, ll_E[:,j],ll_A[:,j],lq[:,j]=M[j].ELBO(Y)
+            # Use the replication data from the same subjects
+            M[j].emission.initialize(Y_rep)
+            emloglik = M[j].emission.Estep()
+            ll_E_rep[:,j] = np.sum(Uhat *emloglik,axis=(1,2))
+            marg_log_rep[:,j] = np.sum(np.log(np.sum(Uhat*exp(emloglik),axis=1)),axis=1)
+
+        D = pd.DataFrame({'trueModel':np.ones(num_subj,)*i,
+                          'll_E':ll_E[:,1]-ll_E[:,0],
+                          'll_A':ll_A[:,1]-ll_A[:,0],
+                          'ELBO':ELBO[:,1]-ELBO[:,0],
+                          'lq':lq[:,0]-lq[:,1],
+                          'll_E_rep':ll_E_rep[:,1]-ll_E_rep[:,0],
+                          'marg_log_rep':marg_log_rep[:,1]-marg_log_rep[:,0]})
+
+        T=pd.concat([T,D])
+    ev = ['ll_E','ll_A','lq','ELBO','ll_E_rep','marg_log_rep']
+    plt.figure(figsize=(15,11))
+    for i in range(len(ev)):
+        plt.subplot(2,3,i+1)
+        eval_plot(T,ev[i],'trueModel')
+        plt.title(ev[i])
+    pass
+
+def eval_plot(data,crit,x=None):
+    sns.violinplot(data=data,y=crit,x=x)
+    plt.axhline(0)
+    if x is not None:
+        r = np.unique(data[x])
+    else:
+        r = [0]
+        x = np.zeros(data[crit].shape)
+    for i in r:
+        y = data[crit][data[x]==i]
+        t,p = ss.ttest_1samp(y,0)
+        n = np.sum(y>0)/y.shape[0]
+        plt.text(i,max(y)*0.8,f"t={t:.2f}")
+        plt.text(i,max(y)*0.6,f"p={p:.3f}")
+        plt.text(i,max(y)*0.4,f"n={n:.2f}")
+
+def estep_chain(sigma2=0.1,theta_w=1,num_subj=1,kind='duo',P=5):
+    """Comparing different inference algorithms on a single chain of
+    Latent nodes - this test the general Schaefer-Shenoy Algorithm (ssa)
+
+    Args:
+        sigma2 (float, optional): [description]. Defaults to 0.1.
+        theta_w (int, optional): [description]. Defaults to 1.
+        num_subj (int, optional): [description]. Defaults to 1.
+        kind (str, optional): [description]. Defaults to 'duo'.
+    """
+    if kind=='duo':
+        M=make_duo_model(sigma2=sigma2,theta_w=theta_w)
+    elif kind=='chain':
+        M=make_chain_model(sigma2=sigma2,theta_w=theta_w,P=P)
+
+    # Different positive steps
+    U,Y=M.sample(num_subj)
+    M.emission.initialize(Y)
+    emloglik=M.emission.Estep()
+    Uhat1 = M.arrange.epos_jta(emloglik)
+
+    t1=time.time()
+    Uhat2,ll_A2 = M.arrange.epos_ssa_chain(emloglik)
+    t2=time.time()
+    print(f"pos ssa: {t2-t1}")
+    ppos2 = M.arrange.epos_phihat
+
+    t1=time.time()
+    Uhat3,ll_A3 = M.arrange.epos_ssa(emloglik,update_order=M.arrange.update_order)
+    t2=time.time()
+    print(f"pos lbp: {t2-t1}")
+    ppos3 = M.arrange.epos_phihat
+
+    t1=time.time()
+    Uhat4,ll_A4 = M.arrange.epos_sample(emloglik,num_chains=20,iter=20)
+    t2=time.time()
+    print(f"pos sample: {t2-t1}")
+    ppos4 = M.arrange.epos_phihat
+
+    # Different negative steps
+    t1=time.time()
+    Uneg2 = M.arrange.eneg_ssa_chain()
+    t2=time.time()
+    print(f"neg ssa: {t2-t1}")
+    pneg2 = M.arrange.eneg_phihat
+
+    t1=time.time()
+    Uneg3 = M.arrange.eneg_ssa()
+    t2=time.time()
+    print(f"neg lbp: {t2-t1}")
+    pneg3 = M.arrange.eneg_phihat
+
+    t1=time.time()
+    Uneg4 = M.arrange.eneg_sample(num_chains=1000,iter=20)
+    t2=time.time()
+    print(f"neg sample: {t2-t1}")
+    pneg4 = M.arrange.eneg_phihat
+    pass
+
+
+def estep_branch(sigma2=0.1,theta_w=1,num_subj=1):
+    """Comparing different inference algorithms on branched tree
+     - this test the general Schaefer-Shenoy Algorithm (ssa)
+    Note that Gibbs sampling seems to take a long time to mix
+    Args:
+        sigma2 (float, optional): [description]. Defaults to 0.1.
+        theta_w (int, optional): [description]. Defaults to 1.
+        num_subj (int, optional): [description]. Defaults to 1.
+        kind (str, optional): [description]. Defaults to 'duo'.
+    """
+    M=make_branch_model(sigma2=sigma2,theta_w=theta_w,logpi='two_ends')
+
+    # Different positive steps
+    U,Y=M.sample(num_subj)
+    M.emission.initialize(Y)
+    emloglik=M.emission.Estep()
+
+    Uhat1,ll_A1 = M.arrange.epos_ssa(emloglik,update_order=M.arrange.update_order)
+    ppos1 = M.arrange.epos_phihat
+
+    Uhat2,ll_A2 = M.arrange.epos_sample(emloglik,num_chains=10,iter=20)
+    ppos2 = M.arrange.epos_phihat
+
+    # Different negative steps
+    Uneg1 = M.arrange.eneg_ssa(update_order = M.arrange.update_order)
+    pneg1 = M.arrange.eneg_phihat
+
+    Uneg2 = M.arrange.eneg_sample(num_chains=100,iter=500)
+    pneg2 = M.arrange.eneg_phihat
+    pass
+
+def estep_grid(width=3,sigma2=1,theta_w=1,num_subj=1):
+    """Comparing different inference algorithms on a grid
+
+    Args:
+        sigma2 (float, optional): [description]. Defaults to 0.1.
+        theta_w (int, optional): [description]. Defaults to 1.
+        num_subj (int, optional): [description]. Defaults to 1.
+        kind (str, optional): [description]. Defaults to 'duo'.
+    """
+    K=4
+    M=make_grid_model(width=width,sigma2=sigma2,theta_w=theta_w,theta_mu=width)
+    pi = np.ones((K,width*width))/K
+    pi[:,0]=[0.6,0.05,0.15,0.2]
+    M.arrange.logpi=log(pi)-log(pi[-1,:])
+
+    # Different positive steps
+    U,Y=M.sample(num_subj)
+    M.emission.initialize(Y)
+    emloglik=M.emission.Estep()
+    uo = np.arange(M.arrange.num_edges)
+    uo=np.tile(uo,20)
+    Uhat1,ll_A1 = M.arrange.epos_ssa(emloglik,update_order=uo)
+    ppos1 = M.arrange.epos_phihat
+
+    Uhat2,ll_A2 = M.arrange.epos_sample(emloglik,num_chains=100,iter=20)
+    ppos2 = M.arrange.epos_phihat
+
+    # Different negative steps
+    Uneg1 = M.arrange.eneg_ssa(update_order = uo)
+    pneg1 = M.arrange.eneg_phihat
+
+    Uneg2 = M.arrange.eneg_sample(num_chains=100,iter=400)
+    pneg2 = M.arrange.eneg_phihat
+    pass
 
 
 
 
 if __name__ == '__main__':
-    B = Potts(3,4,4)
-    Y = np.random.choice(3,(5,B.P))
-    l = B.loglike(Y)
-    corners = np.where(np.sum(B.W,axis=0)==2)
-    fixed = np.empty((B.P,))
-    fixed[:] = np.nan
-    fixed[corners]=[0,1,2,0]
-    Y = B.sample_gibbs(10,fixed=fixed)
-    # B.plot_samples(Y[:,:,0])
-    Bf = copy.deepcopy(B)
-    RES = Bf.fit(Y[:,:,0],fixed=fixed)
-    plt.subplot(2,1,1)
-    plt.plot(RES['theta'][0,:])
-    plt.subplot(2,1,2)
-    plt.plot(RES['ll'])
-
+    # simulate_potts_gauss_duo(sigma2 = 0.1,numiter=40,theta_w=2)
+    # evaluate_duo(theta_w = 2,sigma2=0.1)
+    # estep_chain(num_subj=1,sigma2=1,theta_w=4,P=5,kind="chain")
+    # estep_branch(num_subj=1,sigma2=1,theta_w=4)
+    estep_grid(width=2,num_subj=1,sigma2=2,theta_w=-1)
+    # learn_potts_chain()
     pass
