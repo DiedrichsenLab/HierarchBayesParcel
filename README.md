@@ -350,27 +350,13 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
 1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
    \begin{align*}
-<<<<<<< HEAD
+
    \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\bar{\mathbf{y}}_{k}||
-=======
-   \mathbf{v}_{k}^{(t)} &=\frac{\mathbf{y}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \mathbf{y}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\;\; r_k=||\mathbf{y}_{k}||
->>>>>>> main
+
    \end{align*}
    $$
 
 2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005): 
-<<<<<<< HEAD
-
-
-$$
-\kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\
-\bar{r}_k=\frac{r_k}{\sum_{i}\langle u_{i}^{(k)}\rangle_q}
-$$
-
-The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
-=======
->>>>>>> main
-
 
 $$
 \kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\

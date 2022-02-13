@@ -5,14 +5,9 @@ import matplotlib.pyplot as plt
 import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
-<<<<<<< HEAD
-from numpy import exp,log,sqrt
-import mpmath as mp
-=======
 from torch import exp,log,sqrt
 from model import Model
 import torch as pt
->>>>>>> main
 
 import sys
 
@@ -64,23 +59,9 @@ class ArrangeIndependent(ArrangementModel):
         if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
         logq = emloglik + self.logpi
-<<<<<<< HEAD
-        # Uhat = np.exp(np.apply_along_axis(lambda x: x - np.mean(x), 1, logq))
-
-        # To fix overflow/underflow problem for exp large numbers
-        Uhat = np.empty(logq.shape, dtype='object')
-        for i in range(logq.shape[0]):
-            logq_sub = mp.matrix(logq[i, :, :].tolist()).apply(mp.exp)
-            Uhat[i, :, :] = np.asarray(logq_sub).reshape(self.K, self.P)
-
-        Uhat = Uhat / np.sum(Uhat, axis=1).reshape((numsubj, 1, P))
-        Uhat = Uhat.astype('float64')
-
-=======
         Uhat = pt.softmax(logq,dim=1)
         if gather_ss:
             self.estep_Uhat = Uhat
->>>>>>> main
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         pi = pt.softmax(self.logpi,dim=1)
         ll_A = pt.sum(Uhat * pt.log(pi),dim=(1,2))
@@ -101,15 +82,10 @@ class ArrangeIndependent(ArrangementModel):
         """
         pi = pt.mean(self.estep_Uhat, dim=0)  # Averarging over subjects
         if not self.spatial_specific:
-<<<<<<< HEAD
-            pi = pi.mean(axis=1).reshape(-1, 1)
-        # self.logpi = log(pi)
-=======
             pi = pi.mean(dim=1).reshape(-1, 1)
         self.logpi = log(pi)
         if self.rem_red:
             self.logpi = self.logpi-self.logpi[-1,:]
->>>>>>> main
 
     def sample(self, num_subj=10):
         """
