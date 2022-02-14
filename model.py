@@ -18,8 +18,12 @@ class Model:
                     self.param_size.append(vars(self)[s].shape)
                     self.nparams = self.nparams + np.int(np.prod(vars(self)[s].shape))
                 else:
-                    self.param_size.append(1)  # Scalar
+                    self.param_size.append(1)  # Tensor Scalar
                     self.nparams = self.nparams + 1
+                self.param_offset.append(self.nparams)
+            elif np.isscalar(vars(self)[s]):
+                self.param_size.append(1)  # numpy scalar
+                self.nparams = self.nparams + 1
                 self.param_offset.append(self.nparams)
             else:
                 raise ValueError("The initialized model parameters must be a numpy.array or torch.tensor!")
