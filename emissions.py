@@ -670,4 +670,3 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
         sse[i, :, :] = sse[i, :, :] * mag[i, :, :]
 
     return pt.sum(U_hat * sse)/(n_sub * P)
-

@@ -348,4 +348,3 @@ if __name__ == '__main__':
     _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=50)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
     # _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-

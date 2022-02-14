@@ -292,7 +292,7 @@ Now, we can update the parameters $\theta$ of the Gaussians/Gamma mixture in the
    $$
    Thus, we get the updated $\sigma^{2}$ for parcel $k$ in the current $\Mu$ step as,
    $$
-   {\sigma^2}^{(t)} = \frac{1}{NP}(\sum_{i}\mathbf{y}_i^T\mathbf{y}_i-
+   {\sigma^2}^{(t)} = \frac{1}{NP}(\sum_{i}\mathbf{y}_i^T\mathbf{y}_i+
    \sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q})
    $$
    
@@ -350,12 +350,13 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
 1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
    \begin{align*}
-   \mathbf{v}_{k}^{(t)} &=\frac{\mathbf{y}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \mathbf{y}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\;\; r_k=||\mathbf{y}_{k}||
+
+   \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\bar{\mathbf{y}}_{k}||
+
    \end{align*}
    $$
 
 2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005): 
-
 
 $$
 \kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\
