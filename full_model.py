@@ -18,6 +18,17 @@ class FullModel:
         Y = self.emission.sample(U)
         return U, Y
 
+    def Estep(self,Y=None, separate_ll=False):
+        if Y is not None: 
+            self.emission.initialize(Y)
+        emloglik = self.emission.Estep()
+        Uhat, ll_a = self.arrange.Estep(emloglik)
+        ll_e = (Uhat * emloglik).sum()
+        if separate_ll: 
+            return Uhat,[ll_e,ll_a.sum()]
+        else: 
+            return Uhat,ll_a.sum()+ll_e
+
     def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False):
         """ Run the EM-algorithm on a full model
         this demands that both the Emission and Arrangement model
@@ -329,8 +340,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
     # print(theta_true)
     T = FullModel(arrangeT, emissionT)
-    T, ll, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
-    loglike_true = ll
+    Uhat, loglike_true = T.Estep(Y=Y) # Run only Estep! 
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)

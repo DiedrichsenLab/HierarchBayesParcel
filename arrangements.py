@@ -103,7 +103,8 @@ class ArrangeIndependent(ArrangementModel):
             if self.spatial_specific: 
                 U = sample_multinomial(pi,N=num_subj,compress=True)
             else:
-                U = sample_multinomial(pi,N=self.P)
+                pi=pi.expand(self.K,self.P)
+                U = sample_multinomial(pi,N=num_subj,compress=True)
         return U
 
     def marginal_prob(self,U=None):
@@ -905,6 +906,8 @@ def sample_multinomial(p_u,N=1,compress=False):
         p_u (tensor): 1d (K), 2d- (KxP) or 3d-tensor (NxKxP)
         N ([int]): If provided for 1d-sample give
         compress: Return as int (True) or indicator (false)
+    Returns: Samples either in indicator coding (compress = False)
+            or as ints (compress = False)
     """
     if p_u.dim() == 1:
         K = p_u.shape[0]
