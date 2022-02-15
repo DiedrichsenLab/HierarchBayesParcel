@@ -63,8 +63,8 @@ class ArrangeIndependent(ArrangementModel):
         if gather_ss:
             self.estep_Uhat = Uhat
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        pi = pt.softmax(self.logpi,dim=1)
-        ll_A = pt.sum(Uhat * pt.log(pi),dim=(1,2))
+        pi = pt.softmax(self.logpi,dim=0)
+        ll_A = pt.sum(Uhat * pt.log(pi))
         return Uhat, ll_A
 
     def Eneg(self,emloglik):
@@ -83,7 +83,7 @@ class ArrangeIndependent(ArrangementModel):
         pi = pt.mean(self.estep_Uhat, dim=0)  # Averarging over subjects
         if not self.spatial_specific:
             pi = pi.mean(dim=1).reshape(-1, 1)
-        self.logpi = log(pi)
+        # self.logpi = log(pi)
         if self.rem_red:
             self.logpi = self.logpi-self.logpi[-1,:]
 

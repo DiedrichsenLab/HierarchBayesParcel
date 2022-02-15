@@ -102,7 +102,7 @@ class MixGaussian(EmissionModel):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5*self.N*(pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+            LL[i, :, :] = -0.5*self.N*(log(2 * np.pi) + pt.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
 
         return LL
 
@@ -272,8 +272,8 @@ class MixGaussianExp(EmissionModel):
             YUs = YUs + pt.mm(self.Y[i, :, :], (U_hat[i, :, :] * self.s[i, :, :]).T)
             US = US + U_hat[i, :, :] * self.s[i, :, :]
             US2 = US2 + U_hat[i, :, :] * self.s2[i, :, :]
-            ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * U_hat[i, :, :] * self.s[i, :, :] + \
-                            U_hat[i, :, :] * self.s2[i, :, :] * pt.sum(self.V ** 2, dim=0).reshape((self.K, 1))
+            ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + \
+                            self.s2[i, :, :] * pt.sum(self.V ** 2, dim=0).reshape((self.K, 1))
             # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
             #                     np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
 
@@ -281,7 +281,7 @@ class MixGaussianExp(EmissionModel):
         # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
         # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
         # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
-        self.sigma2 = pt.sum(ERSS) / (self.N * self.P * self.num_subj)
+        self.sigma2 = pt.sum(U_hat*ERSS) / (self.N * self.P * self.num_subj)
 
         # 2. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
