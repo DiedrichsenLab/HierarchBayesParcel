@@ -9,6 +9,9 @@ import full_model as fm
 import spatial as sp
 import copy
 import evaluation as ev
+import pandas as pd
+import seaborn as sb
+import time
 
 def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
              n_epoch=20,batch_size=20,verbose=False):
@@ -28,12 +31,29 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
         if (verbose):
             print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}, Test2: {uerr_test2[epoch]:.4f}')
 
+        # Update the model in batches
         for b in range(0,N-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
             model.Estep(emlog_train[ind,:,:])
             model.Eneg(Utrain[ind,:,:])
             model.Mstep()
-    return model,uerr_train,uerr_test1,uerr_test2
+        
+    # Make a data frame for the results
+    T1 = pd.DataFrame({'model':[model.name]*n_epoch,
+                        'type':['train']*n_epoch,
+                        'iter':np.arange(n_epoch),
+                        'uerr':uerr_train})
+    T2 = pd.DataFrame({'model':[model.name]*n_epoch,
+                        'type':['test']*n_epoch,
+                        'iter':np.arange(n_epoch),
+                        'uerr':uerr_test1})
+    T3 = pd.DataFrame({'model':[model.name]*n_epoch,
+                        'type':['compl']*n_epoch,
+                        'iter':np.arange(n_epoch),
+                        'uerr':uerr_test2})
+
+    T = pd.concat([T1,T2,T3],ignore_index=True)
+    return model,T
 
 def make_mrf_data(width=10,K=5,N=200,
             theta_mu=20,theta_w=2,sigma2=0.5,
@@ -55,9 +75,9 @@ def make_mrf_data(width=10,K=5,N=200,
 
     # Step 2: Initialize the parameters of the true model
     arrangeT.random_smooth_pi(grid.Dist,theta_mu=theta_mu)
-    arrangeT.theta_w = theta_w
+    arrangeT.theta_w = pt.tensor(theta_w)
     emissionT.random_params()
-    emissionT.sigma2=sigma2
+    emissionT.sigma2=pt.tensor(sigma2)
     MT = fm.FullModel(arrangeT,emissionT)
 
     # Step 3: Plot the prior of the true mode
@@ -105,50 +125,40 @@ def train_rbm_to_mrf(N=200,n_hidden = 30,n_epoch=20, batch_size=20, sigma2=0.01)
     part = pt.multinomial(p,P,replacement=True)
 
     # Make two versions of the model for fitting
-    rbm1 = ar.mpRBM_CDk(K,P,n_hidden,eneg_iter=1)
-    rbm1.Etype='prob'
+    rbm1 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=77)
+    rbm1.Etype='vis'
+    rbm1.name = 'vis'
 
-    rbm2 = ar.mpRBM_pCD(K,P,n_hidden)
+    rbm2 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=77)
     rbm2.Etype='prob'
-    rbm2.eneg_iter = 3
-    rbm2.eneg_numchains = 77
+    rbm2.name = 'prob'
 
     emloglik_train = Mtrue.emission.Estep(Y=Ytrain)
     emloglik_test = Mtrue.emission.Estep(Y=Ytest)
-    emloglik_train=pt.tensor(emloglik_train,dtype=pt.get_default_dtype())
-    emloglik_test=pt.tensor(emloglik_test,dtype=pt.get_default_dtype())
 
     # Check the baseline for independent Arrangement model
     indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
+    indepAr.name = 'indep'
 
-    indepAr,uerr_tr3,uerr_t3,uerr_c3 = train_sml(indepAr,
+    indepAr,T1 = train_sml(indepAr,
             emloglik_train,emloglik_test,
             part=part,n_epoch=n_epoch,batch_size=N)
 
     # Test normal training of RBM using CDk=1
-    rbm1, uerr_tr1,uerr_t1,uerr_c1 = train_sml(rbm1,
+    rbm1, T2 = train_sml(rbm1,
             emloglik_train,emloglik_test,
             part,batch_size=batch_size,n_epoch=n_epoch)
 
     # Test training using persistent CD
-    rbm2.bu=indepAr.logpi.detach().clone()
 
-    rbm2, uerr_tr2,uerr_t2,uerr_c2 = train_sml(rbm2,
+    rbm2, T3 = train_sml(rbm2,
             emloglik_train,emloglik_test,
             part,batch_size=batch_size,n_epoch=n_epoch)
 
+    T = pd.concat([T1,T2,T3],ignore_index=True)
 
-    t=np.arange(0,n_epoch)
-    plt.figure(figsize=(6,8))
-    plt.plot(t,uerr_tr1,'r',label='training')
-    plt.plot(t,uerr_t1,'r--',label='test1')
-    plt.plot(t,uerr_c1,'r:',label='test2')
-    plt.plot(t,uerr_tr2,'b',label='training')
-    plt.plot(t,uerr_t2,'b--',label='test1')
-    plt.plot(t,uerr_c2,'b:',label='test2')
-    plt.plot(t,uerr_tr3,'g',label='training')
-    plt.plot(t,uerr_t3,'g--',label='test1')
-    plt.plot(t,uerr_c3,'g:',label='test1')
+    plt.figure(figsize=(8,8))
+    sb.lineplot(data=T,y='uerr',x='iter',hue='model',style='type')
 
     plt.figure(figsize=(6,8))
     Utrue=ar.expand_mn(Utrue,K)
@@ -169,6 +179,109 @@ def train_rbm_to_mrf(N=200,n_hidden = 30,n_epoch=20, batch_size=20, sigma2=0.01)
 
     pass
 
+def train_rbm_to_mrf2(N=200,
+    n_hidden = [30,100],
+    n_epoch=20, 
+    batch_size=20, 
+    sigma2=0.01):
+    """Fits and RBM to observed activiy data, given a smooth true arrangement (mrf)
+    Current version keeps the emission model stable and known
+
+    Args:
+        n_hidden (int): [description]. Defaults to 100.
+        n_epoch (int): [description]. Defaults to 20.
+        batch_size (int): size of each learning batch
+
+    Returns:
+        [type]: [description]
+    """
+    K =5
+    if type(N) is str: 
+        [Utrue,Mtrue]=pt.load(N)
+        Mtrue.emission.sigma2=pt.tensor(sigma2)        
+        Ytrain = Mtrue.emission.sample(Utrue) # This is the training data
+        Ytest = Mtrue.emission.sample(Utrue)  # Testing data
+        N = Utrue.shape[0]
+    else:
+        Ytrain,Ytest,Utrue,Mtrue =  make_mrf_data(10,K,N,
+            theta_mu=20,theta_w=2,sigma2=sigma2,
+            do_plot=True)
+    lossU = 'logpY'
+    P = Mtrue.arrange.P
+    
+    # Step 5: Generate partitions for region-completion testing
+    num_part = 4
+    p=pt.ones(num_part)/num_part
+    part = pt.multinomial(p,P,replacement=True)
+
+    indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
+    indepAr.name='idenp'
+
+    rbm1 = ar.mpRBM_pCD(K,P,n_hidden[0],eneg_iter=3,eneg_numchains=200)
+    rbm1.name='RBM1'
+    rbm1.alpha = 0.001
+
+    rbm2 = ar.mpRBM_pCD(K,P,n_hidden[1],eneg_iter=3,eneg_numchains=200)
+    rbm2.name='RBM2'
+    rbm2.alpha = 0.001
+
+    emloglik_train = Mtrue.emission.Estep(Y=Ytrain)
+    emloglik_test = Mtrue.emission.Estep(Y=Ytest)
+
+    # Check the baseline for independent Arrangement model
+
+    indepAr,T1 = train_sml(indepAr,
+            emloglik_train,emloglik_test,
+            part=part,n_epoch=n_epoch,batch_size=N)
+
+    rbm1.bu=indepAr.logpi.detach().clone()
+    rbm1.W = pt.randn(n_hidden[0],P*K)*0.1
+
+    rbm1, T2 = train_sml(rbm1,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch)
+
+
+    rbm2.bu=indepAr.logpi.detach().clone()
+    rbm2.W = pt.randn(n_hidden[1],P*K)*0.1
+
+    rbm2, T3 = train_sml(rbm2,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch)
+
+    T = pd.concat([T1,T2,T3],ignore_index=True)
+
+    plt.figure(figsize=(8,8))
+    sb.lineplot(data=T,y='uerr',x='iter',hue='model',style='type')
+
+    grid=sp.SpatialGrid(10,10)
+    plt.figure(figsize=(8,8))
+    grid.plot_maps(Utrue[0:5],grid=(3,5))
+    uin = indepAr.sample(5)
+    grid.plot_maps(uin[0:5],grid=(3,5),offset=6)
+    urbm = rbm1.sample(5,iter=20)
+    grid.plot_maps(urbm[0:5],grid=(3,5),offset=11)
+
+    pass
+
+
+def compare_gibbs():
+    """Compares different implementations of Gibbs sampling 
+    """
+    [Utrue,Mtrue]=pt.load('notebooks/sim_500.pt')
+    M = Mtrue.arrange
+    t = time.time()
+    M.calculate_neighbours()
+    print(f"Neigh:{time.time()-t:.3f}")    
+    t = time.time()
+    U1 = M.sample_gibbs(num_chains=100,bias=M.logpi,iter=5)
+    print(f"time 1:{time.time()-t:.3f}")
+    t = time.time()
+    U2 = M.sample_gibbs2(num_chains=100,bias=M.logpi,iter=5)
+    print(f"time 2:{time.time()-t:.3f}")
+    pass
+
 if __name__ == '__main__':
-    train_rbm_to_mrf(N=60,batch_size=20,n_epoch=20,sigma2=0.01)
+    # compare_gibbs()
+    train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     # train_RBM()
