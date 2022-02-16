@@ -18,7 +18,8 @@ class FullModel:
         Y = self.emission.sample(U)
         return U, Y
 
-    def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False):
+    def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False, 
+            fit_emission=True, fit_arrangement=True):
         """ Run the EM-algorithm on a full model
         this demands that both the Emission and Arrangement model
         have a full Estep and Mstep and can calculate the likelihood, including the partition function
@@ -55,8 +56,10 @@ class FullModel:
                 break
 
             # Updates the parameters
-            self.emission.Mstep(Uhat)
-            self.arrange.Mstep()
+            if fit_emission:
+                self.emission.Mstep(Uhat)
+            if fit_arrangement:
+                self.arrange.Mstep()
 
         if seperate_ll:
             return self, ll, theta, Uhat

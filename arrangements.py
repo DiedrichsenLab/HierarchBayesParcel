@@ -83,7 +83,7 @@ class ArrangeIndependent(ArrangementModel):
         pi = pt.mean(self.estep_Uhat, dim=0)  # Averarging over subjects
         if not self.spatial_specific:
             pi = pi.mean(dim=1).reshape(-1, 1)
-        # self.logpi = log(pi)
+        self.logpi = log(pi)
         if self.rem_red:
             self.logpi = self.logpi-self.logpi[-1,:]
 
