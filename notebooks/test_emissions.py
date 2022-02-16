@@ -170,14 +170,15 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 2.1: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
-    # emissionT.initialize(Y)
-    # emll_true = emissionT.Estep()
-    # Uhat, ll_a = arrangeT.Estep(emll_true)
-    # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
-    # print(theta_true)
+    emissionT.initialize(Y)
+    emll_true = emissionT.Estep()
+    Uhat, ll_a = arrangeT.Estep(emll_true)
+    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+    print(theta_true)
     T = FullModel(arrangeT, emissionT)
-    T, ll, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
-    loglike_true = ll
+    ## T, ll, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
+    ## loglike_true = ll
+    
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
