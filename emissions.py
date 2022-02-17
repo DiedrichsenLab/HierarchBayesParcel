@@ -342,9 +342,9 @@ class MixVMF(EmissionModel):
         V = V - V.mean(axis=0)
         self.V = V / sqrt(np.sum(V**2, axis=0))
         if self.uniform:
-            self.kappa = np.repeat(np.random.uniform(30, 100), self.K)
+            self.kappa = np.repeat(np.random.uniform(0, 50), self.K)
         else:
-            self.kappa = np.random.uniform(30, 100, (self.K, ))
+            self.kappa = np.random.uniform(0, 50, (self.K, ))
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
