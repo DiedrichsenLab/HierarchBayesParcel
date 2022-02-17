@@ -105,12 +105,11 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 2.1: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
-    # emll_true = emissionT._loglikelihood(Y)
-    # Uhat, ll_a = arrangeT.Estep(emll_true)
-    # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
-    # print(theta_true)
+    emloglik = emissionT.Estep(Y)
+    Uhat, ll_a = arrangeT.Estep(emloglik)
+    loglike_true = pt.sum(Uhat * emloglik) + pt.sum(ll_a)
+    # # print(theta_true)
     T = FullModel(arrangeT, emissionT)
-    T, loglike_true, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
@@ -118,7 +117,8 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, 
+                tol=0.00001, fit_arrangement =False)
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')
     _plt_single_param_diff(theta_true[-1-K], np.trim_zeros(theta[:, -1-K], 'b'), name='sigma2')
@@ -149,7 +149,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta, U_hat = M.fit_em(Y=Y, iter=max_iter, tol=0.0001)
+    M, ll, theta, U_hat = M.fit_em(Y=Y, iter=max_iter, tol=0.0001,fit_arrangement=False)
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')
     _plt_single_param_diff(theta_true[-3-K], np.trim_zeros(theta[:, -3-K], 'b'), name='sigma2')
@@ -173,7 +173,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
     emissionT.initialize(Y)
     emll_true = emissionT.Estep()
     Uhat, ll_a = arrangeT.Estep(emll_true)
-    loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
+    loglike_true = pt.sum(Uhat * emll_true) + pt.sum(ll_a)
     print(theta_true)
     T = FullModel(arrangeT, emissionT)
     ## T, ll, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
@@ -187,7 +187,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001,fit_arrangement=False)
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
     _plot_diff(theta_true[0:N * K], theta[:, 0:N * K], K, name='V')
     _plot_diff(theta_true[N*K: N*K+K], theta[:, N*K:N*K+K], K, name='Kappa')
@@ -195,6 +195,6 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
 
 if __name__ == '__main__':
-    _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=100)
-    # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    #_-simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)
+    # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=100)
+    _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100)
+    # _simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)
