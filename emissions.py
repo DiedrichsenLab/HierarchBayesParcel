@@ -340,14 +340,11 @@ class MixVMF(EmissionModel):
             and concentration value kappa_k.
         Returns: None, just passes the random parameters to the model
         """
-        V = np.random.uniform(0, 1, (self.N, self.K))
+        V = pt.randn(self.N, self.K)
         # V = pt.distributions.uniform.Uniform(0, 1).sample((self.N, self.K))
         # standardise V to unit length
-        self.V = V / sqrt(np.sum(V**2, axis=0))
-        if self.uniform:
-            self.kappa = np.repeat(np.random.uniform(0, 50), self.K)
-        else:
-            self.kappa = np.random.uniform(0, 50, (self.K, ))
+        self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+        self.kappa = pt.tensor(10)
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -453,7 +450,8 @@ class MixVMF(EmissionModel):
         for s in range(num_subj):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
-                Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]], self.kappa[U[s, p]]), dtype=pt.get_default_dtype())
+                # JD: Ideally re-write this routine to native Pytorch...
+                Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]].numpy(), self.kappa.numpy()), dtype=pt.get_default_dtype())
 
         return Y
 

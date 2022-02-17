@@ -125,8 +125,8 @@ def rand_von_mises_fisher(mu, kappa, N=1):
     # Check that mu is a unit vector
     eps = 10 ** (-8)  # Precision
     norm_mu = np.linalg.norm(mu)
-    if abs(norm_mu - 1.0) > eps:
-        raise Exception("mu must be a unit vector.")
+#    if abs(norm_mu - 1.0) > eps:
+#        raise Exception("mu must be a unit vector.")
 
     # Check kappa >= 0 is numeric
     if (kappa < 0) or (isinstance(kappa, float) and isinstance(kappa, int)):
