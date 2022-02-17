@@ -80,8 +80,7 @@ class MixGaussian(EmissionModel):
         """
         V = pt.randn(self.N, self.K)
         # standardise V to unit length
-        V = V - V.mean(dim=0)
-        self.V = V / pt.sqrt(pt.sum(V**2, dim=0))
+        self.V = V / pt.sqrt(pt.sum(V**2, dim=0)) # Not clear why this should be constraint for GMM, but ok 
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
 
     def Estep(self, Y=None, sub=None):
@@ -175,7 +174,6 @@ class MixGaussianExp(EmissionModel):
         """
         V = pt.randn(self.N, self.K)
         # standardise V to unit length
-        V = V - V.mean(dim=0)
         self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
         self.alpha = pt.tensor(1, dtype=pt.get_default_dtype())
@@ -290,11 +288,12 @@ class MixGaussianExp(EmissionModel):
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P * self.num_subj / pt.sum(US)
 
-    def sample(self, U):
+    def sample(self, U, return_signal=False):
         """ Generate random data given this emission model and parameters
         Args:
             U: The prior arrangement U from the arrangement model
             V: Given the initial V. If None, then randomly generate
+            return_signal (bool): Return signal as well? False by default for compatibility 
         Returns: Sampled data Y
         """
         num_subj = U.shape[0]
@@ -306,7 +305,12 @@ class MixGaussianExp(EmissionModel):
             Y[s, :, :] = self.V[:, U[s, :].long()] * signal[s, :]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
-        return Y, signal
+        # Only return signal when asked: compatibility with other models 
+        if return_signal: 
+            return Y,signal 
+        else:
+            return Y 
+
 
 
 class MixVMF(EmissionModel):
@@ -339,7 +343,6 @@ class MixVMF(EmissionModel):
         V = np.random.uniform(0, 1, (self.N, self.K))
         # V = pt.distributions.uniform.Uniform(0, 1).sample((self.N, self.K))
         # standardise V to unit length
-        V = V - V.mean(axis=0)
         self.V = V / sqrt(np.sum(V**2, axis=0))
         if self.uniform:
             self.kappa = np.repeat(np.random.uniform(30, 100), self.K)
