@@ -49,11 +49,11 @@ class FullModel:
         """
         # Initialize the tracking
         ll = np.zeros((iter, 2))
-        theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
+        theta = np.zeros((iter, self.nparams))
         self.emission.initialize(Y)
         for i in range(iter):
             # Track the parameters
-            theta[i, :] = np.concatenate([self.emission.get_params(), self.arrange.get_params()])
+            theta[i, :] = self.get_params()
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
@@ -73,9 +73,9 @@ class FullModel:
                 self.arrange.Mstep()
 
         if seperate_ll:
-            return self, ll, theta, Uhat
+            return self, ll[0:i+1], theta[0:i+1,:], Uhat
         else:
-            return self, ll.sum(axis=1), theta, Uhat
+            return self, ll[0:i+1].sum(axis=1), theta[0:i+1,:], Uhat
 
     def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False, estep='sample'):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
@@ -174,13 +174,13 @@ class FullModel:
             indices (np.ndarray): 1-d numpy array of indices into the theta vector
         """
         names = name.split(".")
-        if len(names)==2:
+        if (len(names)==2) and (names[0] in vars(self)):
             ind=vars(self)[names[0]].get_param_indices(names[1])
             if names[0]=='emission':
                 ind=ind+self.arrange.nparams
             return ind
         else:
-            raise NameError('Parameter name needs to be model.param')
+            raise NameError('Parameter name needs to be arrange.param or emission.param')
 
 
 def _plot_loglike(loglike, true_loglike, color='b'):

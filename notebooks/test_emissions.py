@@ -100,28 +100,28 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # emissionT.random_params()
 
     # Step 2: Generate data by sampling from the above model
+    T = FullModel(arrangeT, emissionT)
     U = arrangeT.sample(num_subj=num_sub)
     Y = emissionT.sample(U)
 
     # Step 2.1: Compute the log likelihood from the true model
-    theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
-    emloglik = emissionT.Estep(Y)
-    Uhat, ll_a = arrangeT.Estep(emloglik)
-    loglike_true = pt.sum(Uhat * emloglik) + pt.sum(ll_a)
-    # # print(theta_true)
-    T = FullModel(arrangeT, emissionT)
+    Uhat_true,loglike_true = T.Estep(Y)
+    theta_true = T.get_params()
 
     # Step 3: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussian(K=K, N=N, P=P)
+    M = FullModel(arrangeM, emissionM)
 
     # Step 4: Estimate the parameter thetas to fit the new model using EM
-    M = FullModel(arrangeM, emissionM)
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, 
                 tol=0.00001, fit_arrangement =False)
-    _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
-    _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')
-    _plt_single_param_diff(theta_true[-1-K], np.trim_zeros(theta[:, -1-K], 'b'), name='sigma2')
+    _plot_loglike(ll, loglike_true, color='b')
+
+    indx = M.get_param_indices('emission.V')
+    _plot_diff(theta_true[indx], theta[:, indx], K, name='V')
+    indx = M.get_param_indices('emission.sigma2')
+    _plt_single_param_diff(theta_true[indx], np.trim_zeros(theta[:, indx], 'b'), name='sigma2')
     print('Done.')
 
 
@@ -196,5 +196,5 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=100)
-    _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100)
+    _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
     # _simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)

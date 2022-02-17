@@ -91,10 +91,11 @@ class MixGaussian(EmissionModel):
         """
         if Y is not None:
             self.initialize(Y)
+        n_subj = self.Y.shape[0]
         if sub is None:
-            sub = range(self.Y.shape[0])
+            sub = range(n_subj)
 
-        LL = pt.empty((self.Y.shape[0], self.K, self.P))
+        LL = pt.empty((n_subj, self.K, self.P))
         uVVu = pt.sum(self.V**2, dim=0)  # This is u.T V.T V u for each u
 
         for i in sub:
@@ -501,10 +502,11 @@ class MixGaussianGamma(EmissionModel):
             sub: specify which subject to optimize
         Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
+        n_subj = self.Y.shape[0]
         if sub is None:
-            sub = range(self.Y.shape[0])
+            sub = range(n_subj)
 
-        LL = pt.empty((self.Y.shape[0], self.K, self.P))
+        LL = pt.empty((n_subj, self.K, self.P))
         uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
 
         for i in sub:
