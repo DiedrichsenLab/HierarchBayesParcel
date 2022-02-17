@@ -193,8 +193,9 @@ def _plot_diff(true_param, predicted_params, index=None, name='V'):
     """ Plot the model parameters differences.
 
     Args:
-        theta_true: the params from the true model
-        theta: the estimated params
+        true_param: the params from the true model
+        predicted_params: the estimated params
+        index: the matching index of parameters
         color: the line color for the differences
     Returns: a matplotlib object to be plot
     """
@@ -234,7 +235,7 @@ def _plt_single_param_diff(theta_true, theta, name=None):
 def generate_data(emission, k=2, dim=3, p=1000,
                   num_sub=10, beta=1, alpha=1, signal_type=0):
     model_name = ["GMM", "GMM_exp", "GMM_gamma", "VMF"]
-    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False)
+    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
     U = arrangeT.sample(num_subj=num_sub)
     if signal_type == 0:
         signal = np.random.exponential(beta, (num_sub, p))
@@ -278,6 +279,8 @@ def matching_params(true_param, predicted_params, once=False):
     Args:
         true_param: the true parameter, shape (N, K)
         predicted_params: the estimated parameter. Shape (iter, N*K)
+        once: True - perform matching in every iteration. Otherwise only take
+              matching once using the estimated param of first iteration
 
     Returns: The matching index
 
@@ -354,25 +357,34 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
     U = arrangeT.sample(num_subj=num_sub)
     Y, signal = emissionT.sample(U)
 
-    # Step 2.1: Compute the log likelihood from the true model
+    # Step 3: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
     emissionT.initialize(Y)
     emll_true = emissionT.Estep(signal=signal)
     Uhat, ll_a = arrangeT.Estep(emll_true)
     loglike_true = pt.sum(Uhat * emll_true) + pt.sum(ll_a)
 
-    # Step 3: Generate new models for fitting
+    # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussianExp(K=K, N=N, P=P)
     # emissionM.set_params(pt.cat((emissionM.V.flatten(), emissionT.sigma2.reshape(1), emissionM.alpha.reshape(1), emissionM.beta.reshape(1))))
 
-    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta, U_hat = M.fit_em(Y=Y, iter=max_iter, tol=0.0001)
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001)
+
+    # Plotfitting results
+    iters = np.trim_zeros(ll, 'b').size
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
-    _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')
-    _plt_single_param_diff(theta_true[-3-K], np.trim_zeros(theta[:, -3-K], 'b'), name='sigma2')
-    _plt_single_param_diff(theta_true[-1-K], np.trim_zeros(theta[:, -1-K], 'b'), name='beta')
+    true_V = theta_true[emissionT.get_param_indices('V')].reshape(N, K)
+    predicted_V = theta[0:iters, M.emission.get_param_indices('V')]
+    idx = matching_params(true_V, predicted_V, once=False)
+
+    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plt_single_param_diff(theta_true[M.emission.get_param_indices('sigma2')],
+                           np.trim_zeros(theta[:, M.emission.get_param_indices('sigma2')], 'b'), name='sigma2')
+    _plt_single_param_diff(theta_true[M.emission.get_param_indices('beta')],
+                           np.trim_zeros(theta[:, M.emission.get_param_indices('beta')], 'b'), name='beta')
     # SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
     print('Done.')
 
@@ -416,6 +428,6 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
 
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=100)
-    _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    #_-simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)
+    # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
+    _simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)
 
