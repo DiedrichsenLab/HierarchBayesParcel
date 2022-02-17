@@ -100,11 +100,11 @@ class ArrangeIndependent(ArrangementModel):
         U = pt.zeros(num_subj, self.P)
         pi = pt.softmax(self.logpi,dim=0)
         for i in range(num_subj):
-            for p in range(self.P):
-                if self.spatial_specific:
-                    U[i, p] = np.random.choice(self.K, p=pi[:,p])
-                else:
-                    U[i, p] = np.random.choice(self.K, p=pi[:].reshape(-1))
+            if self.spatial_specific: 
+                U = sample_multinomial(pi,N=num_subj,compress=True)
+            else:
+                pi=pi.expand(self.K,self.P)
+                U = sample_multinomial(pi,N=num_subj,compress=True)
         return U
 
     def marginal_prob(self,U=None):
@@ -137,7 +137,8 @@ class PottsModel(ArrangementModel):
         self.eneg_U = None
         self.fit_theta_w = True # Update smoothing parameter in Mstep
         self.update_order=None
-        self.set_param_list(['logpi','theta_w'])
+        self.nparams = 10
+        # self.set_param_list(['logpi','theta_w'])
 
     def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
         """
@@ -247,7 +248,7 @@ class PottsModel(ArrangementModel):
 
         # Start the chains
         U = U0
-        u = np.arange(self.K)
+        u = pt.arange(self.K).reshape(self.K,1,1)
 
         for i in range(iter):
             if return_hist:
@@ -257,20 +258,19 @@ class PottsModel(ArrangementModel):
                     for k in range(self.K):
                         Uhist[i,k]=pt.mean(U[:,track]==k)
             # Now loop over chains: This loop can maybe be replaced
-            for c in range(num_chains):
-                for p in np.arange(self.P-1,-1,-1):
-                    nb_u = U[c,self.neighbours[p]] # Neighbors to node x
-                    same = np.equal(u,nb_u.reshape(-1,1))
-                    loglik = self.theta_w * pt.sum(same,dim=0) + bias[:,p]
-                    prob = pt.softmax(loglik,dim=0)
-                    U[c,p]=np.random.choice(self.K,p=prob.numpy())
+            for p in np.arange(self.P-1,-1,-1):
+                nb_u = U[:,self.neighbours[p]] # Neighbors to node x
+                same = pt.eq(nb_u,u)
+                loglik = self.theta_w * pt.sum(same,dim=2) + bias[:,p].reshape(self.K,1)
+                prob = pt.softmax(loglik,dim=0)
+                U[:,p]=sample_multinomial(prob,compress=True)
         if return_hist:
             return U,Uhist
         else:
             return U
 
     def sample(self,num_subj = 10,burnin=20):
-        """Samples new subjects from prior: wrapper for sample_gibbs
+        """ Samples new subjects from prior: wrapper for sample_gibbs
         Args:
             num_subj (int): Number of subjects. Defaults to 10.
             burnin (int): Number of . Defaults to 20.
@@ -281,7 +281,7 @@ class PottsModel(ArrangementModel):
             num_chains = num_subj)
         return U
 
-    def epos_sample(self, emloglik, num_chains=None, iter=10):
+    def Estep(self, emloglik):
         """ Positive phase of getting p(U|Y) for the spatial arrangement model
         Gets the expectations.
 
@@ -296,30 +296,22 @@ class PottsModel(ArrangementModel):
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
-        if self.epos_U is None: # num_chains given: reinitialize
-            self.epos_U = pt.empty((numsubj,num_chains,P))
-            for s in range(numsubj):
-                self.epos_U[s,:,:] = self.sample_gibbs(num_chains=num_chains,
-                    bias = bias[s],iter=iter)
-        else:
-            if self.epos_U is None:
-                raise NameError('Gibbs sampler not initialized - pass num_chains the first time.')
-            for s in range(numsubj):
-                self.epos_U[s,:,:] = self.sample_gibbs(self.epos_U[s],
-                    bias = bias[s],iter=iter)
+        self.epos_U = pt.empty((numsubj,self.epos_numchains,P))
+        for s in range(numsubj):
+            self.epos_U[s,:,:] = self.sample_gibbs(num_chains=self.epos_numchains, bias = bias[s],iter=self.epos_iter)
 
         # Get Uhat from the sampled examples
         self.epos_Uhat = pt.empty((numsubj,self.K,self.P))
         for k in range(self.K):
-            self.epos_Uhat[:,k,:]=pt.sum(self.epos_U==k,dim=1)/num_chains
+            self.epos_Uhat[:,k,:]=pt.sum(self.epos_U==k,dim=1)/self.epos_numchains
 
         # Get the sufficient statistics for the potential functions
         self.epos_phihat = pt.zeros((numsubj,))
         for s in range(numsubj):
             phi = pt.zeros((self.P,self.P))
-            for n in range(num_chains):
+            for n in range(self.epos_numchains):
                 phi=phi+np.equal(self.epos_U[s,n,:],self.epos_U[s,n,:].reshape((-1,1)))
-            self.epos_phihat[s] = pt.sum(self.W * phi)/num_chains
+            self.epos_phihat[s] = pt.sum(self.W * phi)/self.epos_numchains
 
         # The log likelihood for arrangement model p(U|theta_A) is not trackable-
         # So we can only return the unormalized potential functions
@@ -768,7 +760,7 @@ class mpRBM(ArrangementModel):
             sample[:,k,:]-=sample[:,k-1,:]
         return p_u, sample
 
-    def sample(self,num_subj,iter=5):
+    def sample(self,num_subj,iter=10):
         """Draw new subjects from the model
 
         Args:
@@ -783,7 +775,7 @@ class mpRBM(ArrangementModel):
             _,h = self.sample_h(U)
             _,U = self.sample_U(h)
         u = compress_mn(U)
-        return u,h
+        return u
 
     def Estep(self, emloglik,gather_ss=True):
         """ Positive Estep for the multinomial boltzman model
@@ -914,6 +906,8 @@ def sample_multinomial(p_u,N=1,compress=False):
         p_u (tensor): 1d (K), 2d- (KxP) or 3d-tensor (NxKxP)
         N ([int]): If provided for 1d-sample give
         compress: Return as int (True) or indicator (false)
+    Returns: Samples either in indicator coding (compress = False)
+            or as ints (compress = False)
     """
     if p_u.dim() == 1:
         K = p_u.shape[0]
