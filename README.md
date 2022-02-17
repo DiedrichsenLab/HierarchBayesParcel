@@ -350,9 +350,9 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
 1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
    \begin{align*}
-
+   
    \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\bar{\mathbf{y}}_{k}||
-
+   
    \end{align*}
    $$
 

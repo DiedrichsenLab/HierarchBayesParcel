@@ -3,7 +3,7 @@ import numpy as np
 import torch as pt
 import matplotlib.pyplot as plt
 from scipy import stats, special
-from numpy import log, exp, sqrt
+from torch import log, exp, sqrt
 from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 from model import Model
 
@@ -102,7 +102,7 @@ class MixGaussian(EmissionModel):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5*self.N*(log(2 * np.pi) + pt.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+            LL[i, :, :] = -0.5*self.N*(np.log(2 * pt.pi) + pt.log(self.sigma2))-0.5/self.sigma2 * self.rss[i, :, :]
 
         return LL
 
