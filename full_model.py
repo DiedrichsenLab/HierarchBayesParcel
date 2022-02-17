@@ -189,33 +189,42 @@ def _plot_loglike(loglike, true_loglike, color='b'):
     plt.axhline(y=true_loglike, color='r', linestyle=':')
 
 
-def _plot_diff(theta_true, theta, K, name='V'):
+def _plot_diff(true_param, predicted_params, index=None, name='V'):
     """ Plot the model parameters differences.
 
     Args:
-        theta_true: the params from the true model
-        theta: the estimated params
+        true_param: the params from the true model
+        predicted_params: the estimated params
+        index: the matching index of parameters
         color: the line color for the differences
     Returns: a matplotlib object to be plot
     """
-    theta = theta[~np.all(theta == 0, axis=1)]
-    iter = theta.shape[0]
-    diff = np.empty((iter, K))
-    Y = np.split(theta_true, K)
-    for i in range(iter):
-        x = np.split(theta[i], K)
-        for j in range(len(x)):
-            dist = np.linalg.norm(x[j] - Y[j])
-            diff[i, j] = dist
+    # Convert input to tensor if ndarray
+    if type(true_param) is np.ndarray:
+        true_param = pt.tensor(true_param, dtype=pt.get_default_dtype())
+    if type(predicted_params) is np.ndarray:
+        predicted_params = pt.tensor(predicted_params, dtype=pt.get_default_dtype())
+
+    N, K = true_param.shape
+    diff = pt.empty(predicted_params.shape[0], K)
+
+    for i in range(predicted_params.shape[0]):
+        this_pred = predicted_params[i].reshape(N, K)
+        for k in range(K):
+            if index is not None:
+                dist = pt.linalg.norm(this_pred[:, k] - true_param[:, index[i, k]])
+            else:
+                dist = pt.linalg.norm(this_pred[:, k] - true_param[:, k])
+            diff[i, k] = dist
     plt.figure()
     plt.plot(diff)
-    plt.title('the differences: true %ss, estimated %ss' % (name, name))
+    plt.title('the differences between true %ss and estimated %ss for each k' % (name, name))
 
 
 def _plt_single_param_diff(theta_true, theta, name=None):
     plt.figure()
     if name is not None:
-        plt.title('The difference: true %s vs estimated %s' % (name, name))
+        plt.title('True %s (red) vs estimated %s (blue)' % (name, name))
 
     iter = theta.shape[0]
     theta_true = np.repeat(theta_true, iter)
@@ -226,7 +235,7 @@ def _plt_single_param_diff(theta_true, theta, name=None):
 def generate_data(emission, k=2, dim=3, p=1000,
                   num_sub=10, beta=1, alpha=1, signal_type=0):
     model_name = ["GMM", "GMM_exp", "GMM_gamma", "VMF"]
-    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False)
+    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
     U = arrangeT.sample(num_subj=num_sub)
     if signal_type == 0:
         signal = np.random.exponential(beta, (num_sub, p))
@@ -264,6 +273,45 @@ def sample_spherical(npoints, ndim=3):
     return vec
 
 
+def matching_params(true_param, predicted_params, once=False):
+    """ Matching the estimated parameters with the true one, return indices
+
+    Args:
+        true_param: the true parameter, shape (N, K)
+        predicted_params: the estimated parameter. Shape (iter, N*K)
+        once: True - perform matching in every iteration. Otherwise only take
+              matching once using the estimated param of first iteration
+
+    Returns: The matching index
+
+    """
+    # Convert input to tensor if ndarray
+    if type(true_param) is np.ndarray:
+        true_param = pt.tensor(true_param, dtype=pt.get_default_dtype())
+    if type(predicted_params) is np.ndarray:
+        predicted_params = pt.tensor(predicted_params, dtype=pt.get_default_dtype())
+
+    N, K = true_param.shape
+    if once:
+        index = pt.empty(K, )
+        for k in range(K):
+            tmp = pt.linalg.norm(predicted_params[0].reshape(N, K)[:, k] - true_param.transpose(0, 1), dim=1)
+            index[k] = pt.argmin(tmp)
+            true_param[:, pt.argmin(tmp)] = pt.tensor(float('inf'))
+        index.expand(predicted_params.shape[0], K)
+    else:
+        index = pt.empty(predicted_params.shape[0], K)
+        for i in range(index.shape[0]):
+            this_pred = predicted_params[i].reshape(N, K)
+            this_true = pt.clone(true_param).transpose(0, 1)
+            for k in range(K):
+                tmp = pt.linalg.norm(this_pred[:, k] - this_true, dim=1)
+                index[i, k] = pt.argmin(tmp)
+                this_true[pt.argmin(tmp), :] = pt.tensor(float('inf'))
+
+    return index.int()
+
+
 def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
@@ -274,25 +322,28 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     U = arrangeT.sample(num_subj=num_sub)
     Y = emissionT.sample(U)
 
-    # Step 2.1: Compute the log likelihood from the true model
+    # Step 3: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
-    # emll_true = emissionT._loglikelihood(Y)
-    # Uhat, ll_a = arrangeT.Estep(emll_true)
-    # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
-    # print(theta_true)
     T = FullModel(arrangeT, emissionT)
-    T, loglike_true, theta, _ = T.fit_em(Y=Y, iter=1, tol=0.00001)
+    Uhat, loglike_true = T.Estep(Y=Y)  # Run only Estep!
 
-    # Step 3: Generate new models for fitting
+    # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussian(K=K, N=N, P=P)
 
-    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+
+    # Plot fitting results
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
-    _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')
-    _plt_single_param_diff(theta_true[-1-K], np.trim_zeros(theta[:, -1-K], 'b'), name='sigma2')
+    true_V = theta_true[emissionT.get_param_indices('V')].reshape(N, K)
+    predicted_V = theta[:, M.emission.get_param_indices('V')]
+    idx = matching_params(true_V, predicted_V, once=False)
+
+    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plt_single_param_diff(theta_true[M.emission.get_param_indices('sigma2')],
+                           np.trim_zeros(theta[:, M.emission.get_param_indices('sigma2')], 'b'), name='sigma2')
     print('Done.')
 
 
@@ -306,25 +357,34 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
     U = arrangeT.sample(num_subj=num_sub)
     Y, signal = emissionT.sample(U)
 
-    # Step 2.1: Compute the log likelihood from the true model
+    # Step 3: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
     emissionT.initialize(Y)
     emll_true = emissionT.Estep(signal=signal)
     Uhat, ll_a = arrangeT.Estep(emll_true)
     loglike_true = pt.sum(Uhat * emll_true) + pt.sum(ll_a)
 
-    # Step 3: Generate new models for fitting
+    # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussianExp(K=K, N=N, P=P)
     # emissionM.set_params(pt.cat((emissionM.V.flatten(), emissionT.sigma2.reshape(1), emissionM.alpha.reshape(1), emissionM.beta.reshape(1))))
 
-    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
-    M, ll, theta, U_hat = M.fit_em(Y=Y, iter=max_iter, tol=0.0001)
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001)
+
+    # Plotfitting results
+    iters = np.trim_zeros(ll, 'b').size
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
-    _plot_diff(theta_true[0:N*K], theta[:, 0:N*K], K, name='V')
-    _plt_single_param_diff(theta_true[-3-K], np.trim_zeros(theta[:, -3-K], 'b'), name='sigma2')
-    _plt_single_param_diff(theta_true[-1-K], np.trim_zeros(theta[:, -1-K], 'b'), name='beta')
+    true_V = theta_true[emissionT.get_param_indices('V')].reshape(N, K)
+    predicted_V = theta[0:iters, M.emission.get_param_indices('V')]
+    idx = matching_params(true_V, predicted_V, once=False)
+
+    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plt_single_param_diff(theta_true[M.emission.get_param_indices('sigma2')],
+                           np.trim_zeros(theta[:, M.emission.get_param_indices('sigma2')], 'b'), name='sigma2')
+    _plt_single_param_diff(theta_true[M.emission.get_param_indices('beta')],
+                           np.trim_zeros(theta[:, M.emission.get_param_indices('beta')], 'b'), name='beta')
     # SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
     print('Done.')
 
@@ -339,32 +399,35 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50):
     U = arrangeT.sample(num_subj=num_sub)
     Y = emissionT.sample(U)
 
-    # Step 2.1: Compute the log likelihood from the true model
+    # Step 3: Compute the log likelihood from the true model
     theta_true = np.concatenate([emissionT.get_params(), arrangeT.get_params()])
-    # emissionT.initialize(Y)
-    # emll_true = emissionT.Estep()
-    # Uhat, ll_a = arrangeT.Estep(emll_true)
-    # loglike_true = np.sum(Uhat * emll_true) + np.sum(ll_a)
-    # print(theta_true)
     T = FullModel(arrangeT, emissionT)
     Uhat, loglike_true = T.Estep(Y=Y) # Run only Estep! 
 
-    # Step 3: Generate new models for fitting
+    # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixVMF(K=K, N=N, P=P, uniform=False)
+    emissionM = MixVMF(K=K, N=N, P=P, uniform=True)
     # emissionM.set_params([emissionM.V, emissionM.kappa])
 
-    # Step 4: Estimate the parameter thetas to fit the new model using EM
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
     M = FullModel(arrangeM, emissionM)
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001)
+
+    # Plotfitting results
+    iters = np.trim_zeros(ll, 'b').size
     _plot_loglike(np.trim_zeros(ll, 'b'), loglike_true, color='b')
-    _plot_diff(theta_true[0:N * K], theta[:, 0:N * K], K, name='V')
-    _plot_diff(theta_true[N*K: N*K+K], theta[:, N*K:N*K+K], K, name='Kappa')
+    true_V = theta_true[emissionT.get_param_indices('V')].reshape(N, K)
+    predicted_V = theta[0:iters, M.emission.get_param_indices('V')]
+    idx = matching_params(true_V, predicted_V, once=False)
+
+    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plot_diff(theta_true[M.emission.get_param_indices('kappa')].reshape(1, K),
+               theta[0:iters, M.emission.get_param_indices('kappa')], name='kappa')
     print('Done.')
 
 
 if __name__ == '__main__':
-    _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=100)
+    # _simulate_full_VMF(K=5, P=1000, N=40, num_sub=10, max_iter=100)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    #_-simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)
+    _simulate_full_GME(K=5, P=2000, N=20, num_sub=10, max_iter=100)
 
