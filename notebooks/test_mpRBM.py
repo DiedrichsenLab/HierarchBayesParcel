@@ -37,7 +37,7 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
             model.Estep(emlog_train[ind,:,:])
             model.Eneg(Utrain[ind,:,:])
             model.Mstep()
-        
+
     # Make a data frame for the results
     T1 = pd.DataFrame({'model':[model.name]*n_epoch,
                         'type':['train']*n_epoch,
@@ -66,7 +66,7 @@ def make_mrf_data(width=10,K=5,N=200,
         theta_mu (int, optional): [description]. Defaults to 20.
         theta_w (int, optional): [description]. Defaults to 2.
         sigma2 (float, optional): [description]. Defaults to 0.5.
-        do_plot (bool): Make a plot of the first 10 samples? 
+        do_plot (bool): Make a plot of the first 10 samples?
     """
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width,height=width)
@@ -94,7 +94,7 @@ def make_mrf_data(width=10,K=5,N=200,
 
 
     # Plot first 10 samples
-    if do_plot: 
+    if do_plot:
         plt.figure(figsize=(10,4))
         grid.plot_maps(U[0:10],cmap='tab10',vmax=9,grid=[2,5])
 
@@ -118,7 +118,7 @@ def train_rbm_to_mrf(N=200,n_hidden = 30,n_epoch=20, batch_size=20, sigma2=0.01)
             do_plot=True)
     lossU = 'logpY'
     P = Mtrue.arrange.P
-    
+
     # Step 5: Generate partitions for region-completion testing
     num_part = 4
     p=pt.ones(num_part)/num_part
@@ -181,8 +181,8 @@ def train_rbm_to_mrf(N=200,n_hidden = 30,n_epoch=20, batch_size=20, sigma2=0.01)
 
 def train_rbm_to_mrf2(N=200,
     n_hidden = [30,100],
-    n_epoch=20, 
-    batch_size=20, 
+    n_epoch=20,
+    batch_size=20,
     sigma2=0.01):
     """Fits and RBM to observed activiy data, given a smooth true arrangement (mrf)
     Current version keeps the emission model stable and known
@@ -196,9 +196,9 @@ def train_rbm_to_mrf2(N=200,
         [type]: [description]
     """
     K =5
-    if type(N) is str: 
+    if type(N) is str:
         [Utrue,Mtrue]=pt.load(N)
-        Mtrue.emission.sigma2=pt.tensor(sigma2)        
+        Mtrue.emission.sigma2=pt.tensor(sigma2)
         Ytrain = Mtrue.emission.sample(Utrue) # This is the training data
         Ytest = Mtrue.emission.sample(Utrue)  # Testing data
         N = Utrue.shape[0]
@@ -208,7 +208,7 @@ def train_rbm_to_mrf2(N=200,
             do_plot=True)
     lossU = 'logpY'
     P = Mtrue.arrange.P
-    
+
     # Step 5: Generate partitions for region-completion testing
     num_part = 4
     p=pt.ones(num_part)/num_part
@@ -264,15 +264,14 @@ def train_rbm_to_mrf2(N=200,
 
     pass
 
-
 def compare_gibbs():
-    """Compares different implementations of Gibbs sampling 
+    """Compares different implementations of Gibbs sampling
     """
     [Utrue,Mtrue]=pt.load('notebooks/sim_500.pt')
     M = Mtrue.arrange
     t = time.time()
     M.calculate_neighbours()
-    print(f"Neigh:{time.time()-t:.3f}")    
+    print(f"Neigh:{time.time()-t:.3f}")
     t = time.time()
     U1 = M.sample_gibbs(num_chains=100,bias=M.logpi,iter=5)
     print(f"time 1:{time.time()-t:.3f}")
@@ -281,7 +280,24 @@ def compare_gibbs():
     print(f"time 2:{time.time()-t:.3f}")
     pass
 
+def test_sample_multinomial():
+    """ Do some unit test of sample multinomial Function
+    """
+    p = pt.empty((10,4,20)).uniform_(0,1)
+    p = pt.softmax(p,dim=1)
+    U = ar.sample_multinomial(p,kdim=1)
+    assert(U.shape==p.shape)
+    U1 = ar.sample_multinomial(p[0],(3,4,20))
+    U2 = ar.sample_multinomial(p[0,:,0:1],(2,4,10))
+    U3 = ar.sample_multinomial(p[0,:,0:1],(5,10))
+    p = pt.tensor([0.1,0.2,0.7])
+    U4 = ar.sample_multinomial(p.reshape(3,1),(5,3,10000))
+    # Check:
+    U4.mean(dim=(0,2))
+    pass
+
 if __name__ == '__main__':
     # compare_gibbs()
-    train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
+    # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
+    test_sample_multinomial()
     # train_RBM()

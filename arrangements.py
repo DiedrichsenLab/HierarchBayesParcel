@@ -23,8 +23,8 @@ class ArrangeIndependent(ArrangementModel):
         Either with a spatially uniform prior
         or a spatially-specific prior. Pi is saved in form of log-pi.
     """
-    def __init__(self, K=3, P=100, 
-                 spatial_specific=False, 
+    def __init__(self, K=3, P=100,
+                 spatial_specific=False,
                  remove_redundancy=True):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
@@ -71,7 +71,7 @@ class ArrangeIndependent(ArrangementModel):
         """ Negative phase of e-step: do nothing
         """
         return np.nan, np.nan
-    
+
     def Mstep(self):
         """ M-step for the spatial arrangement model
             Update the pi for arrangement model
@@ -100,7 +100,7 @@ class ArrangeIndependent(ArrangementModel):
         U = pt.zeros(num_subj, self.P)
         pi = pt.softmax(self.logpi,dim=0)
         for i in range(num_subj):
-            if self.spatial_specific: 
+            if self.spatial_specific:
                 U = sample_multinomial(pi,N=num_subj,compress=True)
             else:
                 pi=pi.expand(self.K,self.P)
@@ -704,7 +704,7 @@ class PottsModelDuo(PottsModel):
 class mpRBM(ArrangementModel):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
-    Uses Contrastive-Divergence k for learning  
+    Uses Contrastive-Divergence k for learning
     Outer nodes (U):
         The outer (most peripheral nodes) are
         categorical with K possible categories.
@@ -809,7 +809,7 @@ class mpRBM(ArrangementModel):
         return Uhat, np.nan
 
     def marginal_prob(self,U=None):
-        if U is not None: 
+        if U is not None:
             U,Eh=self.Eneg(U)
         pi  = pt.mean(self.eneg_U,dim=0)
         return pi
@@ -833,9 +833,9 @@ class mpRBM(ArrangementModel):
 class mpRBM_pCD(mpRBM):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning  
-    """ 
-    
+    Uses persistent Contrastive-Divergence k for learning
+    """
+
     def __init__(self, K, P, nh, eneg_iter=3,eneg_numchains=77):
         super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
@@ -857,9 +857,9 @@ class mpRBM_pCD(mpRBM):
 class mpRBM_CDk(mpRBM):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning  
-    """ 
-    
+    Uses persistent Contrastive-Divergence k for learning
+    """
+
     def __init__(self, K, P, nh, eneg_iter=1):
         super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
@@ -898,7 +898,7 @@ def loglik2prob(loglik,dim=0):
         prob = prob/pt.sum(prob,dim=1).reshape(a)
     return prob
 
-def sample_multinomial(p_u,N=1,compress=False):
+def sample_multinomial_old(p_u,N=1,compress=False):
     """Samples from a multinomial distribution
     Fast smpling from matrix probability without looping
 
@@ -935,6 +935,35 @@ def sample_multinomial(p_u,N=1,compress=False):
         dim = 1
     if compress:
         return sample.argmax(dim=dim)
+    else:
+        return sample
+
+def sample_multinomial(p,shape=None,kdim=0,compress=False):
+    """Samples from a multinomial distribution
+    Fast smpling from matrix probability without looping
+
+    Args:
+        p (tensor): Tensor of probilities, which sums to 1 on the dimension kdim
+        shape (tuple): Shape of the output data (in uncompressed form): Smaller p will be broadcasted to target shape
+        kdim (int): Number of dimension of p that indicates the different categories (default 0)
+        compress: Return as int (True) or indicator (false)
+    Returns: Samples either in indicator coding (compress = False)
+            or as ints (compress = False)
+    """
+    if shape is None:
+        shape = p.shape
+    out_kdim = len(shape) - p.dim() + kdim
+    K = p.shape[kdim]
+    shapeR = list(shape)
+    shapeR[out_kdim]=1 # Set the probability dimension to 1
+    r = pt.empty(shapeR).uniform_(0,1)
+    cdf_v = p.cumsum(dim=kdim)
+    sample = (r < cdf_v).float()
+    for k in np.arange(K-1,0,-1):
+        a=sample.select(out_kdim,k) # Get view of slice
+        a-=sample.select(out_kdim,k-1)
+    if compress:
+        return sample.argmax(dim=kdim)
     else:
         return sample
 
