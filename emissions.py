@@ -3,7 +3,7 @@ import numpy as np
 import torch as pt
 import matplotlib.pyplot as plt
 from scipy import stats, special
-from numpy import log, exp, sqrt
+from torch import log, exp, sqrt
 from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 from model import Model
 
@@ -78,9 +78,9 @@ class MixGaussian(EmissionModel):
             Therefore, there are total k+1 parameters in this mixture model
             set the initial random parameters for gaussian mixture
         """
-        V = pt.randn(self.N, self.K)
+        self.V = pt.randn(self.N, self.K)
         # standardise V to unit length
-        self.V = V / pt.sqrt(pt.sum(V**2, dim=0)) # Not clear why this should be constraint for GMM, but ok 
+        # self.V = V / pt.sqrt(pt.sum(V**2, dim=0)) # Not clear why this should be constraint for GMM, but ok
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
 
     def Estep(self, Y=None, sub=None):
@@ -102,7 +102,7 @@ class MixGaussian(EmissionModel):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5*self.N*(log(2 * np.pi) + pt.log(self.sigma2))-0.5*(1/self.sigma2) * self.rss[i, :, :]
+            LL[i, :, :] = -0.5*self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2))-0.5/self.sigma2 * self.rss[i, :, :]
 
         return LL
 
@@ -114,14 +114,25 @@ class MixGaussian(EmissionModel):
         # SU = self.s * U_hat
         YU = pt.zeros((self.N, self.K))
         UU = pt.zeros((self.K, self.P))
+        ERSS = pt.zeros(self.rss.shape)
         for i in range(self.num_subj):
             YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
             UU = UU + U_hat[i, :, :]
         # self.V = np.linalg.solve(UU,YU.T).T
-        # Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
+        # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
         self.V = YU / pt.sum(UU, dim=1)
-        ERSS = pt.sum(U_hat * self.rss)
+
+        # 2. Updating sigma2 (rss is calculated using updated V)
+        uVVu = pt.sum(self.V ** 2, dim=0)
+        for i in range(self.num_subj):
+            YV = pt.mm(self.Y[i, :, :].T, self.V)
+            ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
+        ERSS = pt.sum(U_hat * ERSS)
         self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
+
+        # rss is calculated using V at (t-1) iteration
+        # ERSS = pt.sum(U_hat * self.rss)
+        # self.sigma2 = ERSS / (self.N * self.P * self.num_subj)
 
     def sample(self, U):
         """ Generate random data given this emission model
@@ -140,7 +151,7 @@ class MixGaussian(EmissionModel):
         for s in range(num_subj):
             Y[s, :, :] = self.V[:, U[s, :].long()]
             # And add noise of variance 1
-            Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
+            Y[s, :, :] = Y[s, :, :] + pt.normal(0, pt.sqrt(self.sigma2), (self.N, self.P))
         return Y
 
 
@@ -228,7 +239,7 @@ class MixGaussianExp(EmissionModel):
                     for p in range(self.P):
                         # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
                         # given y_i and u_i(k)
-                        x = pt.tensor(np.sort(np.random.uniform(0, 10, 1000)), dtype=pt.get_default_dtype())
+                        x = pt.tensor(np.sort(np.random.uniform(0, 10, 100)), dtype=pt.get_default_dtype())
                         loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
                         # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                         post = pt.exp(loglike) / pt.sum(pt.exp(loglike))
@@ -273,14 +284,12 @@ class MixGaussianExp(EmissionModel):
             US2 = US2 + U_hat[i, :, :] * self.s2[i, :, :]
             ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + \
                             self.s2[i, :, :] * pt.sum(self.V ** 2, dim=0).reshape((self.K, 1))
-            # ERSS[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, U_hat[i, :, :]*self.s[i, :, :])) + \
-            #                     np.dot(self.V.T @ self.V, U_hat[i, :, :]*self.s2[i, :, :])
 
         # 1. Updating the sigma squared.
         # rss = np.sum(self.YY, axis=1).reshape(self.num_subj, -1, self.P) \
         # - 2*np.transpose(np.dot(np.transpose(self.Y, (0, 2, 1)), self.V), (0,2,1))*U_hat*self.s + \
         # U_hat * self.s**2 * np.sum(self.V ** 2, axis=0).reshape((self.K, 1))
-        self.sigma2 = pt.sum(U_hat*ERSS) / (self.N * self.P * self.num_subj)
+        self.sigma2 = pt.sum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # 2. Updating the V
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
@@ -313,12 +322,11 @@ class MixGaussianExp(EmissionModel):
             return Y 
 
 
-
 class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None, uniform=True):
-        self.uniform = uniform
+    def __init__(self, K=4, N=10, P=20, data=None, params=None, uniform_kappa=True):
+        self.uniform_kappa = uniform_kappa
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
@@ -341,11 +349,17 @@ class MixVMF(EmissionModel):
             and concentration value kappa_k.
         Returns: None, just passes the random parameters to the model
         """
-        V = pt.randn(self.N, self.K)
-        # V = pt.distributions.uniform.Uniform(0, 1).sample((self.N, self.K))
         # standardise V to unit length
+        V = pt.randn(self.N, self.K)
         self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-        self.kappa = pt.tensor(10)
+
+        # TODO: VMF doesn't work porperly for small kappa (let's say smaller than 8),
+        # so right now the kappa is sampled from 0 to 50
+
+        if self.uniform_kappa:
+            self.kappa = pt.distributions.uniform.Uniform(8, 50).sample()
+        else:
+            self.kappa = pt.distributions.uniform.Uniform(8, 50).sample((self.K, ))
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -393,7 +407,7 @@ class MixVMF(EmissionModel):
         for i in sub:
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
-            logCnK = (self.N / 2 - 1) * pt.log(self.kappa) - (self.N / 2) * log(2 * np.pi) - \
+            logCnK = (self.N / 2 - 1) * pt.log(self.kappa) - (self.N / 2) * log(pt.as_tensor(2*np.pi)) - \
                      self._log_bessel_function(self.N / 2 - 1, self.kappa)
             # the log likelihood for emission model (VMF in this case)
             LL[i, :, :] = (logCnK + self.kappa * YV).T
@@ -421,15 +435,15 @@ class MixVMF(EmissionModel):
         self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
-        if self.uniform:
+        if self.uniform_kappa:
             r_bar = pt.sqrt(pt.sum(YU ** 2, dim=0)) / pt.sum(UU, dim=1)
-            r_bar[r_bar > 0.95] = 0.95
-            r_bar[r_bar < 0.05] = 0.05
-            r_bar = pt.mean(r_bar).repeat(self.K)
+            # r_bar[r_bar > 0.95] = 0.95
+            # r_bar[r_bar < 0.05] = 0.05
+            r_bar = pt.mean(r_bar)
         else:
             r_bar = pt.sqrt(pt.sum(YU**2, dim=0)) / pt.sum(UU, dim=1)
-            r_bar[r_bar > 0.95] = 0.95
-            r_bar[r_bar < 0.05] = 0.05
+            # r_bar[r_bar > 0.95] = 0.95
+            # r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
 
@@ -452,8 +466,10 @@ class MixVMF(EmissionModel):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
                 # JD: Ideally re-write this routine to native Pytorch...
-                Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]].numpy(), self.kappa.numpy()), dtype=pt.get_default_dtype())
-
+                if self.uniform_kappa:
+                    Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]], self.kappa), dtype=pt.get_default_dtype())
+                else:
+                    Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]], self.kappa[U[s, p]]), dtype=pt.get_default_dtype())
         return Y
 
 
