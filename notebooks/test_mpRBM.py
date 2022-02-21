@@ -283,11 +283,16 @@ def compare_gibbs():
 def test_sample_multinomial():
     """ Do some unit test of sample multinomial Function
     """
-    p = pt.empty((10,4,20)).uniform_(0,1)
+    p = pt.empty((100,5,200)).uniform_(0,1)
     p = pt.softmax(p,dim=1)
-    U = ar.sample_multinomial(p,kdim=1)
-    assert(U.shape==p.shape)
-    U1 = ar.sample_multinomial(p[0],(3,4,20))
+    t = time.time()
+    U1 = ar.sample_multinomial_old(p,compress=True)
+    print(f"time 1:{time.time()-t:.5f}")
+    t = time.time()
+    U2 = ar.sample_multinomial(p,kdim=1,compress=True)
+    print(f"time 2:{time.time()-t:.5f}")
+    pass
+    pass
     U2 = ar.sample_multinomial(p[0,:,0:1],(2,4,10))
     U3 = ar.sample_multinomial(p[0,:,0:1],(5,10))
     p = pt.tensor([0.1,0.2,0.7])
@@ -296,15 +301,10 @@ def test_sample_multinomial():
     U4.mean(dim=(0,2))
     pass
 
+
+
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
-    # test_sample_multinomial()
+    test_sample_multinomial()
     # train_RBM()
-    K =5
-    N=500
-    sigma2=0.1
-    Ytrain,Ytest,Utrue,Mtrue =  make_mrf_data(10,K,N,
-            theta_mu=20,theta_w=2,sigma2=sigma2,
-            do_plot=True)
-    pt.save([Utrue,Mtrue],'notebooks/sim_500.pt')
