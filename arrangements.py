@@ -101,10 +101,10 @@ class ArrangeIndependent(ArrangementModel):
         pi = pt.softmax(self.logpi,dim=0)
         for i in range(num_subj):
             if self.spatial_specific:
-                U = sample_multinomial(pi,N=num_subj,compress=True)
+                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
             else:
                 pi=pi.expand(self.K,self.P)
-                U = sample_multinomial(pi,N=num_subj,compress=True)
+                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
         return U
 
     def marginal_prob(self,U=None):
@@ -231,9 +231,8 @@ class PottsModel(ArrangementModel):
         """
         # Check for initialization of chains
         if U0 is None:
-            U0 = pt.empty((num_chains,self.P),dtype=pt.int16)
             prob = pt.softmax(bias,axis=0)
-            U0 = sample_multinomial(prob,N = num_chains, compress=True)
+            U0 = sample_multinomial(prob,shape=(num_chains,self.K,self.P), compress=True)
         else:
             num_chains = U0.shape[0]
 
@@ -248,7 +247,7 @@ class PottsModel(ArrangementModel):
 
         # Start the chains
         U = U0
-        u = pt.arange(self.K).reshape(self.K,1,1)
+        u = pt.arange(self.K).reshape(self.K,1)
 
         for i in range(iter):
             if return_hist:
@@ -260,10 +259,11 @@ class PottsModel(ArrangementModel):
             # Now loop over chains: This loop can maybe be replaced
             for p in np.arange(self.P-1,-1,-1):
                 nb_u = U[:,self.neighbours[p]] # Neighbors to node x
+                nb_u = nb_u.reshape(num_chains,1,-1)
                 same = pt.eq(nb_u,u)
-                loglik = self.theta_w * pt.sum(same,dim=2) + bias[:,p].reshape(self.K,1)
-                prob = pt.softmax(loglik,dim=0)
-                U[:,p]=sample_multinomial(prob,compress=True)
+                loglik = self.theta_w * pt.sum(same,dim=2) + bias[:,p].reshape(1,self.K)
+                prob = pt.softmax(loglik,dim=1)
+                U[:,p]=sample_multinomial(prob,kdim=1,compress=True)
         if return_hist:
             return U,Uhist
         else:
@@ -299,6 +299,52 @@ class PottsModel(ArrangementModel):
         self.epos_U = pt.empty((numsubj,self.epos_numchains,P))
         for s in range(numsubj):
             self.epos_U[s,:,:] = self.sample_gibbs(num_chains=self.epos_numchains, bias = bias[s],iter=self.epos_iter)
+
+        # Get Uhat from the sampled examples
+        self.epos_Uhat = pt.empty((numsubj,self.K,self.P))
+        for k in range(self.K):
+            self.epos_Uhat[:,k,:]=pt.sum(self.epos_U==k,dim=1)/self.epos_numchains
+
+        # Get the sufficient statistics for the potential functions
+        self.epos_phihat = pt.zeros((numsubj,))
+        for s in range(numsubj):
+            phi = pt.zeros((self.P,self.P))
+            for n in range(self.epos_numchains):
+                phi=phi+np.equal(self.epos_U[s,n,:],self.epos_U[s,n,:].reshape((-1,1)))
+            self.epos_phihat[s] = pt.sum(self.W * phi)/self.epos_numchains
+
+        # The log likelihood for arrangement model p(U|theta_A) is not trackable-
+        # So we can only return the unormalized potential functions
+        if P>2:
+            ll_Ae = self.theta_w * self.epos_phihat
+            ll_Ap = pt.sum(self.epos_Uhat*self.logpi,dim=(1,2))
+            if self.rem_red:
+                Z = exp(self.logpi).sum(dim=0) # Local partition function
+                ll_Ap = ll_Ap - pt.sum(log(Z))
+            ll_A=ll_Ae+ll_Ap
+        else:
+            # Calculate Z in the case of P=2
+            pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
+            Z = pt.sum(pp) # full partition function
+            ll_A = self.theta_w * self.epos_phihat + pt.sum(self.epos_Uhat*self.logpi,dim=(1,2)) - log(Z)
+        return self.epos_Uhat,ll_A
+
+    def Estep_new(self, emloglik):
+        """ Positive phase of getting p(U|Y) for the spatial arrangement model
+        Gets the expectations.
+
+        Parameters:
+            emloglik (pt.tensor):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+        Returns:
+            Uhat (pt.tensor):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (pt.tensor):
+                Unnormalized log-likelihood of the arrangement model for each subject. Note that this does not contain the partition function
+        """
+        numsubj, K, P = emloglik.shape
+        bias = emloglik + self.logpi
+        self.epos_U[s,:,:] = self.sample_gibbs3(self.epos_numchains, bias,self.epos_iter)
 
         # Get Uhat from the sampled examples
         self.epos_Uhat = pt.empty((numsubj,self.K,self.P))
@@ -963,7 +1009,7 @@ def sample_multinomial(p,shape=None,kdim=0,compress=False):
         a=sample.select(out_kdim,k) # Get view of slice
         a-=sample.select(out_kdim,k-1)
     if compress:
-        return sample.argmax(dim=kdim)
+        return sample.argmax(dim=out_kdim)
     else:
         return sample
 

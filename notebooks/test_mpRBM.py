@@ -1,4 +1,6 @@
 import os  # to handle path information
+# import sys
+# sys.path.append(os.path.abspath('..'))
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import exp,log,sqrt
@@ -91,12 +93,10 @@ def make_mrf_data(width=10,K=5,N=200,
     Ytrain = MT.emission.sample(U.numpy()) # This is the training data
     Ytest = MT.emission.sample(U.numpy())  # Testing data
 
-
-
     # Plot first 10 samples
     if do_plot:
         plt.figure(figsize=(10,4))
-        grid.plot_maps(U[0:10],cmap='tab10',vmax=9,grid=[2,5])
+        grid.plot_maps(U[0:10],cmap='tab10',vmax=K,grid=[2,5])
 
     return Ytrain, Ytest, U, MT
 
@@ -299,5 +299,12 @@ def test_sample_multinomial():
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
-    test_sample_multinomial()
+    # test_sample_multinomial()
     # train_RBM()
+    K =5
+    N=500
+    sigma2=0.1
+    Ytrain,Ytest,Utrue,Mtrue =  make_mrf_data(10,K,N,
+            theta_mu=20,theta_w=2,sigma2=sigma2,
+            do_plot=True)
+    pt.save([Utrue,Mtrue],'notebooks/sim_500.pt')
