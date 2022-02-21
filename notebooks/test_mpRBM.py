@@ -264,6 +264,83 @@ def train_rbm_to_mrf2(N=200,
 
     pass
 
+def test_epos_meanfield(n_hidden = 100,
+    n_epoch=20,
+    batch_size=20,
+    sigma2=0.5):
+    """Checks different number of iterations for the positive Estep
+    Checks speed of convergence for RBM_pCD model
+    Args:
+        n_hidden (int): [description]. Defaults to 100.
+        n_epoch (int): [description]. Defaults to 20.
+        batch_size (int): size of each learning batch
+
+    Returns:
+        [type]: [description]
+    """
+    [Utrue,Mtrue]=pt.load('notebooks/sim_500.pt')
+    Mtrue.emission.sigma2=pt.tensor(sigma2)
+    Ytrain = Mtrue.emission.sample(Utrue) # This is the training data
+    Ytest = Mtrue.emission.sample(Utrue)  # Testing data
+    K = Mtrue.emission.K
+    N = Utrue.shape[0]
+    P = Mtrue.arrange.P
+    lossU = 'logpY'
+
+    # Step 5: Generate partitions for region-completion testing
+    num_part = 4
+    p=pt.ones(num_part)/num_part
+    part = pt.multinomial(p,P,replacement=True)
+
+    # Build different models
+    indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
+    indepAr.name='idenp'
+
+    rbm1 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=200)
+    rbm1.epos_iter=1
+    rbm1.name='RBM1'
+    rbm1.alpha = 0.001
+
+    rbm2 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=2,eneg_numchains=200)
+    rbm2.epos_iter=1
+    rbm2.name='RBM2'
+    rbm2.alpha = 0.001
+
+    emloglik_train = Mtrue.emission.Estep(Y=Ytrain)
+    emloglik_test = Mtrue.emission.Estep(Y=Ytest)
+
+    # Check the baseline for independent Arrangement model
+
+    t = time.time()
+    indepAr,T1 = train_sml(indepAr,
+            emloglik_train,emloglik_test,
+            part=part,n_epoch=n_epoch,batch_size=N)
+    print(f"Indep_time:{time.time()-t:.3f}")
+
+    rbm1.bu=indepAr.logpi.detach().clone()
+    rbm2.bu=indepAr.logpi.detach().clone()
+    rbm1.W = pt.randn(n_hidden,P*K)*0.1
+    rbm2.W = rbm1.W.detach().clone()
+
+    t = time.time()
+    rbm1, T2 = train_sml(rbm1,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch)
+    print(f"RBM1_time:{time.time()-t:.3f}")
+    t = time.time()
+    rbm2, T3 = train_sml(rbm2,
+            emloglik_train,emloglik_test,
+            part,batch_size=batch_size,n_epoch=n_epoch)
+    print(f"RBM2_time:{time.time()-t:.3f}")
+
+    T = pd.concat([T1,T2,T3],ignore_index=True)
+
+    plt.figure(figsize=(8,8))
+    sb.lineplot(data=T,y='uerr',x='iter',hue='model',style='type')
+
+
+    pass
+
 def compare_gibbs():
     """Compares different implementations of Gibbs sampling
     """
@@ -306,5 +383,6 @@ def test_sample_multinomial():
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
-    test_sample_multinomial()
+    test_epos_meanfield()
+    # test_sample_multinomial()
     # train_RBM()

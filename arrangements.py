@@ -405,6 +405,7 @@ class mpRBM(ArrangementModel):
         self.eneg_U = None
         self.Etype = 'prob'
         self.alpha = 0.01
+        self.epos_iter = 1
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -455,9 +456,9 @@ class mpRBM(ArrangementModel):
         u = compress_mn(U)
         return u
 
-    def Estep(self, emloglik,gather_ss=True):
+    def Estep(self, emloglik,gather_ss=True,iter=None):
         """ Positive Estep for the multinomial boltzman model
-
+        Uses mean field approximation to posterior to U and hidden parameters.
         Parameters:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
@@ -472,26 +473,28 @@ class mpRBM(ArrangementModel):
         """
         if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        if iter is None:
+            iter = self.epos_iter
         N=emloglik.shape[0]
-        U = pt.softmax(emloglik + self.bu,dim=1)
-        wv = pt.mm(U.reshape(N,-1), self.W.t())
-        Eh = pt.sigmoid(wv + self.bh)
-        wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
-        Uhat = pt.softmax(wh + self.bu + emloglik,1)
+        Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
+        for i in range(iter):
+            wv = pt.mm(Uhat.reshape(N,-1), self.W.t())
+            Eh = pt.sigmoid(wv + self.bh)
+            wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
+            Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
             if self.Etype=='vis':
                 self.epos_U = pt.softmax(emloglik,dim=1)
             elif self.Etype=='prob':
                 self.epos_U = Uhat
             self.epos_Eh = Eh
-        return Uhat, np.nan
+        return Uhat, pt.nan
 
     def marginal_prob(self,U=None):
         if U is not None:
             U,Eh=self.Eneg(U)
         pi  = pt.mean(self.eneg_U,dim=0)
         return pi
-
 
     def Mstep(self):
         """Performs gradient step on the parameters
