@@ -200,6 +200,10 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussianExp(K=K, N=N, P=P)
+    # new_params = emissionM.get_params()
+    # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
+    # new_params[emissionM.get_param_indices('beta')] = emissionT.get_params()[emissionT.get_param_indices('beta')]
+    # emissionM.set_params(new_params)
     M = FullModel(arrangeM, emissionM)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
@@ -212,10 +216,10 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
     idx = matching_params(true_V, predicted_V, once=False)
 
     _plot_diff(true_V, predicted_V, index=idx, name='V')
-    _plt_single_param_diff(theta_true[M.emission.get_param_indices('sigma2')],
-                           np.trim_zeros(theta[:, M.emission.get_param_indices('sigma2')], 'b'), name='sigma2')
-    _plt_single_param_diff(theta_true[M.emission.get_param_indices('beta')],
-                           np.trim_zeros(theta[:, M.emission.get_param_indices('beta')], 'b'), name='beta')
+    _plt_single_param_diff(theta_true[M.get_param_indices('emission.sigma2')],
+                           theta[:, M.get_param_indices('emission.sigma2')], name='sigma2')
+    _plt_single_param_diff(theta_true[M.get_param_indices('emission.beta')],
+                           theta[:, M.get_param_indices('emission.beta')], name='beta')
     # SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
 
     plt.show()
