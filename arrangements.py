@@ -23,8 +23,8 @@ class ArrangeIndependent(ArrangementModel):
         Either with a spatially uniform prior
         or a spatially-specific prior. Pi is saved in form of log-pi.
     """
-    def __init__(self, K=3, P=100, 
-                 spatial_specific=False, 
+    def __init__(self, K=3, P=100,
+                 spatial_specific=False,
                  remove_redundancy=True):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
@@ -71,7 +71,7 @@ class ArrangeIndependent(ArrangementModel):
         """ Negative phase of e-step: do nothing
         """
         return np.nan, np.nan
-    
+
     def Mstep(self):
         """ M-step for the spatial arrangement model
             Update the pi for arrangement model
@@ -100,11 +100,11 @@ class ArrangeIndependent(ArrangementModel):
         U = pt.zeros(num_subj, self.P)
         pi = pt.softmax(self.logpi,dim=0)
         for i in range(num_subj):
-            if self.spatial_specific: 
-                U = sample_multinomial(pi,N=num_subj,compress=True)
+            if self.spatial_specific:
+                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
             else:
                 pi=pi.expand(self.K,self.P)
-                U = sample_multinomial(pi,N=num_subj,compress=True)
+                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
         return U
 
     def marginal_prob(self,U=None):
@@ -231,9 +231,8 @@ class PottsModel(ArrangementModel):
         """
         # Check for initialization of chains
         if U0 is None:
-            U0 = pt.empty((num_chains,self.P),dtype=pt.int16)
             prob = pt.softmax(bias,axis=0)
-            U0 = sample_multinomial(prob,N = num_chains, compress=True)
+            U0 = sample_multinomial(prob,shape=(num_chains,self.K,self.P), compress=True)
         else:
             num_chains = U0.shape[0]
 
@@ -248,7 +247,7 @@ class PottsModel(ArrangementModel):
 
         # Start the chains
         U = U0
-        u = pt.arange(self.K).reshape(self.K,1,1)
+        u = pt.arange(self.K).reshape(self.K,1)
 
         for i in range(iter):
             if return_hist:
@@ -260,10 +259,11 @@ class PottsModel(ArrangementModel):
             # Now loop over chains: This loop can maybe be replaced
             for p in np.arange(self.P-1,-1,-1):
                 nb_u = U[:,self.neighbours[p]] # Neighbors to node x
+                nb_u = nb_u.reshape(num_chains,1,-1)
                 same = pt.eq(nb_u,u)
-                loglik = self.theta_w * pt.sum(same,dim=2) + bias[:,p].reshape(self.K,1)
-                prob = pt.softmax(loglik,dim=0)
-                U[:,p]=sample_multinomial(prob,compress=True)
+                loglik = self.theta_w * pt.sum(same,dim=2) + bias[:,p].reshape(1,self.K)
+                prob = pt.softmax(loglik,dim=1)
+                U[:,p]=sample_multinomial(prob,kdim=1,compress=True)
         if return_hist:
             return U,Uhist
         else:
@@ -356,287 +356,6 @@ class PottsModel(ArrangementModel):
         self.eneg_phihat = pt.sum(self.W * phi)/num_chains
         return self.eneg_Uhat
 
-    def epos_meanfield(self, emloglik,iter=5):
-        """ Positive phase of getting p(U|Y) for the spatial arrangement model
-        Using meanfield approximation. Note that this implementation is not accurate
-        As it simply uses the Uhat from the other node
-
-        Parameters:
-            emloglik (pt.tensor):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        bias = emloglik + self.logpi
-        self.epos_Uhat = pt.softmax(bias,dim=1)
-        h = pt.empty((iter+1,))
-        for i in range(iter):
-            h[i]=self.epos_Uhat[0,0,0]
-            for p in range(P): # Serial updating across all subjects
-                nEng = self.theta_w*pt.sum(self.W[:,p]*self.epos_Uhat,dim=2)
-                nEng = nEng + bias[:,:,p]
-                self.epos_Uhat[:,:,p]=pt.softmax(nEng,dim=1)
-        h[i+1]=self.epos_Uhat[0,0,0]
-        return self.epos_Uhat, h
-
-    def epos_jta(self, emloglik,order=None):
-        """ This implements a closed-form Estep using a Junction-tree (Hugin)
-        Algorithm. Uses a sequential elimination algorithm to result in a factor graph
-        Uses the last node as root.
-
-        Parameters:
-            emloglik (pt.tensor):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        # Construct a linear Factor graph containing the factor (u1,u2),
-        #(u2,u3),(u3,u4)....
-        Phi = pt.zeros((numsubj,K,P)) # Messages for the forward pass
-        Phis = pt.zeros((numsubj,K,P)) # Messages for the backward pass
-        for s in range(numsubj):
-            Psi = pt.zeros((P-1,K,K))
-            # Initialize the factors
-            Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
-            for p in range(P-1):
-                Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
-            Psi=Psi+np.eye(K)*self.theta_w
-            pass
-            # Now pass the evidence to the factors
-            Psi[0,:,:]=Psi[0,:,:]+emloglik[s,:,0].reshape(-1,1)
-            for p in range(P-1):
-                Psi[p,:,:]=Psi[p,:,:]+emloglik[s,:,p+1]
-            pass
-            # Do the forward pass
-            for p in np.arange(0,P-1):
-                pp=exp(Psi[p,:,:])
-                pp = pp / pt.sum(pp) # Normalize
-                Phi[s,:,p+1]=np.log(pp.sum(dim=0))
-                if p<P-2:
-                    Psi[p+1,:,:]=Psi[p+1,:,:]+Phi[s,:,p+1].reshape(-1,1) # Update the next factors
-            pass
-            # Do the backwards pass
-            Phis[s,:,P-1]=Phi[s,:,P-1]
-            for p in np.arange(P-2,-1,-1):
-                pp=exp(Psi[p,:,:])
-                pp = pp / pt.sum(pp) # Normalize
-                Phis[s,:,p]=np.log(pp.sum(dim=1))
-                if p>0:
-                    Psi[p-1,:,:]=Psi[p-1,:,:]+Phis[s,:,p]-Phi[s,:,p] # Update the factors
-            pass
-
-        return exp(Phis)
-
-    def epos_ssa_chain(self, emloglik):
-        """ This implements a closed-form Estep using the Schafer Shenoy algorithm on a chain
-        This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
-
-        Parameters:
-            emloglik (pt.tensor):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        # Construct a linear Factor graph containing the factor (u1,u2),
-        #(u2,u3),(u3,u4)....
-        self.epos_Uhat = pt.zeros((numsubj, K, P))
-        self.epos_phihat = pt.zeros((numsubj,))
-        for s in range(numsubj):
-            Psi = pt.zeros((P-1,K,K)) # These are the original potentials
-            muL = pt.zeros((P-1,K)) # Incoming messages from the left side
-            muR = pt.zeros((P-1,K)) # Incoming messages from the right side
-            # Initialize the factors
-            Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
-            for p in range(P-1):
-                Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
-            Psi=Psi+np.eye(K)*self.theta_w
-            # Now pass the evidence to the factors
-            muL[0,:]=muL[0,:]+emloglik[s,:,0]
-            for p in range(P-1):
-                muR[p,:]=muR[p,:]+emloglik[s,:,p+1]
-            # Do the forward pass
-            for p in np.arange(0,P-2):
-                pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-                pp = pp / pt.sum(pp) # Normalize
-                muL[p+1,:]=np.log(pp.sum(dim=0))
-            # Do the backwards pass
-            for p in np.arange(P-2,0,-1):
-                pp=exp(Psi[p,:,:]+muR[p,:])
-                pp = pp / pt.sum(pp) # Normalize
-                muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(dim=1))
-            pass
-            # Finally get the normalized potential
-            for p in np.arange(0,P-1):
-                pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-                pp =pp / pt.sum(pp)
-                # For the sufficent statistics, we need to consider each potential twice in the
-                # Sum of the log-liklihoof sum_{i} sum_{j \neq i} <u_i u_j>
-                self.epos_phihat[s] = self.epos_phihat[s] + 2 * pp.trace()
-                if p==0:
-                    self.epos_Uhat[s,:,0]=pp.sum(dim=1)
-                self.epos_Uhat[s,:,p+1]=pp.sum(dim=0)
-        # Get the postive likelihood: Could we use standardization here?
-        ll_Ae = self.theta_w * self.epos_phihat
-        ll_Ap = pt.sum(self.epos_Uhat*self.logpi,dim=(1,2))
-        if self.rem_red:
-            Z = exp(self.logpi).sum(dim=0) # Local partition function
-            ll_Ap = ll_Ap - pt.sum(log(Z))
-        ll_A=ll_Ae+ll_Ap
-
-        return self.epos_Uhat, ll_A
-
-    def eneg_ssa_chain(self):
-        """ This implements a closed-form Estep using the Schafer Shenoy algorithm.
-        This is identical to the JTA (Hugin) algorithm, but does not use the intermediate Phi factors.
-        Calculates the expectation under the current verson of the model, without input data
-
-        Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        # Construct a linear Factor graph containing the factor (u1,u2),
-        #(u2,u3),(u3,u4)....
-        P = self.P
-        K = self.K
-        Psi = pt.zeros((P-1,K,K)) # These are the original potentials
-        muL = pt.zeros((P-1,K)) # Incoming messages from the left side
-        muR = pt.zeros((P-1,K)) # Incoming messages from the right side
-        self.eneg_Uhat = pt.zeros((K, P))
-        self.eneg_phihat = 0
-        # Initialize the factors
-        Psi[0,:,:]=Psi[0,:,:]+self.logpi[:,0].reshape(-1,1)
-        for p in range(P-1):
-            Psi[p,:,:]=Psi[p,:,:]+self.logpi[:,p+1]
-        Psi=Psi+np.eye(K)*self.theta_w
-        # Do the forward pass
-        for p in np.arange(0,P-2):
-            pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1))
-            pp = pp / pt.sum(pp) # Normalize
-            muL[p+1,:]=np.log(pp.sum(dim=0))
-        # Do the backwards pass
-        for p in np.arange(P-2,0,-1):
-            pp=exp(Psi[p,:,:]+muR[p,:])
-            pp = pp / pt.sum(pp) # Normalize
-            muR[p-1,:]=muR[p-1,:]+np.log(pp.sum(dim=1))
-        pass
-        # Finally get the normalized potential
-        for p in np.arange(0,P-1):
-            pp=exp(Psi[p,:,:]+muL[p,:].reshape(-1,1)+muR[p,:])
-            pp =pp / pt.sum(pp)
-            self.eneg_phihat = self.eneg_phihat + 2 * pp.trace()
-            if p==0:
-                self.eneg_Uhat[:,0]=pp.sum(dim=1)
-            self.eneg_Uhat[:,p+1]=pp.sum(dim=0)
-        return self.eneg_Uhat
-
-
-    def epos_ssa(self, emloglik, update_order=None):
-        """ Implements general Shenoy-Shaefer algorithm
-        Constructing a general clique tree from the connectivity matrix
-
-        Parameters:
-            emloglik (pt.tensor):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-        Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        numsubj, K, P = emloglik.shape
-        self.epos_Uhat = pt.zeros((numsubj, K, P))
-        self.epos_phihat = pt.zeros((numsubj,))
-
-        # Construct general factor graph containing the factor (u1,u2),
-        if hasattr(self,'inE'):
-            inP = self.inE
-            outP = self.ouE
-            num_edge = len(inP)
-        else:
-            num_edge = (self.W>0).sum()
-            inP,outP = np.where(self.W>0)
-        if update_order is None:
-            update_order = np.tile(np.arange(len(inP)),2)
-        for s in range(numsubj):
-            muIn = pt.zeros((K,num_edge)) # Incoming messages from nodes to Edges
-            muOut = pt.zeros((K,num_edge)) # Outgoing messages from Edges to nodes
-            mu = pt.zeros((K,self.P)) # Message on each potential
-            phi_trace = pt.zeros((num_edge,)) # Outgoing messages from Edges to nodes
-            bias = emloglik[s,:,:]+self.logpi
-            for e in update_order:
-                # Update the state of the input node
-                muIn[:,e] = bias[:,inP[e]] + pt.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],dim=1)
-                E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1)
-                pp = exp(E)
-                pp = pp/ pp.sum()
-                muOut[:,e]=log(pp.sum(dim=0))
-            # Calcululate sufficient stats: This could be cut in half...
-            for e in range(num_edge):
-                opp = (inP[e]==outP) & (outP[e]==inP)
-                E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1) + muIn[:,opp].reshape(1,-1)
-                pp = exp(E)
-                pp = pp/ pp.sum()
-                self.epos_Uhat[s,:,outP[e]]=pp.sum(dim=0)
-                phi_trace[e]=pp.trace()
-                self.epos_phihat[s] = self.epos_phihat[s] + pp.trace()
-        # Get the postive likelihood: Could we use standardization here?
-        ll_Ae = self.theta_w * self.epos_phihat
-        ll_Ap = pt.sum(self.epos_Uhat*self.logpi,dim=(1,2))
-        if self.rem_red:
-            Z = exp(self.logpi).sum(dim=0) # Local partition function
-            ll_Ap = ll_Ap - pt.sum(log(Z))
-        ll_A=ll_Ae+ll_Ap
-
-        return self.epos_Uhat, ll_A
-
-    def eneg_ssa(self, update_order=None):
-        """ Implements general Shenoy-Shaefer algorithm: Negative step
-        Constructing a general clique tree from the connectivity matrix
-
-        Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-        """
-        P = self.P
-        K = self.K
-
-        self.eneg_Uhat = pt.zeros(K, P)
-        self.eneg_phihat = 0
-
-        # Construct general factor graph containing the factor (u1,u2),
-        if hasattr(self,'inE'):
-            inP = self.inE
-            outP = self.ouE
-            num_edge = len(inP)
-        else:
-            num_edge = (self.W>0).sum()
-            inP,outP = np.where(self.W>0)
-        if update_order is None:
-            update_order=np.arange(num_edge)
-        muIn = pt.zeros(K,num_edge) # Incoming messages from nodes to Edges
-        muOut = pt.zeros(K,num_edge) # Outgoing messages from Edges to nodes
-        bias = self.logpi
-        for e in update_order:
-            # Update the state of the input node
-            muIn[:,e] = bias[:,inP[e]] + pt.sum(muOut[:,(inP[e]==outP) & (inP !=outP[e])],dim=1)
-            E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1)
-            pp = exp(E)
-            pp = pp/ pp.sum()
-            muOut[:,e]=log(pp.sum(dim=0))
-        # Calcululate sufficient stats: This could be cut in half...
-        for e in range(num_edge):
-            opp = (inP[e]==outP) & (outP[e]==inP)
-            E = np.eye(K)*self.theta_w + muIn[:,e].reshape(-1,1) + muIn[:,opp].reshape(1,-1)
-            pp = exp(E)
-            pp = pp/ pp.sum()
-            self.eneg_Uhat[:,outP[e]]=pp.sum(dim=0)
-            self.eneg_phihat = self.eneg_phihat + pp.trace()
-        return self.eneg_Uhat
-
 
     def Mstep(self,stepsize = 0.1):
         """ Gradient update for SML or CD algorithm
@@ -659,52 +378,11 @@ class PottsModel(ArrangementModel):
             self.theta_w = self.theta_w + stepsize* grad_theta_w
         return
 
-class PottsModelDuo(PottsModel):
-    """
-    Potts models (Markov random field on multinomial variable)
-    with K possible states, but only 2 nodes
-    Closed-form solututions for checking the approximations
-    """
-    def __init__(self,K=3,remove_redundancy=True):
-        W = pt.tensor([[0,1],[1,0]])
-        super().__init__(W,K,remove_redundancy)
-
-    def Estep(self,emloglik,return_joint = False):
-        numsubj, K, P = emloglik.shape
-        logq = emloglik + self.logpi
-        self.estep_Uhat = pt.empty((numsubj,K,P))
-        Uhat2 = pt.empty((numsubj,K,K))
-        for s in range(numsubj):
-            pp=exp(logq[s,:,0]+logq[s,:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
-            Z = pt.sum(pp) # full partition function
-            pp = pp/Z
-            self.estep_Uhat[s] = np.c_[pp.sum(dim=0),pp.sum(dim=1)]
-            Uhat2[s]=pp
-
-        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        p,pp = self.marginal_prob(return_joint=True)
-        ll_A = pt.sum(Uhat2 * log(pp),dim=(1,2))
-        if return_joint:
-            return self.estep_Uhat, ll_A,Uhat2
-        else:
-            return self.estep_Uhat, ll_A
-
-    def marginal_prob(self,return_joint=False):
-        pp=exp(self.logpi[:,0]+self.logpi[:,1].reshape((-1,1))+np.eye(self.K)*self.theta_w)
-        Z = pt.sum(pp) # full partition function
-        pp=pp/Z
-        p1 = pp.sum(dim=0)
-        p2 = pp.sum(dim=1)
-        if return_joint:
-            return np.c_[p1,p2],pp
-        else:
-            return np.c_[p1,p2]
-
 
 class mpRBM(ArrangementModel):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
-    Uses Contrastive-Divergence k for learning  
+    Uses Contrastive-Divergence k for learning
     Outer nodes (U):
         The outer (most peripheral nodes) are
         categorical with K possible categories.
@@ -727,6 +405,7 @@ class mpRBM(ArrangementModel):
         self.eneg_U = None
         self.Etype = 'prob'
         self.alpha = 0.01
+        self.epos_iter = 1
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -777,9 +456,9 @@ class mpRBM(ArrangementModel):
         u = compress_mn(U)
         return u
 
-    def Estep(self, emloglik,gather_ss=True):
+    def Estep(self, emloglik,gather_ss=True,iter=None):
         """ Positive Estep for the multinomial boltzman model
-
+        Uses mean field approximation to posterior to U and hidden parameters.
         Parameters:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
@@ -794,26 +473,28 @@ class mpRBM(ArrangementModel):
         """
         if type(emloglik) is np.ndarray:
             emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        if iter is None:
+            iter = self.epos_iter
         N=emloglik.shape[0]
-        U = pt.softmax(emloglik + self.bu,dim=1)
-        wv = pt.mm(U.reshape(N,-1), self.W.t())
-        Eh = pt.sigmoid(wv + self.bh)
-        wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
-        Uhat = pt.softmax(wh + self.bu + emloglik,1)
+        Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
+        for i in range(iter):
+            wv = pt.mm(Uhat.reshape(N,-1), self.W.t())
+            Eh = pt.sigmoid(wv + self.bh)
+            wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
+            Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
             if self.Etype=='vis':
                 self.epos_U = pt.softmax(emloglik,dim=1)
             elif self.Etype=='prob':
                 self.epos_U = Uhat
             self.epos_Eh = Eh
-        return Uhat, np.nan
+        return Uhat, pt.nan
 
     def marginal_prob(self,U=None):
-        if U is not None: 
+        if U is not None:
             U,Eh=self.Eneg(U)
         pi  = pt.mean(self.eneg_U,dim=0)
         return pi
-
 
     def Mstep(self):
         """Performs gradient step on the parameters
@@ -833,9 +514,9 @@ class mpRBM(ArrangementModel):
 class mpRBM_pCD(mpRBM):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning  
-    """ 
-    
+    Uses persistent Contrastive-Divergence k for learning
+    """
+
     def __init__(self, K, P, nh, eneg_iter=3,eneg_numchains=77):
         super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
@@ -857,9 +538,9 @@ class mpRBM_pCD(mpRBM):
 class mpRBM_CDk(mpRBM):
     """multinomial (categorial) restricted Boltzman machine
     for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning  
-    """ 
-    
+    Uses persistent Contrastive-Divergence k for learning
+    """
+
     def __init__(self, K, P, nh, eneg_iter=1):
         super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
@@ -873,69 +554,33 @@ class mpRBM_CDk(mpRBM):
         return self.eneg_U,self.eneg_Eh
 
 
-
-def loglik2prob(loglik,dim=0):
-    """Safe transformation and normalization of
-    logliklihood
-
-    Args:
-        loglik (ndarray): Log likelihood (not normalized)
-        axis (int): Number of axis (or axes), along which the probability is being standardized
-    Returns:
-        prob (ndarray): Probability
-    """
-    if (dim==0):
-        ml,_=pt.max(loglik,dim=0)
-        loglik = loglik-ml+10
-        prob = np.exp(loglik)
-        prob = prob/pt.sum(prob,dim=0)
-    else:
-        a = pt.tensor(loglik.shape)
-        a[dim]=1 # Insert singleton dimension
-        ml,_=pt.max(loglik,dim=0)
-        loglik = loglik-ml.reshape(a)+10
-        prob = pt.exp(loglik)
-        prob = prob/pt.sum(prob,dim=1).reshape(a)
-    return prob
-
-def sample_multinomial(p_u,N=1,compress=False):
+def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution
     Fast smpling from matrix probability without looping
 
     Args:
-        p_u (tensor): 1d (K), 2d- (KxP) or 3d-tensor (NxKxP)
-        N ([int]): If provided for 1d-sample give
+        p (tensor): Tensor of probilities, which sums to 1 on the dimension kdim
+        shape (tuple): Shape of the output data (in uncompressed form): Smaller p will be broadcasted to target shape
+        kdim (int): Number of dimension of p that indicates the different categories (default 0)
         compress: Return as int (True) or indicator (false)
     Returns: Samples either in indicator coding (compress = False)
             or as ints (compress = False)
     """
-    if p_u.dim() == 1:
-        K = p_u.shape[0]
-        r = pt.empty(1,N).uniform_(0,1)
-        cdf_v = p_u.cumsum(dim=0)
-        sample = (r < cdf_v).float()
-        for k in np.arange(K-1,0,-1):
-            sample[k,:]-=sample[k-1,:]
-        dim =0
-    elif p_u.dim() == 2:
-        K,P = p_u.shape
-        r = pt.empty(N,1,P).uniform_(0,1)
-        cdf_v = p_u.cumsum(dim=0)
-        sample = (r < cdf_v).float()
-        for k in np.arange(K-1,0,-1):
-            sample[:,k,:]-=sample[:,k-1,:]
-        dim = 1
-    elif p_u.dim() == 3:
-        N,K,P = p_u.shape
-        r = pt.empty(N,1,P).uniform_(0,1)
-        cdf_v = p_u.cumsum(dim=1)
-        sample = (r < cdf_v).float()
-        for k in np.arange(K-1,0,-1):
-            sample[:,k,:]-=sample[:,k-1,:]
-        dim = 1
+    if shape is None:
+        shape = p.shape
+    out_kdim = len(shape) - p.dim() + kdim
+    K = p.shape[kdim]
+    shapeR = list(shape)
+    shapeR[out_kdim]=1 # Set the probability dimension to 1
+    r = pt.empty(shapeR).uniform_(0,1)
+    cdf_v = p.cumsum(dim=kdim)
+    sample = (r < cdf_v).float()
     if compress:
-        return sample.argmax(dim=dim)
+        return sample.argmax(dim=out_kdim)
     else:
+        for k in np.arange(K-1,0,-1):
+            a=sample.select(out_kdim,k) # Get view of slice
+            a-=sample.select(out_kdim,k-1)
         return sample
 
 def expand_mn(u,K):

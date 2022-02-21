@@ -1,1 +1,4 @@
 *.pt
+*.pyc
+__pychache__/*
+.vscode/*
