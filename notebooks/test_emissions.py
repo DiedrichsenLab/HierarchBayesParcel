@@ -88,7 +88,7 @@ def generate_data(emission, k=2, dim=3, p=1000,
         raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), or 3(VMF).")
 
     if (emission == 1) or (emission == 2):
-        data = emissionT.sample(U, signal)
+        data, signal = emissionT.sample(U, return_signal=True)
     elif emission == 3:
         data = emissionT.sample(U)
         signal = np.repeat(signal[:, np.newaxis, :], dim, axis=1)
@@ -97,6 +97,22 @@ def generate_data(emission, k=2, dim=3, p=1000,
         data = emissionT.sample(U)
 
     return data, U
+
+
+def evaluate_completion_emission(emissionM, data, k_fold=5, crit='u_abserr'):
+    """ Evaluates an emission model on new dataset using cross-validation and
+        given criterion
+    Args:
+        emissionM:
+        data:
+        k_fold:
+        crit:
+    Returns:
+        evaluation results
+    """
+    if type(data) is np.ndarray:
+        data = pt.tensor(data, dtype=pt.get_default_dtype())
+
 
 
 def sample_spherical(npoints, ndim=3):
@@ -275,3 +291,6 @@ if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
     _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=50)
+
+    train = generate_data(0, k=2, dim=3, p=1000, num_sub=10, beta=1,
+                          alpha=1, signal_type=0)
