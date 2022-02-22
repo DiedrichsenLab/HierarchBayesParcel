@@ -248,7 +248,71 @@ Now, with the above expected emission log likelihood by hand, we can update the 
 
    The updated parameters $\theta_{k}^{(t)}$ from current $\mathbf{M}$-step will be passed to the next $\mathbf{E}$-step $(t+1)$  until convergence.
 
-### Emission model 2: Mixture of Gaussians with signal strength
+### Emission model 2: Mixture of Gaussians with Exponential signal strength
+
+The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $N\times1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as $s_i \sim exponential(\beta_s)$. Therefore the probability model for gamma is defined as:
+$$
+p(s_i|\theta) = \beta e^{-\beta s_i}
+$$
+Overall, the expected signal at each brain location is then 
+$$
+\rm{E}(\mathbf{y}_i)=\mathbf{u}_i^T \mathbf{V}s_i
+$$
+
+
+Finally, relative to the signal, we assume that the noise is distributed i.i.d Gaussian with: 
+$$
+\boldsymbol{\epsilon}_i \sim Normal(0,\mathbf{I}_K\theta_{\sigma s})
+$$
+ Here, the proposal distribution $q(u_{i}^{(k)},s_{i}|\mathbf{y}_{i})$ is now a multivariate distribution across $u_i$ and $s_i$. Thus, the *expected emission log likelihood* $\mathcal{L}_E(q, \theta)$ is defined as:
+$$
+\begin{align*}
+\mathcal{L}_E &= \langle\sum_i\log p(\mathbf{y}_i, s_i|u_i; \theta_E)\rangle_{q}\\
+&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)]\rangle_{q}  \\ &+\sum_{i}\sum_{k}\langle u_{i}^{(k)}[ \log \beta-\beta s_i] \rangle_q\\
+
+&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)\rangle_{q} \\ &+ P\log\beta-\sum_{i}\sum_k\beta\langle u_{i}^{(k)} s_i\rangle_q\\
+
+&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i} \mathbf{y}_i^T\mathbf{y}_i-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) \\ &+\log\beta-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q
+\end{align*}
+$$
+Now, we can update the parameters $\theta$ of the Gaussians/Exponential mixture in the $\Mu$ step. The parameters of the gaussian mixture model are $\theta_{E} = \{\mathbf{v}_{1},...,\sigma^{2},\beta\}$ . 
+
+1. We start with updating the $\mathbf{v}_k$ (Note: the updates only consider a single subject). We take the derivative of *expected emission log likelihood* $\mathcal{L}_E$ with respect to $\mathbf{v}_{k}$ and make it equals to 0 as following:
+   $$
+   \frac{\partial \mathcal{L}_E}{\partial \mathbf{v}_{k}} =-\frac{1}{\sigma^{2}}\sum_{i}-\mathbf{y}_{i}^{T}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\langle u_{i}^{(k)}s_{i}^{2}\rangle_{q} = 0
+   $$
+   Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
+   $$
+   \mathbf{v}_{k}^{(t)} = \frac{\sum_{i}\langle u_{i}^{(k)}s_{i}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}s_{i}^{2}\rangle_{q}^{(t)}}
+   $$
+
+2. Updating $\sigma^{2}$ , we take derivative of with respect to $\sigma^{2}$ and set it equals to 0 as following:
+   $$
+   \frac{\partial \mathcal{L}_E}{\partial \sigma^{2}} =-\frac{NP}{2\sigma^2}+\frac{1}{2\sigma^{4}}\sum_{i}\mathbf{y}_{i}^T\mathbf{y}_{i}+\frac{1}{2\sigma^{4}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) = 0
+   $$
+   Thus, we get the updated $\sigma^{2}$ for parcel $k$ in the current $\Mu$ step as,
+   $$
+   {\sigma^2}^{(t)} = \frac{1}{NP}(\sum_{i}\mathbf{y}_i^T\mathbf{y}_i+
+   \sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q})
+   $$
+   
+3. Updating $\beta$, we take derivative of  $\mathcal{L}_E(q, \theta)$ with respect to $\beta$ and set it equal to 0 as following:
+
+
+$$
+\begin{align*}
+\frac{\partial \mathcal{L}_E}{\partial \beta} &=\frac{\partial [P\log\beta-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q]}{\partial \beta} \\
+&= \frac{P\alpha}{\beta}-\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q = 0
+\end{align*}
+$$
+
+​	   Thus, we get the updated $\beta_{k}$ in current $\Mu$ step as, 
+$$
+\beta_{k}^{(t)} =  	\frac{P}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}
+$$
+
+
+### Emission model 2b: Mixture of Gaussians with Gamma signal strength
 
 The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $N\times1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as $s_i \sim Gamma(\theta_\alpha,\theta_{\beta s})$. Therefore the probability model for gamma is defined as:
 $$

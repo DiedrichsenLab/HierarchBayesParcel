@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 from full_model import FullModel
 from arrangements import ArrangeIndependent
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
-
+import time
+import copy
 
 def _plot_loglike(loglike, true_loglike, color='b'):
     plt.figure()
@@ -144,10 +145,11 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
-def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
+def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixGaussian(K=K, N=N, P=P)
+    emissionT.sigma2 = pt.tensor(sigma2)
 
     # Step 2: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
@@ -183,11 +185,13 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50):
     print('Done simulation GMM.')
 
 
-def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
+def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
+        sigma2=1.0,beta =1.0):
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixGaussianExp(K=K, N=N, P=P)
-
+    emissionT.sigma2 = pt.tensor(sigma2)
+    emissionT.beta = pt.tensor(beta)
     # Step 2: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
     U = arrangeT.sample(num_subj=num_sub)
@@ -206,20 +210,24 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100):
     # emissionM.set_params(new_params)
     M = FullModel(arrangeM, emissionM)
 
+
+
     # Step 5: Estimate the parameter thetas to fit the new model using EM
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
 
     # Plotfitting results
     _plot_loglike(ll, loglike_true, color='b')
-    true_V = theta_true[M.get_param_indices('emission.V')].reshape(N, K)
-    predicted_V = theta[:, M.get_param_indices('emission.V')]
+    ind = M.get_param_indices('emission.V')
+    true_V = theta_true[ind].reshape(N, K)
+    predicted_V = theta[:, ind]
     idx = matching_params(true_V, predicted_V, once=False)
-
     _plot_diff(true_V, predicted_V, index=idx, name='V')
-    _plt_single_param_diff(theta_true[M.get_param_indices('emission.sigma2')],
-                           theta[:, M.get_param_indices('emission.sigma2')], name='sigma2')
-    _plt_single_param_diff(theta_true[M.get_param_indices('emission.beta')],
-                           theta[:, M.get_param_indices('emission.beta')], name='beta')
+
+    ind = M.get_param_indices('emission.sigma2')
+    _plt_single_param_diff(theta_true[ind],theta[:, ind], name='sigma2')
+
+    ind = M.get_param_indices('emission.beta')
+    _plt_single_param_diff(theta_true[ind],theta[:, ind], name='beta')
     # SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
 
     plt.show()
@@ -270,8 +278,32 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=
     plt.show()
     print('Done simulation VMF.')
 
+def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
+        sigma2=1.0,beta =1.0):
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionT = MixGaussianExp(K=K, N=N, P=P)
+    emissionT.sigma2 = pt.tensor(sigma2)
+    emissionT.beta = pt.tensor(beta)
+    # Step 2: Generate data by sampling from the above model
+    U = arrangeT.sample(num_subj=num_sub)
+    Y, signal = emissionT.sample(U, return_signal=True)
+
+    em1 = copy.deepcopy(emissionT)
+    em2 = copy.deepcopy(emissionT)
+
+    # Check old and new Estep
+    t = time.time()
+    LL1 = em1.Estep(Y=Y)
+    print(f"time 2:{time.time()-t:.5f}")
+    t = time.time()
+    LL2 = em2.Estep_old(Y=Y)
+    print(f"time 2:{time.time()-t:.5f}")
+    pass
+
 
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=50)
+    # _simulate_full_GME(K=5, P=100, N=8, num_sub=10, max_iter=50,sigma2=0.5,beta=1.0)
+    _test_GME_Estep(P=500)
