@@ -198,19 +198,18 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     Y, signal = emissionT.sample(U, return_signal=True)
 
     # Step 3: Compute the log likelihood from the true model
-    Uhat_true, loglike_true = T.Estep(Y=Y, signal=signal)
+    Uhat_true, loglike_true = T.Estep(Y=Y)
     theta_true = T.get_params()
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussianExp(K=K, N=N, P=P)
+    emissionM.std_V = True # Set to False if you don't want to standardize V....
     # new_params = emissionM.get_params()
     # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
     # new_params[emissionM.get_param_indices('beta')] = emissionT.get_params()[emissionT.get_param_indices('beta')]
     # emissionM.set_params(new_params)
     M = FullModel(arrangeM, emissionM)
-
-
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
@@ -224,7 +223,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     _plot_diff(true_V, predicted_V, index=idx, name='V')
 
     ind = M.get_param_indices('emission.sigma2')
-    _plt_single_param_diff(theta_true[ind],theta[:, ind], name='sigma2')
+    _plt_single_param_diff(np.log(theta_true[ind]),np.log(theta[:, ind]), name='log sigma2')
 
     ind = M.get_param_indices('emission.beta')
     _plt_single_param_diff(theta_true[ind],theta[:, ind], name='beta')
@@ -305,5 +304,6 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    # _simulate_full_GME(K=5, P=100, N=8, num_sub=10, max_iter=50,sigma2=0.5,beta=1.0)
-    _test_GME_Estep(P=500)
+    _simulate_full_GME(K=7, P=200, N=20, num_sub=10, max_iter=50,sigma2=1.0,beta=1.0)
+    pass
+    # _test_GME_Estep(P=500)

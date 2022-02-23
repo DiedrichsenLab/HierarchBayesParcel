@@ -114,17 +114,17 @@ class MixGaussian(EmissionModel):
         # SU = self.s * U_hat
         YU = pt.zeros((self.N, self.K))
         ERSS = pt.zeros(self.rss.shape)
-        # JD: YOU CAN CAN USE pt.matmult to prevent looping over subjects 
+        # JD: YOU CAN CAN USE pt.matmult to prevent looping over subjects
         for i in range(self.num_subj):
             YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
-        UU = U_hat.sum(dim=(0,2)) 
+        UU = U_hat.sum(dim=(0,2))
         # self.V = np.linalg.solve(UU,YU.T).T
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
         self.V = YU / UU
 
         # 2. Updating sigma2 (rss is calculated using updated V)
         uVVu = pt.sum(self.V ** 2, dim=0)
-        # JD: Again, you should be able to avoid looping over subjects here entirely. 
+        # JD: Again, you should be able to avoid looping over subjects here entirely.
         for i in range(self.num_subj):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
@@ -167,6 +167,8 @@ class MixGaussianExp(EmissionModel):
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
         if params is not None:
             self.set_params(params)
+        self.num_signal_bins = 88 # Bins for approximation of signal strength
+        self.std_V = True # Standardize mean vectors?
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -240,7 +242,7 @@ class MixGaussianExp(EmissionModel):
             # Importance sampling from p(s_i|y_i, u_i). First try sample from uniformed distribution
             # plt.figure()
             if signal is None:
-                
+
                 for k in range(self.K):
                     for p in range(self.P):
                         # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
@@ -287,8 +289,10 @@ class MixGaussianExp(EmissionModel):
         uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
 
         YV = pt.matmul(self.V.T,self.Y)
-        x = pt.linspace(0,self.maxlength*1.1,77)
-        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) 
+        signal_max = self.maxlength*1.2
+        signal_bin = signal_max / self.num_signal_bins
+        x = pt.linspace(signal_bin/2,signal_max,self.num_signal_bins)
+        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
         if signal is None:
                 # This is p(y,s|u)
             loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2)) - self.beta * x
@@ -316,25 +320,20 @@ class MixGaussianExp(EmissionModel):
         Returns: Update all model parameters, self attributes
         """
         # SU = self.s * U_hat
-        YUs = pt.zeros((self.N, self.K))
-        US = pt.zeros((self.K, self.P))
-        US2 = pt.zeros((self.K, self.P))
         ERSS = pt.zeros((self.num_subj, self.K, self.P))
-        for i in range(self.num_subj):
-            YUs = YUs + pt.mm(self.Y[i, :, :], (U_hat[i, :, :] * self.s[i, :, :]).T)
-            US = US + U_hat[i, :, :] * self.s[i, :, :]
-            US2 = US2 + U_hat[i, :, :] * self.s2[i, :, :]
+        YU = pt.matmul(self.Y, pt.transpose(U_hat * self.s,1,2))
+        US = (U_hat * self.s).sum(dim=2)
+        US2 = (U_hat * self.s2).sum(dim=2)
 
-        # 1. Updating the V
+        # 1. Updating the V - standardize if requested
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
-        self.V = YUs / pt.sum(US2, dim=1)
-        self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
+        self.V = pt.sum(YU,dim=0) / pt.sum(US2, dim=0)
+        if self.std_V:
+            self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating the sigma squared.
-        for i in range(self.num_subj):
-            YV = pt.mm(self.Y[i, :, :].T, self.V)
-            ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + \
-                            self.s2[i, :, :] * pt.sum(self.V ** 2, dim=0).reshape((self.K, 1))
+        YV = pt.matmul(self.V.T,self.Y)
+        ERSS = pt.sum(self.YY, dim=1,keepdim=True) - 2 * YV * self.s + self.s2 * pt.sum(self.V ** 2, dim=0).view((self.K, 1))
 
         self.sigma2 = pt.sum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
@@ -346,7 +345,7 @@ class MixGaussianExp(EmissionModel):
         Args:
             U: The prior arrangement U from the arrangement model
             V: Given the initial V. If None, then randomly generate
-            return_signal (bool): Return signal as well? False by default for compatibility 
+            return_signal (bool): Return signal as well? False by default for compatibility
         Returns: Sampled data Y
         """
         num_subj = U.shape[0]
@@ -358,11 +357,11 @@ class MixGaussianExp(EmissionModel):
             Y[s, :, :] = self.V[:, U[s, :].long()] * signal[s, :]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
-        # Only return signal when asked: compatibility with other models 
-        if return_signal: 
-            return Y,signal 
+        # Only return signal when asked: compatibility with other models
+        if return_signal:
+            return Y,signal
         else:
-            return Y 
+            return Y
 
 
 class MixVMF(EmissionModel):
