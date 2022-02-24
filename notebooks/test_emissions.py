@@ -65,57 +65,6 @@ def _plt_single_param_diff(theta_true, theta, name=None):
     plt.plot(theta, color='b')
 
 
-def generate_data(emission, k=2, dim=3, p=1000,
-                  num_sub=10, beta=1, alpha=1, signal_type=0):
-    model_name = ["GMM", "GMM_exp", "GMM_gamma", "VMF"]
-    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
-    U = arrangeT.sample(num_subj=num_sub)
-    if signal_type == 0:
-        signal = np.random.exponential(beta, (num_sub, p))
-    elif signal_type == 1:
-        signal = np.random.gamma(alpha, beta, (num_sub, p))
-    else:
-        raise ValueError("The value of signal strength must satisfy a distribution, 0 - exponential; 1 - gamma.")
-
-    if emission == 0:  # GMM
-        emissionT = MixGaussian(K=k, N=dim, P=p)
-    elif emission == 1:  # GMM with exponential signal strength
-        emissionT = MixGaussianExp(K=k, N=dim, P=p)
-    elif emission == 2:  # GMM with gamma signal strength
-        emissionT = MixGaussianGamma(K=k, N=dim, P=p)
-    elif emission == 3:
-        emissionT = MixVMF(K=k, N=dim, P=p)
-    else:
-        raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), or 3(VMF).")
-
-    if (emission == 1) or (emission == 2):
-        data, signal = emissionT.sample(U, return_signal=True)
-    elif emission == 3:
-        data = emissionT.sample(U)
-        signal = np.repeat(signal[:, np.newaxis, :], dim, axis=1)
-        data = data * signal
-    else:
-        data = emissionT.sample(U)
-
-    return data, U
-
-
-def evaluate_completion_emission(emissionM, data, k_fold=5, crit='u_abserr'):
-    """ Evaluates an emission model on new dataset using cross-validation and
-        given criterion
-    Args:
-        emissionM:
-        data:
-        k_fold:
-        crit:
-    Returns:
-        evaluation results
-    """
-    if type(data) is np.ndarray:
-        data = pt.tensor(data, dtype=pt.get_default_dtype())
-
-
-
 def sample_spherical(npoints, ndim=3):
     vec = np.random.randn(ndim, npoints)
     vec /= np.linalg.norm(vec, axis=0)

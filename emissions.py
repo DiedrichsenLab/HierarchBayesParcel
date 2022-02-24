@@ -60,6 +60,7 @@ class MixGaussian(EmissionModel):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'sigma2'])
+        self.name = 'GMM'
         if params is not None:
             self.set_params(params)
 
@@ -165,6 +166,7 @@ class MixGaussianExp(EmissionModel):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
+        self.name = 'GMM_exp'
         if params is not None:
             self.set_params(params)
         self.num_signal_bins = 88 # Bins for approximation of signal strength
@@ -372,6 +374,7 @@ class MixVMF(EmissionModel):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
+        self.name = 'VMF'
         if params is not None:
             self.set_params(params)
 
@@ -524,6 +527,7 @@ class MixGaussianGamma(EmissionModel):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
+        self.name = 'GMM_gamma'
         if params is not None:
             self.set_params(params)
 
@@ -705,54 +709,3 @@ def loglik2prob(loglik, dim=0):
         prob = pt.exp(loglik)
         prob = prob/pt.sum(prob, dim=1).reshape(a)
     return prob
-
-
-def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
-    """Calculate the adjusted squared error for goodness of model fitting
-    Args:
-        data: the real mean-centered data, shape (n_subject, n_conditions, n_locations)
-        prediction: the predicted mu with shape (n_conditions, n_clusters)
-        U_hat: the probability of brain location i belongs to cluster k
-        adjusted: True - if calculate adjusted SSE; Otherwise, normal SSE
-        soft_assign: True - expected U over all k clusters; False - if take the argmax
-                     from the k probability
-    Returns:
-        The adjusted SSE
-    """
-    # Step 1: mean-centering the real data and the predicted mu
-    data = pt.tensor(np.apply_along_axis(lambda x: x - np.mean(x), 1, data),
-                     dtype=pt.get_default_dtype())
-    prediction = pt.tensor(np.apply_along_axis(lambda x: x - np.mean(x), 1, prediction),
-                           dtype=pt.get_default_dtype())
-
-    # Step 2: get axis information from raw data
-    n_sub, N, P = data.shape
-    K = prediction.shape[1]
-    sse = pt.empty((n_sub, K, P))  # shape [nSubject, K, P]
-
-    # Step 3: if soft_assign is True, which means we will calculate the complete
-    # expected SSE for each brain location; Otherwise, we calculate the error only to
-    # the prediction that has the maximum probability argmax(p(u_i = k))
-    if not soft_assign:
-        out = pt.zeros(U_hat.shape)
-        idx = U_hat.argmax(axis=1)
-        out[np.arange(U_hat.shape[0])[:, None], idx, np.arange(U_hat.shape[2])] = 1
-        U_hat = out
-
-    # Step 4: if adjusted is True, we calculate the adjusted SSE; Otherwise normal SSE
-    if adjusted:
-        mag = pt.sqrt(pt.sum(data**2, dim=1))
-        # mag = np.repeat(mag[:, np.newaxis, :], K, axis=1)
-        mag = mag.unsqueeze(1).repeat(1, K, 1)
-    else:
-        mag = pt.ones(sse.shape)
-
-    # Do real SSE calculation SSE = \sum_i\sum_k p(u_i=k)(y_real - y_predicted)^2
-    YY = data**2
-    uVVu = pt.sum(prediction**2, dim=0)
-    for i in range(n_sub):
-        YV = pt.mm(data[i, :, :].T, prediction)
-        sse[i, :, :] = pt.sum(YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((K, 1))
-        sse[i, :, :] = sse[i, :, :] * mag[i, :, :]
-
-    return pt.sum(U_hat * sse)/(n_sub * P)
