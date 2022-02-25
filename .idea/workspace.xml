@@ -3,10 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="87ba84bb-63f0-4862-abbf-20d12119c063" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.pdf" beforeDir="false" afterPath="$PROJECT_DIR$/README.pdf" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/evaluation.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_emissions-checkpoint.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_emissions-checkpoint.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/test_emissions.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_emissions.ipynb" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/notebooks/test_emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_emissions.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -42,7 +40,7 @@
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyIntegratedToolsModulesConfigurable" />
   </component>
-  <component name="RunManager" selected="Python.evaluation">
+  <component name="RunManager" selected="Python.test_emissions">
     <configuration name="evaluation" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="generativeMRF" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -89,8 +87,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.evaluation" />
         <item itemvalue="Python.test_emissions" />
+        <item itemvalue="Python.evaluation" />
       </list>
     </recent_temporary>
   </component>
@@ -109,6 +107,7 @@
       <workItem from="1645633221844" duration="25428000" />
       <workItem from="1645720218252" duration="18664000" />
       <workItem from="1645811778451" duration="2844000" />
+      <workItem from="1645815944268" duration="1852000" />
     </task>
     <servers />
   </component>
@@ -116,7 +115,7 @@
     <option name="version" value="3" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/generativeMRF$test_emissions.coverage" NAME="test_emissions Coverage Results" MODIFIED="1645741457400" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$test_emissions.coverage" NAME="test_emissions Coverage Results" MODIFIED="1645817589840" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
     <SUITE FILE_PATH="coverage/generativeMRF$evaluation.coverage" NAME="evaluation Coverage Results" MODIFIED="1645813632621" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

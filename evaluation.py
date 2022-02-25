@@ -32,21 +32,29 @@ def u_prederr(U, uhat):
 
 
 def permutations(res, nums, l, h):
-    # Base case
-    # Add the vector to result and return
+    """The recursive algorithm to find all permutations using
+       back-tracking algorithm
+    Args:
+        res: resultant combinations
+        nums: the original array to find permutations
+        l: left pointer
+        h: right pointer
+    Returns:
+        recursive return of `res`
+    """
+    # Base case: add the vector to result and return
     if (l == h):
         res.append(nums.copy())
         return
 
-    # Permutations made
+    # Main recursion happens here. Permutations made
     for i in range(l, h + 1):
         # Swapping
         temp = nums[l]
         nums[l] = nums[i]
         nums[i] = temp
 
-        # Calling permutations for
-        # next greater value of l
+        # Calling permutations for next greater value of l
         permutations(res, nums, l + 1, h)
 
         # Backtracking
@@ -55,14 +63,18 @@ def permutations(res, nums, l, h):
         nums[i] = temp
 
 
-# Function to get the permutations
 def permute(nums):
+    """Function to get the permutations
+    Args:
+        nums: The input array to find all permutations
+    Returns:
+        All permutations without replicates
+    """
     # Declaring result variable
     x = len(nums) - 1
     res = []
 
-    # Calling permutations for the first
-    # time by passing l
+    # Calling permutations for the first time by passing l
     # as 0 and h = nums.size()-1
     permutations(res, nums, 0, x)
     return res
@@ -199,8 +211,7 @@ def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
     return pt.mean(loss) # average across vertices 
 
 
-def evaluate_completion_emission(emissionM, data, U, signal=None,
-                                crit='u_prederr'):
+def evaluate_completion_emission(emissionM, data, U, crit='u_prederr'):
     """ Evaluates an emission model on a given data set using a given
         criterion. This data set can be the training dataset (includes
         U and signal if applied), or a new dataset
@@ -241,40 +252,40 @@ def evaluate_completion_emission(emissionM, data, U, signal=None,
     return eval_res
 
 
-if __name__ == '__main__':
-    # Evaluate emission models
-    num_sub = 10
-    P = 1000
-    K = 3
-    N = 3
-
-    # Step 1. generate the training dataset from VMF model given a signal length
-    signal = pt.distributions.exponential.Exponential(1.0).sample((num_sub, P))
-    Y_train, Y_test, signal_true, U, MT = generate_data(3, k=K, dim=N, signal_strength=signal, do_plot=True)
-    data = pt.clone(Y_train)
-
-    # Step 1.a standardise Y to unit length for VMF
-    for i in range(num_sub):
-        Y_train[i, :, :] = Y_train[i, :, :] - Y_train[i, :, :].mean(dim=0)
-        Y_train[i, :, :] = Y_train[i, :, :] / pt.sqrt(pt.sum(Y_train[i, :, :] ** 2, dim=0))
-
-    # Step 2. Fit the competing emission model using the training data
-    emissionM1 = MixGaussian(K=K, N=N, P=P)
-    emissionM2 = MixGaussianExp(K=K, N=N, P=P)
-    emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
-    M1 = FullModel(MT.arrange, emissionM1)
-    M2 = FullModel(MT.arrange, emissionM2)
-    M3 = FullModel(MT.arrange, emissionM3)
-    M1, ll1, theta1, Uhat1 = M1.fit_em(Y=data, iter=100, tol=0.00001,
-                                       fit_arrangement=False)
-    M2, ll2, theta2, Uhat2 = M2.fit_em(Y=data, iter=100, tol=0.00001,
-                                       fit_arrangement=False)
-    M3, ll3, theta3, Uhat3 = M3.fit_em(Y=Y_train, iter=100, tol=0.00001,
-                                       fit_arrangement=False)
-
-    # Step 3. evaluate the fitted emission (actually the full model with
-    # freezing the arrangement model) models by a given criterion.
-    acc1 = evaluate_completion_emission(M1, data, U=U, crit='u_prederr')
-    acc2 = evaluate_completion_emission(M2, data, U=U, crit='u_prederr')
-    acc3 = evaluate_completion_emission(M3, data, U=U, crit='u_prederr')
-    print(acc1, acc2, acc3)
+# if __name__ == '__main__':
+#     # Evaluate emission models
+#     num_sub = 10
+#     P = 1000
+#     K = 3
+#     N = 3
+#
+#     # Step 1. generate the training dataset from VMF model given a signal length
+#     signal = pt.distributions.exponential.Exponential(1.0).sample((num_sub, P))
+#     Y_train, Y_test, signal_true, U, MT = generate_data(3, k=K, dim=N, signal_strength=signal, do_plot=True)
+#     data = pt.clone(Y_train)
+#
+#     # Step 1.a standardise Y to unit length for VMF
+#     for i in range(num_sub):
+#         Y_train[i, :, :] = Y_train[i, :, :] - Y_train[i, :, :].mean(dim=0)
+#         Y_train[i, :, :] = Y_train[i, :, :] / pt.sqrt(pt.sum(Y_train[i, :, :] ** 2, dim=0))
+#
+#     # Step 2. Fit the competing emission model using the training data
+#     emissionM1 = MixGaussian(K=K, N=N, P=P)
+#     emissionM2 = MixGaussianExp(K=K, N=N, P=P)
+#     emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
+#     M1 = FullModel(MT.arrange, emissionM1)
+#     M2 = FullModel(MT.arrange, emissionM2)
+#     M3 = FullModel(MT.arrange, emissionM3)
+#     M1, ll1, theta1, Uhat1 = M1.fit_em(Y=data, iter=100, tol=0.00001,
+#                                        fit_arrangement=False)
+#     M2, ll2, theta2, Uhat2 = M2.fit_em(Y=data, iter=100, tol=0.00001,
+#                                        fit_arrangement=False)
+#     M3, ll3, theta3, Uhat3 = M3.fit_em(Y=Y_train, iter=100, tol=0.00001,
+#                                        fit_arrangement=False)
+#
+#     # Step 3. evaluate the fitted emission (actually the full model with
+#     # freezing the arrangement model) models by a given criterion.
+#     acc1 = evaluate_completion_emission(M1, data, U=U, crit='u_prederr')
+#     acc2 = evaluate_completion_emission(M2, data, U=U, crit='u_prederr')
+#     acc3 = evaluate_completion_emission(M3, data, U=U, crit='u_prederr')
+#     print(acc1, acc2, acc3)

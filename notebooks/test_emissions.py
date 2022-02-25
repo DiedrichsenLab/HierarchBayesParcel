@@ -17,6 +17,15 @@ import copy
 import seaborn as sb
 
 def _plot_loglike(loglike, true_loglike, color='b'):
+    """Plot the log-likelihood curve and the true log-likelihood
+    Args:
+        loglike: The log-likelihood curve of the EM iterations
+        true_loglike: The true log-likelihood from the true model
+        color: the color of the log-likelihood curve
+
+    Returns:
+        The plot
+    """
     plt.figure()
     plt.plot(loglike, color=color)
     plt.axhline(y=true_loglike, color='r', linestyle=':')
@@ -56,6 +65,15 @@ def _plot_diff(true_param, predicted_params, index=None, name='V'):
 
 
 def _plt_single_param_diff(theta_true, theta, name=None):
+    """Plot the single estimated parameter array and the true parameter
+    Args:
+        theta_true: the true parameter
+        theta: the estimated parameter
+        name: the name of the plotted parameter
+
+    Returns:
+        The plot
+    """
     plt.figure()
     if name is not None:
         plt.title('True %s (red) vs estimated %s (blue)' % (name, name))
@@ -67,6 +85,14 @@ def _plt_single_param_diff(theta_true, theta, name=None):
 
 
 def sample_spherical(npoints, ndim=3):
+    """ Sampling a set of spherical data
+    Args:
+        npoints: the number of data points
+        ndim: the dimensions of the data points
+
+    Returns:
+        The sphereical data
+    """
     vec = np.random.randn(ndim, npoints)
     vec /= np.linalg.norm(vec, axis=0)
     return vec
@@ -74,7 +100,6 @@ def sample_spherical(npoints, ndim=3):
 
 def matching_params(true_param, predicted_params, once=False):
     """ Matching the estimated parameters with the true one, return indices
-
     Args:
         true_param: the true parameter, shape (N, K)
         predicted_params: the estimated parameter. Shape (iter, N*K)
@@ -82,7 +107,6 @@ def matching_params(true_param, predicted_params, once=False):
               matching once using the estimated param of first iteration
 
     Returns: The matching index
-
     """
     # Convert input to tensor if ndarray
     if type(true_param) is np.ndarray:
@@ -173,6 +197,17 @@ def generate_data(emission, k=2, dim=3, p=1000,num_sub=10,sigma2=0.5,
 
 
 def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
+    """Simulation function used for testing full model with a GMM emission
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        sigma2: the sigma2 for GMM emission model
+    Returns:
+        Several evaluation plots.
+    """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixGaussian(K=K, N=N, P=P)
@@ -213,7 +248,19 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
 
 
 def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
-        sigma2=1.0,beta =1.0, num_bins=100):
+        sigma2=1.0, beta=1.0, num_bins=100):
+    """Simulation function used for testing full model with a GMM_exp emission
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        sigma2: the sigma2 for GMM_exp emission model
+        beta: the beta for GMM_exp emission model
+    Returns:
+        Several evaluation plots.
+    """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins)
@@ -261,6 +308,18 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
 
 
 def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=True):
+    """Simulation function used for testing full model with a VMF emission
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        uniform_kappa: If true, the kappa is a scaler across different K's;
+                       Otherwise, the kappa is different across K's
+    Returns:
+        Several evaluation plots.
+    """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixVMF(K=K, N=N, P=P, uniform_kappa=uniform_kappa)
@@ -304,8 +363,21 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=
     plt.show()
     print('Done simulation VMF.')
 
+
 def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
-        sigma2=1.0,beta =1.0):
+                    sigma2=1.0, beta=1.0):
+    """Testing different E_step of the GME model
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of data dimensions
+        num_sub: the number of subject in the simulation
+        max_iter: the maximum iteration number for the EM procedure
+        sigma2: the sigma squared used for emission model
+        beta: the beta used for the emission model
+    Returns:
+        Speed comparison
+    """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixGaussianExp(K=K, N=N, P=P)
