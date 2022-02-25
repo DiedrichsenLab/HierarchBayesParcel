@@ -14,6 +14,7 @@ from arrangements import ArrangeIndependent
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
 import time
 import copy
+import seaborn as sb
 
 def _plot_loglike(loglike, true_loglike, color='b'):
     plt.figure()
@@ -110,6 +111,67 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
+def generate_data(emission, k=2, dim=3, p=1000,num_sub=10,sigma2=0.5,
+                  beta=1.0, kappa=10, signal_strength=None, do_plot=False):
+    """Generate (and plots) the generated data from a given emission model
+    Args:
+        emission: 0-GMM, 1-GMM_exp, 2-GMM_gamma, 3-VMF
+                  is VMF, the input argument signal_strength must be given
+        k: The number of clusters
+        dim: The number of data dimensions
+        p: the number of generated dat points
+        num_sub: the number of subjects
+        signal_strength: if None, no precomputed signal strength will be passed;
+                         Otherwise, use precomputed signal strength to generate data from VMF
+    Returns:
+        The generated data
+    """
+    # Step 1: Create the true model and initialize parameters
+    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
+    if emission == 0:  # GMM
+        emissionT = MixGaussian(K=k, N=dim, P=p)
+        emissionT.sigma2 = pt.tensor(sigma2)
+    elif emission == 1:  # GMM with exponential signal strength
+        emissionT = MixGaussianExp(K=k, N=dim, P=p)
+        emissionT.sigma2 = pt.tensor(sigma2)
+        emissionT.beta = pt.tensor(beta)
+    elif emission == 2:  # GMM with gamma signal strength
+        emissionT = MixGaussianGamma(K=k, N=dim, P=p)
+        emissionT.beta = pt.tensor(beta)
+    elif emission == 3:
+        if signal_strength is None:
+            raise ValueError("A signal strength must be given for generating data from VMF.")
+        emissionT = MixVMF(K=k, N=dim, P=p)
+        emissionT.kappa = pt.tensor(kappa)
+    else:
+        raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), or 3(VMF).")
+    MT = FullModel(arrangeT, emissionT)
+
+    # Step 2: Generate data by sampling from the true model
+    U = MT.arrange.sample(num_subj=num_sub)
+    if emission == 1 or emission == 2:
+        Y_train, signal = MT.emission.sample(U, return_signal=True)
+        Y_test = MT.emission.sample(U, signal=signal, return_signal=False)
+    elif emission == 3 and signal_strength is not None:
+        Y_train = MT.emission.sample(U)
+        Y_test = MT.emission.sample(U)
+        Y_train = Y_train * signal_strength.unsqueeze(1).repeat(1, dim, 1)
+        Y_test = Y_test * signal_strength.unsqueeze(1).repeat(1, dim, 1)
+        signal = signal_strength
+    else:
+        Y_train = MT.emission.sample(U)
+        Y_test = MT.emission.sample(U)
+        signal = pt.nan
+
+    # Step 3: Plot the generated data from the true model (select the first 3 dims if N>3)
+    if do_plot:
+        plt.figure(figsize=(10, 10))
+        sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=U[0])
+        plt.show()
+
+    return Y_train, Y_test, signal, U, MT
+
+
 def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
@@ -151,10 +213,10 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
 
 
 def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
-        sigma2=1.0,beta =1.0):
+        sigma2=1.0,beta =1.0, num_bins=100):
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixGaussianExp(K=K, N=N, P=P)
+    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins)
     emissionT.sigma2 = pt.tensor(sigma2)
     emissionT.beta = pt.tensor(beta)
     # Step 2: Generate data by sampling from the above model
@@ -168,7 +230,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixGaussianExp(K=K, N=N, P=P)
+    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins)
     emissionM.std_V = True # Set to False if you don't want to standardize V....
     # new_params = emissionM.get_params()
     # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
@@ -269,6 +331,6 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=7, P=200, N=20, num_sub=10, max_iter=50,sigma2=1.0,beta=1.0)
+    _simulate_full_GME(K=7, P=200, N=20, num_sub=10, max_iter=50,sigma2=2.0,beta=1.0,num_bins=100)
     pass
     # _test_GME_Estep(P=500)

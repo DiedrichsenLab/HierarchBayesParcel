@@ -162,15 +162,15 @@ class MixGaussianExp(EmissionModel):
     Mixture of Gaussians with signal strength (fit gamma distribution)
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None):
+    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None):
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
         self.name = 'GMM_exp'
         if params is not None:
             self.set_params(params)
-        self.num_signal_bins = 88 # Bins for approximation of signal strength
-        self.std_V = True # Standardize mean vectors?
+        self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
+        self.std_V = True  # Standardize mean vectors?
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -291,7 +291,7 @@ class MixGaussianExp(EmissionModel):
         uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
 
         YV = pt.matmul(self.V.T,self.Y)
-        signal_max = self.maxlength*1.2
+        signal_max = self.maxlength*1.2  # Make the maximum signal 1.2 times the max data magnitude
         signal_bin = signal_max / self.num_signal_bins
         x = pt.linspace(signal_bin/2,signal_max,self.num_signal_bins)
         logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
@@ -342,7 +342,7 @@ class MixGaussianExp(EmissionModel):
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P * self.num_subj / pt.sum(US)
 
-    def sample(self, U, return_signal=False):
+    def sample(self, U, signal=None, return_signal=False):
         """ Generate random data given this emission model and parameters
         Args:
             U: The prior arrangement U from the arrangement model
@@ -352,10 +352,14 @@ class MixGaussianExp(EmissionModel):
         """
         num_subj = U.shape[0]
         Y = pt.empty((num_subj, self.N, self.P))
-        signal = pt.empty((num_subj, self.P))
+        if signal is not None:
+            np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),
+                                    err_msg='The given signal must with a shape of (num_subj, P)')
+        else:
+            # Draw the signal strength for each node from an exponential distribution
+            signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
+
         for s in range(num_subj):
-            # Draw the signal strength for each node from a Gamma distribution
-            signal[s, :] = pt.distributions.exponential.Exponential(self.beta).sample((self.P,))
             Y[s, :, :] = self.V[:, U[s, :].long()] * signal[s, :]
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
@@ -654,11 +658,12 @@ class MixGaussianGamma(EmissionModel):
         self.beta = (self.P * self.num_subj * self.alpha) / pt.sum(US)
         # self.beta = (self.alpha+1)*self.alpha / self.beta**2  # second moment
 
-    def sample(self, U, signal=None):
+    def sample(self, U, signal=None, return_signal=False):
         """ Generate random data given this emission model and parameters
         Args:
             U: The prior arrangement U from the arrangement model
             V: Given the initial V. If None, then randomly generate
+            return_signal: If true, return both data and signal; Otherwise, only data
         Returns: Sampled data Y
         """
         if type(U) is np.ndarray:
@@ -683,7 +688,10 @@ class MixGaussianGamma(EmissionModel):
             # And add noise of variance 1
             Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
 
-        return Y, signal
+        if return_signal:
+            return Y, signal
+        else:
+            return Y
 
 
 def loglik2prob(loglik, dim=0):

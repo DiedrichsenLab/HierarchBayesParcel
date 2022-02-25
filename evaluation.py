@@ -7,8 +7,9 @@ Second are more complex functions that use different criteria
 import torch as pt 
 import numpy as np
 from full_model import FullModel
-from arrangements import ArrangeIndependent
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
+from notebooks.test_emissions import generate_data
+
 
 def u_abserr(U,uhat):
     """Absolute error on U 
@@ -135,38 +136,6 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
     return pt.sum(U_hat * sse)/(n_sub * P)
 
 
-def generate_data(emission, k=2, dim=3, p=1000,
-                  num_sub=10, beta=1, alpha=1, signal_strength=None):
-
-    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
-    U = arrangeT.sample(num_subj=num_sub)
-
-    if emission == 0:  # GMM
-        emissionT = MixGaussian(K=k, N=dim, P=p)
-    elif emission == 1:  # GMM with exponential signal strength
-        emissionT = MixGaussianExp(K=k, N=dim, P=p)
-    elif emission == 2:  # GMM with gamma signal strength
-        emissionT = MixGaussianGamma(K=k, N=dim, P=p)
-    elif emission == 3:
-        if signal_strength is None:
-            raise ValueError("A signal strength must be given for generating data from VMF.")
-        emissionT = MixVMF(K=k, N=dim, P=p)
-    else:
-        raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), or 3(VMF).")
-
-    if emission == 1 or emission == 2:
-        data, signal = emissionT.sample(U, return_signal=True)
-    elif emission == 3 and signal_strength is not None:
-        data = emissionT.sample(U)
-        data = data * signal_strength.unsqueeze(1).repeat(1, dim, 1)
-        signal = signal_strength
-    else:
-        data = emissionT.sample(U)
-        signal = pt.nan
-
-    return data, signal, U, arrangeT, emissionT
-
-
 def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
     """Evaluates an arrangement model new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
     Args:
@@ -272,40 +241,40 @@ def evaluate_completion_emission(emissionM, data, U, signal=None,
     return eval_res
 
 
-# if __name__ == '__main__':
-#     # # Evaluate emission models
-#     # num_sub = 10
-#     # P = 1000
-#     # K = 3
-#     # N = 3
-#     #
-#     # # Step 1. generate the training dataset from VMF model given a signal length
-#     # signal = pt.distributions.exponential.Exponential(1.0).sample((num_sub, P))
-#     # Y, signal, U, arrT, emiT = generate_data(0, k=K, dim=N, signal_strength=signal)
-#     # data = pt.clone(Y)
-#     #
-#     # # Step 1.a standardise Y to unit length for VMF
-#     # for i in range(num_sub):
-#     #     Y[i, :, :] = Y[i, :, :] - Y[i, :, :].mean(dim=0)
-#     #     Y[i, :, :] = Y[i, :, :] / pt.sqrt(pt.sum(Y[i, :, :] ** 2, dim=0))
-#     #
-#     # # Step 2. Fit the competing emission model using the training data
-#     # emissionM1 = MixGaussian(K=K, N=N, P=P)
-#     # emissionM2 = MixGaussianExp(K=K, N=N, P=P)
-#     # emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
-#     # M1 = FullModel(arrT, emissionM1)
-#     # M2 = FullModel(arrT, emissionM2)
-#     # M3 = FullModel(arrT, emissionM3)
-#     # M1, ll1, theta1, Uhat1 = M1.fit_em(Y=data, iter=100, tol=0.00001,
-#     #                                    fit_arrangement=False)
-#     # M2, ll2, theta2, Uhat2 = M2.fit_em(Y=data, iter=100, tol=0.00001,
-#     #                                    fit_arrangement=False)
-#     # M3, ll3, theta3, Uhat3 = M3.fit_em(Y=Y, iter=100, tol=0.00001,
-#     #                                    fit_arrangement=False)
-#     #
-#     # # Step 3. evaluate the fitted emission (actually the full model with
-#     # # freezing the arrangement model) models by a given criterion.
-#     # acc1 = evaluate_completion_emission(M1, data, U=U, crit='adjustSSE')
-#     # acc2 = evaluate_completion_emission(M2, data, U=U, crit='adjustSSE')
-#     # acc3 = evaluate_completion_emission(M3, data, U=U, crit='adjustSSE')
-#     # print(acc1, acc2, acc3)
+if __name__ == '__main__':
+    # Evaluate emission models
+    num_sub = 10
+    P = 1000
+    K = 3
+    N = 3
+
+    # Step 1. generate the training dataset from VMF model given a signal length
+    signal = pt.distributions.exponential.Exponential(1.0).sample((num_sub, P))
+    Y_train, Y_test, signal_true, U, MT = generate_data(3, k=K, dim=N, signal_strength=signal, do_plot=True)
+    data = pt.clone(Y_train)
+
+    # Step 1.a standardise Y to unit length for VMF
+    for i in range(num_sub):
+        Y_train[i, :, :] = Y_train[i, :, :] - Y_train[i, :, :].mean(dim=0)
+        Y_train[i, :, :] = Y_train[i, :, :] / pt.sqrt(pt.sum(Y_train[i, :, :] ** 2, dim=0))
+
+    # Step 2. Fit the competing emission model using the training data
+    emissionM1 = MixGaussian(K=K, N=N, P=P)
+    emissionM2 = MixGaussianExp(K=K, N=N, P=P)
+    emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
+    M1 = FullModel(MT.arrange, emissionM1)
+    M2 = FullModel(MT.arrange, emissionM2)
+    M3 = FullModel(MT.arrange, emissionM3)
+    M1, ll1, theta1, Uhat1 = M1.fit_em(Y=data, iter=100, tol=0.00001,
+                                       fit_arrangement=False)
+    M2, ll2, theta2, Uhat2 = M2.fit_em(Y=data, iter=100, tol=0.00001,
+                                       fit_arrangement=False)
+    M3, ll3, theta3, Uhat3 = M3.fit_em(Y=Y_train, iter=100, tol=0.00001,
+                                       fit_arrangement=False)
+
+    # Step 3. evaluate the fitted emission (actually the full model with
+    # freezing the arrangement model) models by a given criterion.
+    acc1 = evaluate_completion_emission(M1, data, U=U, crit='u_prederr')
+    acc2 = evaluate_completion_emission(M2, data, U=U, crit='u_prederr')
+    acc3 = evaluate_completion_emission(M3, data, U=U, crit='u_prederr')
+    print(acc1, acc2, acc3)
