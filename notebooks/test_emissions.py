@@ -185,12 +185,18 @@ def generate_data(emission, k=2, dim=3, p=1000,num_sub=10,sigma2=0.5,
     else:
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
-        signal = pt.nan
+        signal = None
 
     # Step 3: Plot the generated data from the true model (select the first 3 dims if N>3)
     if do_plot:
-        plt.figure(figsize=(10, 10))
-        sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=U[0])
+        fig = plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=U[0], palette="deep")
+        plt.title('Training data (first two dimensions)')
+
+        plt.subplot(1, 2, 2)
+        sb.scatterplot(x=Y_test[0, 0, :], y=Y_test[0, 1, :], hue=U[0], palette="deep")
+        plt.title('Test data (first two dimensions)')
         plt.show()
 
     return Y_train, Y_test, signal, U, MT
