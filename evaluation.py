@@ -20,18 +20,27 @@ def u_abserr(U,uhat):
     return pt.mean(pt.abs(U-uhat))
 
 
-def u_prederr(U, uhat):
+def u_prederr(U, uhat, expectation=True):
     """Prediction error on U
     Args:
         U: The true U (tensor like)
         uhat: The predicted U's from emission model
+        expectation: if True, calculate the expected error; Otherwise
+                     calculate the hard assignment error between true
+                     and the inference Uhat
     Returns:
         the averaged prediction error
     """
-    return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
+    U_true = pt.zeros(uhat.shape)
+    U_true = U_true.scatter_(1, U.unsqueeze(1), 1)
+    if expectation:
+        return pt.mean(pt.abs(U_true - uhat))
+    else:
+        uhat = pt.argmax(uhat, dim=1)
+        return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
 
-def coserr(U_pred, data, prediction):
+def coserr_YUhat(U_pred, data, prediction):
     """Compute the cosine distance between the data to the predicted V's
     Args:
         U_pred: the predicted U's from the trained emission model
@@ -49,6 +58,42 @@ def coserr(U_pred, data, prediction):
     cos_distance = pt.gather(cos_distance, dim=2, index=U_pred.unsqueeze(dim=2))
 
     return pt.mean(cos_distance)
+
+
+def coserr_YYhat(data, data_hat, adjusted=False):
+    """Compute the cosine distance between the data to the predicted data
+    Args:
+        data: the true data
+        data_hat: the predicted data generated from fitted model
+    Returns:
+        the cosine distance. 0 indicates the same direction;
+        1 means opposite direction. the lower the value the better
+    """
+    # standardise data to unit norm
+    data = data / pt.sqrt(pt.sum(data ** 2, dim=1)).unsqueeze(1).repeat(1, data.shape[1], 1)
+    data_hat = data_hat / pt.sqrt(pt.sum(data_hat ** 2, dim=1)).unsqueeze(1).repeat(1, data_hat.shape[1], 1)
+    cos_dist = 1 - pt.matmul(data.transpose(1, 2), data_hat)
+
+    return pt.mean(cos_dist)
+
+
+def msse(data, data_hat, adjusted=False):
+    """Calculate the mean squared error between true and predicted data
+    Args:
+        data: the true data, shape (num_sub, N, P)
+        data_hat: the predicted data, shape (num_sub, N, P)
+        adjusted: if True, compute the adjusted mean squared error
+    Returns:
+        the mean squared error
+    """
+    if adjusted:
+        mag = pt.sqrt(pt.sum(data ** 2, dim=1))
+        # standardise data to unit norm
+        data = data / pt.sqrt(pt.sum(data ** 2, dim=1)).unsqueeze(1).repeat(1, data.shape[1], 1)
+    else:
+        mag = pt.ones(data.shape[0], data.shape[2])
+
+    return pt.mean(mag * pt.linalg.norm(data-data_hat, dim=1))
 
 
 def permutations(res, nums, l, h):
@@ -232,7 +277,7 @@ def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
     return pt.mean(loss) # average across vertices 
 
 
-def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='u_prederr'):
+def evaluate_completion_emission(emissionM, data, data_hat, U_true, U_predict=None, crit='u_prederr'):
     """ Evaluates an emission model on a given data set using a given
         criterion. This data set can be the training dataset (includes
         U and signal if applied), or a new dataset
@@ -240,6 +285,7 @@ def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='
     Args:
         emissionM: this is actually the full model with freezing arrangement model
         data: The data used to evaluate, shape (num_subj, N, P)
+        data_hat: the predicted data
         U_true: the true U's
         crit: the criterion to be used to evaluate the models
     Returns:
@@ -252,16 +298,16 @@ def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='
 
     # Switching between the evaluation criterion
     if crit == 'u_prederr':
-        U_predict = pt.argmax(U_predict, dim=1)
-        perm = permute(np.unique(U_predict))
+        # U_predict = pt.argmax(U_predict, dim=1)
+        perm = permute(np.unique(U_true))
         min_err = 1
         for idx in perm:
-            this_U_pred = np.choose(U_predict, idx)
-            u_abserr = u_prederr(U_true, this_U_pred)
+            this_U_true = np.choose(U_true, idx)
+            u_abserr = u_prederr(this_U_true, U_predict)
             if u_abserr < min_err:
                 min_err = u_abserr
         eval_res = min_err
-    elif crit == 'coserr':
+    elif crit == 'coserr_YV':
         # The criterion to compute the cosine angle between data
         # and the predicted Vs. \sum (Y.T @ Y_pred)
         U_predict = pt.argmax(U_predict, dim=1)
@@ -274,18 +320,24 @@ def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='
         min_err = 2
         for idx in perm:
             this_U_pred = np.choose(U_predict, idx)
-            cos_err = coserr(this_U_pred, data, V_pred)
+            cos_err = coserr_YUhat(this_U_pred, data, V_pred)
             if cos_err < min_err:
                 min_err = cos_err
         eval_res = min_err
+    elif crit == 'coserr_YY':
+        if emissionM.emission.name == 'VMF':
+            cos_err = coserr_YYhat(data, data_hat)
+        else:
+            cos_err = coserr_YYhat(data, data_hat, adjusted=True)
+        eval_res = cos_err
     elif crit == 'adjustSSE':
         # TODO: calculate the adjusted mean squared error
         V_pred = emissionM.emission.V
         # V_pred = V_pred - pt.mean(V_pred, dim=0)  # Mean centering
         if emissionM.emission.name == 'VMF':
-            sse = mean_adjusted_sse(data, V_pred, U_predict, adjusted=True, soft_assign=False)
+            sse = msse(data, data_hat, adjusted=True)
         else:
-            sse = mean_adjusted_sse(data, V_pred, U_predict, adjusted=False, soft_assign=False)
+            sse = msse(data, data_hat)
         eval_res = sse
     else:
         raise NameError('The given criterion must be specified!')
@@ -296,12 +348,12 @@ def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='
 # if __name__ == '__main__':
 #     # Evaluate emission models
 #     num_sub = 10
-#     P = 100
+#     P = 1000
 #     K = 5
 #     N = 20
 #
 #     # Step 1. generate the training dataset from VMF model given a signal length
-#     signal = pt.distributions.exponential.Exponential(0.5).sample((num_sub, P))
+#     signal = pt.distributions.exponential.Exponential(1.0).sample((num_sub, P))
 #     Y_train, Y_test, signal_true, U, MT = generate_data(0, k=K, dim=N, p=P, signal_strength=signal, do_plot=True)
 #     # standardise Y to unit length for VMF
 #     Y_train_vmf = Y_train / pt.sqrt(pt.sum(Y_train ** 2, dim=1)).unsqueeze(1).repeat(1, Y_train.shape[1], 1)
@@ -318,28 +370,36 @@ def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='
 #     M2, _, _, Uhat2_train = M2.fit_em(Y=Y_train, iter=100, tol=0.00001, fit_arrangement=False)
 #     M3, _, _, Uhat3_train = M3.fit_em(Y=Y_train_vmf, iter=100, tol=0.00001, fit_arrangement=False)
 #
-#     # Step 2b. Predict test data using the trained model
-#     Uhat1_test, _ = M1.Estep(Y=Y_test)
-#     Uhat2_test, _ = M2.Estep(Y=Y_test, signal=signal_true)
-#     Uhat3_test, _ = M3.Estep(Y=Y_test_vmf)
+#     # Step 2b. Generate estimated data from the fitted model and uhat on training data
+#     Yhat_train_gmm = M1.emission.sample(pt.argmax(Uhat1_train, dim=1))
+#     Yhat_train_gme = M2.emission.sample(pt.argmax(Uhat2_train, dim=1))
+#     Yhat_train_vmf = M3.emission.sample(pt.argmax(Uhat3_train, dim=1))
 #
-#     # import plotly.graph_objects as go
-#     # from plotly.subplots import make_subplots
-#     #
-#     # fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
-#     #            [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
-#     #
-#     # fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#     #                            mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
-#     # fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#     #                            mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat1_train, dim=1)[0])), row=1, col=2)
-#     # fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#     #                            mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat2_train, dim=1)[0])), row=2, col=1)
-#     # fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#     #                            mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat3_train, dim=1)[0])), row=2, col=2)
-#     #
-#     # fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
-#     # fig.show()
+#     # Step 2c. Inference uhat on test data using the trained model
+#     Uhat1_test, _ = M1.Estep(Y=Y_test)
+#     Uhat2_test, _ = M2.Estep(Y=Y_test)
+#     Uhat3_test, _ = M3.Estep(Y=Y_test_vmf)
+#     Yhat_test_gmm = M1.emission.sample(pt.argmax(Uhat1_test, dim=1))
+#     Yhat_test_gme = M2.emission.sample(pt.argmax(Uhat2_test, dim=1))
+#     Yhat_test_vmf = M3.emission.sample(pt.argmax(Uhat3_test, dim=1))
+#
+#     import plotly.graph_objects as go
+#     from plotly.subplots import make_subplots
+#
+#     fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
+#                [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
+#
+#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+#                                mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
+#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+#                                mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat1_train, dim=1)[0])), row=1, col=2)
+#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+#                                mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat2_train, dim=1)[0])), row=2, col=1)
+#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+#                                mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat3_train, dim=1)[0])), row=2, col=2)
+#
+#     fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
+#     fig.show()
 #
 #     import matplotlib.pyplot as plt
 #     import seaborn as sb
@@ -378,15 +438,20 @@ def evaluate_completion_emission(emissionM, data, U_true, U_predict=None, crit='
 #
 #     # Step 3a. evaluate the fitted emission (actually the full model with
 #     # freezing the arrangement model) models by a given criterion.
-#     criterion = ['u_prederr', 'coserr', 'adjustSSE']
-#     res = pt.empty(len(criterion), 3)
+#     criterion = ['u_prederr', 'coserr_YY', 'adjustSSE']
+#     res_train = pt.empty(len(criterion), 3)
+#     res_test = pt.empty(len(criterion), 3)
 #     for c in range(len(criterion)):
-#         acc1 = evaluate_completion_emission(M1, Y_test, U_true=U, crit=criterion[c])
-#         acc2 = evaluate_completion_emission(M2, Y_test, U_true=U, crit=criterion[c])
-#         acc3 = evaluate_completion_emission(M3, Y_test, U_true=U, U_predict=Uhat3_test, crit=criterion[c])
-#         res[c, 0] = acc1
-#         res[c, 1] = acc2
-#         res[c, 2] = acc3
-#         print(acc1, acc2, acc3)
+#         acc1 = evaluate_completion_emission(M1, Y_train, Yhat_train_gmm, U_true=U, crit=criterion[c])
+#         acc2 = evaluate_completion_emission(M2, Y_train, Yhat_train_gme, U_true=U, crit=criterion[c])
+#         acc3 = evaluate_completion_emission(M3, Y_train, Yhat_train_vmf, U_true=U, U_predict=Uhat3_train, crit=criterion[c])
+#         res_train[c, :] = pt.tensor([acc1, acc2, acc3])
 #
-#     print(res)
+#         acc1 = evaluate_completion_emission(M1, Y_test, Yhat_test_gmm, U_true=U, crit=criterion[c])
+#         acc2 = evaluate_completion_emission(M2, Y_test, Yhat_test_gme, U_true=U, crit=criterion[c])
+#         acc3 = evaluate_completion_emission(M3, Y_test, Yhat_test_vmf, U_true=U, U_predict=Uhat3_test, crit=criterion[c])
+#         res_test[c, :] = pt.tensor([acc1, acc2, acc3])
+#
+#         # print(acc1, acc2, acc3)
+#
+#     print(res_train, res_test)

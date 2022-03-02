@@ -135,8 +135,8 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
-def generate_data(emission, k=2, dim=3, p=1000,num_sub=10,sigma2=0.5,
-                  beta=1.0, kappa=10, signal_strength=None, do_plot=False):
+def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, sigma2=1.2,
+                  beta=1.0, kappa=15, signal_strength=None, do_plot=False):
     """Generate (and plots) the generated data from a given emission model
     Args:
         emission: 0-GMM, 1-GMM_exp, 2-GMM_gamma, 3-VMF
@@ -217,7 +217,7 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionT = MixGaussian(K=K, N=N, P=P)
-    emissionT.sigma2 = pt.tensor(sigma2)
+    # emissionT.sigma2 = pt.tensor(sigma2)
 
     # Step 2: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
@@ -237,7 +237,26 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     M = FullModel(arrangeM, emissionM)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
-    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
+    # signal = pt.distributions.exponential.Exponential(0.5).sample((num_sub, P))
+    # Ys = Y * signal.unsqueeze(1).repeat(1, N, 1)
+    #
+    # import plotly.graph_objects as go
+    # from plotly.subplots import make_subplots
+    #
+    # fig = make_subplots(rows=1, cols=3, specs=[[{'type': 'surface'}, {'type': 'surface'}, {'type': 'surface'}]],
+    #                     subplot_titles=["Raw VMF", "Raw VMF with signal strength", "fit"])
+    #
+    # fig.add_trace(go.Scatter3d(x=Y[0, 0, :], y=Y[0, 1, :], z=Y[0, 2, :],
+    #                            mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
+    # fig.add_trace(go.Scatter3d(x=Ys[0, 0, :], y=Ys[0, 1, :], z=Ys[0, 2, :],
+    #                            mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=2)
+
+    M, ll, theta, Uhat_fit = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
+    # fig.add_trace(go.Scatter3d(x=Ys[0, 0, :], y=Ys[0, 1, :], z=Ys[0, 2, :],
+    #                            mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_fit, dim=1)[0])), row=1, col=3)
+    #
+    # fig.update_layout(title_text='Comparison of data and fitting')
+    # fig.show()
 
     # Plot fitting results
     _plot_loglike(ll, loglike_true, color='b')
@@ -408,7 +427,7 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
-    # _simulate_full_GMM(K=5, P=1000, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=7, P=200, N=20, num_sub=10, max_iter=50,sigma2=2.0,beta=1.0,num_bins=100)
+    _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
+    # _simulate_full_GME(K=7, P=200, N=20, num_sub=10, max_iter=50,sigma2=2.0,beta=1.0,num_bins=100)
     pass
     # _test_GME_Estep(P=500)
