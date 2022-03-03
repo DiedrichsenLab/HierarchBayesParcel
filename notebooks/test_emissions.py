@@ -272,6 +272,76 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     print('Done simulation GMM.')
 
 
+def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
+    """Simulation function used for testing full model with a GMM emission
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        sigma2: the sigma2 for GMM emission model
+    Returns:
+        Several evaluation plots.
+    """
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionT = MixVMF(K=K, N=N, P=P)
+    # emissionT.sigma2 = pt.tensor(sigma2)
+
+    # Step 2: Generate data by sampling from the above model
+    T = FullModel(arrangeT, emissionT)
+    U = arrangeT.sample(num_subj=num_sub)
+    Y = emissionT.sample(U)
+
+    # Step 3: Compute the true log likelihood from the true model
+    Uhat_true, loglike_true = T.Estep(Y)
+    theta_true = T.get_params()
+
+    # Step 4: Generate new models for fitting
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionM = MixGaussian(K=K, N=N, P=P)
+    # new_params = emissionM.get_params()
+    # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
+    # emissionM.set_params(new_params)
+    M = FullModel(arrangeM, emissionM)
+
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
+    signal = pt.distributions.exponential.Exponential(0.5).sample((num_sub, P))
+    Ys = Y * signal.unsqueeze(1).repeat(1, N, 1)
+
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(rows=1, cols=3, specs=[[{'type': 'surface'}, {'type': 'surface'}, {'type': 'surface'}]],
+                        subplot_titles=["Raw VMF", "Raw VMF with signal strength", "GMM fit"])
+
+    fig.add_trace(go.Scatter3d(x=Y[0, 0, :], y=Y[0, 1, :], z=Y[0, 2, :],
+                               mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
+    fig.add_trace(go.Scatter3d(x=Ys[0, 0, :], y=Ys[0, 1, :], z=Ys[0, 2, :],
+                               mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=2)
+
+    M, ll, theta, Uhat_fit = M.fit_em(Y=Ys, iter=max_iter, tol=0.00001, fit_arrangement=False)
+    fig.add_trace(go.Scatter3d(x=Ys[0, 0, :], y=Ys[0, 1, :], z=Ys[0, 2, :],
+                               mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_fit, dim=1)[0])), row=1, col=3)
+
+    fig.update_layout(title_text='Comparison of data and fitting')
+    fig.show()
+
+    # # Plot fitting results
+    # _plot_loglike(ll, loglike_true, color='b')
+    # true_V = theta_true[M.get_param_indices('emission.V')].reshape(N, K)
+    # predicted_V = theta[:, M.get_param_indices('emission.V')]
+    # idx = matching_params(true_V, predicted_V, once=False)
+    #
+    # _plot_diff(true_V, predicted_V, index=idx, name='V')
+    # _plt_single_param_diff(theta_true[M.get_param_indices('emission.sigma2')],
+    #                        theta[:, M.get_param_indices('emission.sigma2')], name='sigma2')
+    #
+    # plt.show()
+    print('Done simulation GMM from VMF.')
+
+
 def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
         sigma2=1.0, beta=1.0, num_bins=100):
     """Simulation function used for testing full model with a GMM_exp emission
