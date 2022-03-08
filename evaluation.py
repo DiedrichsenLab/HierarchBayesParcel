@@ -9,13 +9,27 @@ import numpy as np
 from full_model import FullModel
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
 from notebooks.test_emissions import generate_data
+from sklearn import metrics
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 
+
+def nmi(U,Uhat):
+    """Compute the normalized mutual information score
+    Args:
+        U: The real U's
+        Uhat: The estimated U's from arrangement model
+    Returns:
+        the normalized mutual information score
+    """
+    return metrics.normalized_mutual_info_score(U, Uhat)
 
 def u_abserr(U,uhat):
     """Absolute error on U 
     Args:
         U (tensor): Real U's 
-        uhat (tensor): Estimated U's from arangement model 
+        uhat (tensor): Estimated U's from arrangement model
     """
     return pt.mean(pt.abs(U-uhat))
 
@@ -307,6 +321,12 @@ def evaluate_completion_emission(emissionM, data, data_hat, U_true, U_predict=No
             if u_abserr < min_err:
                 min_err = u_abserr
         eval_res = min_err
+    elif crit == 'nmi':
+        U_predict = pt.argmax(U_predict, dim=1)
+        eval_res = pt.zeros(U_true.shape[0])
+        for i in range(U_true.shape[0]):
+            eval_res[i] = nmi(U_true[i], U_predict[i])
+        eval_res = pt.mean(eval_res)
     elif crit == 'coserr_YV':
         # The criterion to compute the cosine angle between data
         # and the predicted Vs. \sum (Y.T @ Y_pred)
@@ -345,113 +365,108 @@ def evaluate_completion_emission(emissionM, data, data_hat, U_true, U_predict=No
     return eval_res
 
 
-# if __name__ == '__main__':
-#     # Evaluate emission models
-#     num_sub = 10
-#     P = 1000
-#     K = 5
-#     N = 20
-#
-#     # Step 1. generate the training dataset from VMF model given a signal length
-#     signal = pt.distributions.exponential.Exponential(1.0).sample((num_sub, P))
-#     Y_train, Y_test, signal_true, U, MT = generate_data(0, k=K, dim=N, p=P, signal_strength=signal, do_plot=True)
-#     # standardise Y to unit length for VMF
-#     Y_train_vmf = Y_train / pt.sqrt(pt.sum(Y_train ** 2, dim=1)).unsqueeze(1).repeat(1, Y_train.shape[1], 1)
-#     Y_test_vmf = Y_test / pt.sqrt(pt.sum(Y_test ** 2, dim=1)).unsqueeze(1).repeat(1, Y_test.shape[1], 1)
-#
-#     # Step 2a. Fit the competing emission model using the training data
-#     emissionM1 = MixGaussian(K=K, N=N, P=P)
-#     emissionM2 = MixGaussianExp(K=K, N=N, P=P)
-#     emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
-#     M1 = FullModel(MT.arrange, emissionM1)
-#     M2 = FullModel(MT.arrange, emissionM2)
-#     M3 = FullModel(MT.arrange, emissionM3)
-#     M1, _, _, Uhat1_train = M1.fit_em(Y=Y_train, iter=100, tol=0.00001, fit_arrangement=False)
-#     M2, _, _, Uhat2_train = M2.fit_em(Y=Y_train, iter=100, tol=0.00001, fit_arrangement=False)
-#     M3, _, _, Uhat3_train = M3.fit_em(Y=Y_train_vmf, iter=100, tol=0.00001, fit_arrangement=False)
-#
-#     # Step 2b. Generate estimated data from the fitted model and uhat on training data
-#     Yhat_train_gmm = M1.emission.sample(pt.argmax(Uhat1_train, dim=1))
-#     Yhat_train_gme = M2.emission.sample(pt.argmax(Uhat2_train, dim=1))
-#     Yhat_train_vmf = M3.emission.sample(pt.argmax(Uhat3_train, dim=1))
-#
-#     # Step 2c. Inference uhat on test data using the trained model
-#     Uhat1_test, _ = M1.Estep(Y=Y_test)
-#     Uhat2_test, _ = M2.Estep(Y=Y_test)
-#     Uhat3_test, _ = M3.Estep(Y=Y_test_vmf)
-#     Yhat_test_gmm = M1.emission.sample(pt.argmax(Uhat1_test, dim=1))
-#     Yhat_test_gme = M2.emission.sample(pt.argmax(Uhat2_test, dim=1))
-#     Yhat_test_vmf = M3.emission.sample(pt.argmax(Uhat3_test, dim=1))
-#
-#     import plotly.graph_objects as go
-#     from plotly.subplots import make_subplots
-#
-#     fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
-#                [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
-#
-#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#                                mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
-#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#                                mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat1_train, dim=1)[0])), row=1, col=2)
-#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#                                mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat2_train, dim=1)[0])), row=2, col=1)
-#     fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-#                                mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat3_train, dim=1)[0])), row=2, col=2)
-#
-#     fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
-#     fig.show()
-#
-#     import matplotlib.pyplot as plt
-#     import seaborn as sb
-#
-#     fig1 = plt.figure(figsize=(10, 10))
-#     plt.subplot(2, 2, 1)
-#     sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=U[0], palette="deep")
-#     plt.title('True data (first two dimensions)')
-#     plt.subplot(2, 2, 2)
-#     sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=pt.argmax(Uhat1_train, dim=1)[0], palette="deep")
-#     plt.title('GMM')
-#     plt.subplot(2, 2, 3)
-#     sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=pt.argmax(Uhat2_train, dim=1)[0], palette="deep")
-#     plt.title('GME')
-#     plt.subplot(2, 2, 4)
-#     sb.scatterplot(x=Y_train[0, 0, :], y=Y_train[0, 1, :], hue=pt.argmax(Uhat3_train, dim=1)[0], palette="deep")
-#     plt.title('VMF')
-#     fig1.suptitle('Fitting results on training data', fontsize=16)
-#
-#     fig2 = plt.figure(figsize=(10, 10))
-#     plt.subplot(2, 2, 1)
-#     sb.scatterplot(x=Y_test[0, 0, :], y=Y_test[0, 1, :], hue=U[0], palette="deep")
-#     plt.title('True data (first two dimensions)')
-#     plt.subplot(2, 2, 2)
-#     sb.scatterplot(x=Y_test[0, 0, :], y=Y_test[0, 1, :], hue=pt.argmax(Uhat1_test, dim=1)[0], palette="deep")
-#     plt.title('GMM')
-#     plt.subplot(2, 2, 3)
-#     sb.scatterplot(x=Y_test[0, 0, :], y=Y_test[0, 1, :], hue=pt.argmax(Uhat2_test, dim=1)[0], palette="deep")
-#     plt.title('GME')
-#     plt.subplot(2, 2, 4)
-#     sb.scatterplot(x=Y_test[0, 0, :], y=Y_test[0, 1, :], hue=pt.argmax(Uhat3_test, dim=1)[0], palette="deep")
-#     plt.title('VMF')
-#     fig2.suptitle('Fitting results on test data', fontsize=16)
-#
-#     plt.show()
-#
-#     # Step 3a. evaluate the fitted emission (actually the full model with
-#     # freezing the arrangement model) models by a given criterion.
-#     criterion = ['u_prederr', 'coserr_YY', 'adjustSSE']
-#     res_train = pt.empty(len(criterion), 3)
-#     res_test = pt.empty(len(criterion), 3)
-#     for c in range(len(criterion)):
-#         acc1 = evaluate_completion_emission(M1, Y_train, Yhat_train_gmm, U_true=U, crit=criterion[c])
-#         acc2 = evaluate_completion_emission(M2, Y_train, Yhat_train_gme, U_true=U, crit=criterion[c])
-#         acc3 = evaluate_completion_emission(M3, Y_train, Yhat_train_vmf, U_true=U, U_predict=Uhat3_train, crit=criterion[c])
-#         res_train[c, :] = pt.tensor([acc1, acc2, acc3])
-#
-#         acc1 = evaluate_completion_emission(M1, Y_test, Yhat_test_gmm, U_true=U, crit=criterion[c])
-#         acc2 = evaluate_completion_emission(M2, Y_test, Yhat_test_gme, U_true=U, crit=criterion[c])
-#         acc3 = evaluate_completion_emission(M3, Y_test, Yhat_test_vmf, U_true=U, U_predict=Uhat3_test, crit=criterion[c])
-#         res_test[c, :] = pt.tensor([acc1, acc2, acc3])
-#
-#         # print(acc1, acc2, acc3)
-#
-#     print(res_train, res_test)
+def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1.0,
+                              max_iter=100, tol=0.00001, do_plotting=False):
+    # Step 1. generate the training dataset from VMF model given a signal length
+    signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, P))
+    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, signal_strength=signal, do_plot=False)
+    # standardise Y to unit length for VMF
+    Y_train_vmf = Y_train / pt.sqrt(pt.sum(Y_train ** 2, dim=1)).unsqueeze(1).repeat(1, Y_train.shape[1], 1)
+    Y_test_vmf = Y_test / pt.sqrt(pt.sum(Y_test ** 2, dim=1)).unsqueeze(1).repeat(1, Y_test.shape[1], 1)
+
+    # Step 2. Fit the competing emission model using the training data
+    emissionM1 = MixGaussian(K=K, N=N, P=P)
+    emissionM2 = MixGaussianExp(K=K, N=N, P=P)
+    emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
+    M1 = FullModel(MT.arrange, emissionM1)
+    M2 = FullModel(MT.arrange, emissionM2)
+    M3 = FullModel(MT.arrange, emissionM3)
+    M1, _, _, Uhat1_train = M1.fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
+    M2, _, _, Uhat2_train = M2.fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
+    M3, _, _, Uhat3_train = M3.fit_em(Y=Y_train_vmf, iter=max_iter, tol=tol, fit_arrangement=False)
+
+    # Step 3a. Generate predicted Y from the fitted model and U_hat of training data
+    Yhat_train_gmm = pt.matmul(M1.emission.V, Uhat1_train)
+    Yhat_train_gme = pt.matmul(M2.emission.V, Uhat2_train)
+    Yhat_train_vmf = pt.matmul(M3.emission.V, Uhat3_train)
+
+    # Step 3b. Infer U_hat on test data using the fitted model
+    Uhat1_test, _ = M1.Estep(Y=Y_test)
+    Uhat2_test, _ = M2.Estep(Y=Y_test)
+    Uhat3_test, _ = M3.Estep(Y=Y_test_vmf)
+
+    # Step 3c. Generate predicted Y from the fitted model and U_hat of test data
+    Yhat_test_gmm = pt.matmul(M1.emission.V, Uhat1_test)
+    Yhat_test_gme = pt.matmul(M2.emission.V, Uhat2_test)
+    Yhat_test_vmf = pt.matmul(M3.emission.V, Uhat3_test)
+
+    # Step 3.5. Do plot of the clustering results if required
+    if do_plotting:
+        fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
+                   [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat1_train, dim=1)[0])), row=1, col=2)
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat2_train, dim=1)[0])), row=2, col=1)
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat3_train, dim=1)[0])), row=2, col=2)
+        fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
+        fig.show()
+
+    # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
+    criterion = ['nmi', 'coserr_YY', 'adjustSSE']
+    res_train = pt.empty(len(criterion), 3)
+    res_test = pt.empty(len(criterion), 3)
+    for c in range(len(criterion)):
+        acc1 = evaluate_completion_emission(M1, Yhat_train_gmm, Yhat_test_gmm, U_true=U, crit=criterion[c])
+        acc2 = evaluate_completion_emission(M2, Yhat_train_gme, Yhat_test_gme, U_true=U, crit=criterion[c])
+        acc3 = evaluate_completion_emission(M3, Yhat_train_vmf, Yhat_test_vmf, U_true=U, U_predict=Uhat3_train, crit=criterion[c])
+        res_train[c, :] = pt.tensor([acc1, acc2, acc3])
+
+        acc1 = evaluate_completion_emission(M1, Y_test, Yhat_train_gmm, U_true=U, crit=criterion[c])
+        acc2 = evaluate_completion_emission(M2, Y_test, Yhat_train_gme, U_true=U, crit=criterion[c])
+        acc3 = evaluate_completion_emission(M3, Y_test, Yhat_train_vmf, U_true=U, U_predict=Uhat3_test, crit=criterion[c])
+        res_test[c, :] = pt.tensor([acc1, acc2, acc3])
+
+    return res_train, res_test
+
+
+if __name__ == '__main__':
+    # Evaluate emission models
+    emission_models = [0, 1, 3]  # 0-GMM, 1-GME, 3-VMF
+    clusters = [5, 10, 20, 50]
+    models = ['GMM', 'GME', 'VMF']
+
+    for k in range(len(clusters)):
+        fig1, axs1 = plt.subplots(3, 3, figsize=(12, 12), sharey=True)
+        fig1.suptitle("Cluster K = %d, Yhat_train vs. Yhat_test" % clusters[k], fontsize=16)
+        fig2, axs2 = plt.subplots(3, 3, figsize=(12, 12), sharey=True)
+        fig2.suptitle("Cluster K = %d, Yhat_train vs. Y_test" % clusters[k], fontsize=16)
+
+        for e in range(len(emission_models)):
+            res1, res2 = _full_comparison_emission(data_type=emission_models[e], num_sub=10, P=1000,
+                                                   K=clusters[k], N=20, beta=1.0)
+
+            axs1[0][e].bar(models, res1[0, :], color=['r', 'g', 'b'])
+            axs1[0][e].set_ylabel('nmi')
+            axs1[0][e].set_title(models[e])
+            axs1[1][e].bar(models, res1[1, :], color=['r', 'g', 'b'])
+            axs1[1][e].set_ylabel('coserr_YY')
+            axs1[1][e].set_title(models[e])
+            axs1[2][e].bar(models, res1[2, :], color=['r', 'g', 'b'])
+            axs1[2][e].set_ylabel('adjustSSE')
+            axs1[2][e].set_title(models[e])
+
+            axs2[0][e].bar(models, res2[0, :], color=['r', 'g', 'b'])
+            axs2[0][e].set_ylabel('nmi')
+            axs2[0][e].set_title(models[e])
+            axs2[1][e].bar(models, res2[1, :], color=['r', 'g', 'b'])
+            axs2[1][e].set_ylabel('coserr_YY')
+            axs2[1][e].set_title(models[e])
+            axs2[2][e].bar(models, res2[2, :], color=['r', 'g', 'b'])
+            axs2[2][e].set_ylabel('adjustSSE')
+            axs2[2][e].set_title(models[e])
+        plt.show()
+
