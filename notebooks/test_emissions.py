@@ -153,10 +153,10 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, sigma2=1.2,
     # Step 1: Create the true model and initialize parameters
     arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
     if emission == 0:  # GMM
-        emissionT = MixGaussian(K=k, N=dim, P=p)
+        emissionT = MixGaussian(K=k, N=dim, P=p, std_V=False)
         emissionT.sigma2 = pt.tensor(sigma2)
     elif emission == 1:  # GMM with exponential signal strength
-        emissionT = MixGaussianExp(K=k, N=dim, P=p)
+        emissionT = MixGaussianExp(K=k, N=dim, P=p, num_signal_bins=100, std_V=False)
         emissionT.sigma2 = pt.tensor(sigma2)
         emissionT.beta = pt.tensor(beta)
     elif emission == 2:  # GMM with gamma signal strength
@@ -216,8 +216,8 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixGaussian(K=K, N=N, P=P)
-    # emissionT.sigma2 = pt.tensor(sigma2)
+    emissionT = MixGaussian(K=K, N=N, P=P, std_V=False)
+    emissionT.sigma2 = pt.tensor(sigma2)
 
     # Step 2: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
@@ -230,33 +230,9 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixGaussian(K=K, N=N, P=P)
-    # new_params = emissionM.get_params()
-    # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
-    # emissionM.set_params(new_params)
+    emissionM = MixGaussian(K=K, N=N, P=P, std_V=False)
     M = FullModel(arrangeM, emissionM)
-
-    # Step 5: Estimate the parameter thetas to fit the new model using EM
-    # signal = pt.distributions.exponential.Exponential(0.5).sample((num_sub, P))
-    # Ys = Y * signal.unsqueeze(1).repeat(1, N, 1)
-    #
-    # import plotly.graph_objects as go
-    # from plotly.subplots import make_subplots
-    #
-    # fig = make_subplots(rows=1, cols=3, specs=[[{'type': 'surface'}, {'type': 'surface'}, {'type': 'surface'}]],
-    #                     subplot_titles=["Raw VMF", "Raw VMF with signal strength", "fit"])
-    #
-    # fig.add_trace(go.Scatter3d(x=Y[0, 0, :], y=Y[0, 1, :], z=Y[0, 2, :],
-    #                            mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
-    # fig.add_trace(go.Scatter3d(x=Ys[0, 0, :], y=Ys[0, 1, :], z=Ys[0, 2, :],
-    #                            mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=2)
-
     M, ll, theta, Uhat_fit = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
-    # fig.add_trace(go.Scatter3d(x=Ys[0, 0, :], y=Ys[0, 1, :], z=Ys[0, 2, :],
-    #                            mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_fit, dim=1)[0])), row=1, col=3)
-    #
-    # fig.update_layout(title_text='Comparison of data and fitting')
-    # fig.show()
 
     # Plot fitting results
     _plot_loglike(ll, loglike_true, color='b')
@@ -343,7 +319,7 @@ def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2
 
 
 def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
-        sigma2=1.0, beta=1.0, num_bins=100):
+        sigma2=1.0, beta=1.0, num_bins=100, std_V=False):
     """Simulation function used for testing full model with a GMM_exp emission
     Args:
         K: the number of clusters
@@ -358,7 +334,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins)
+    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V)
     emissionT.sigma2 = pt.tensor(sigma2)
     emissionT.beta = pt.tensor(beta)
     # Step 2: Generate data by sampling from the above model
@@ -372,7 +348,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins)
+    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V)
     emissionM.std_V = True # Set to False if you don't want to standardize V....
     # new_params = emissionM.get_params()
     # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
@@ -496,8 +472,9 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 
 
 if __name__ == '__main__':
-    # _simulate_full_VMF(K=5, P=1000, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
-    _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
-    # _simulate_full_GME(K=7, P=200, N=20, num_sub=10, max_iter=50,sigma2=2.0,beta=1.0,num_bins=100)
+    # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
+    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
+    _simulate_full_GME(K=5, P=500, N=20, num_sub=10, max_iter=50, sigma2=2.0, beta=1.0,
+                       num_bins=100, std_V=False)
     pass
     # _test_GME_Estep(P=500)

@@ -56,8 +56,9 @@ class MixGaussian(EmissionModel):
     """
     Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None):
+    def __init__(self, K=4, N=10, P=20, data=None, params=None, std_V=True):
         super().__init__(K, N, P, data)
+        self.std_V = std_V
         self.random_params()
         self.set_param_list(['V', 'sigma2'])
         self.name = 'GMM'
@@ -80,8 +81,9 @@ class MixGaussian(EmissionModel):
             set the initial random parameters for gaussian mixture
         """
         self.V = pt.randn(self.N, self.K)
-        # standardise V to unit length
-        # self.V = V / pt.sqrt(pt.sum(V**2, dim=0)) # Not clear why this should be constraint for GMM, but ok
+        if self.std_V:  # standardise V to unit length
+            # Not clear why this should be constraint for GMM, but ok
+            self.V = self.V / pt.sqrt(pt.sum(self.V**2, dim=0))
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
 
     def Estep(self, Y=None, sub=None):
@@ -112,25 +114,19 @@ class MixGaussian(EmissionModel):
             In this emission model, the parameters need to be updated
             are V and sigma2.
         """
-        # SU = self.s * U_hat
-        YU = pt.zeros((self.N, self.K))
+        YU = pt.matmul(self.Y, pt.transpose(U_hat, 1, 2))
         ERSS = pt.zeros(self.rss.shape)
-        # JD: YOU CAN CAN USE pt.matmult to prevent looping over subjects
-        for i in range(self.num_subj):
-            YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
-        UU = U_hat.sum(dim=(0,2))
-        # self.V = np.linalg.solve(UU,YU.T).T
+
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
-        self.V = YU / UU
+        self.V = pt.sum(YU, dim=0) / U_hat.sum(dim=(0, 2))
+        if self.std_V:
+            self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating sigma2 (rss is calculated using updated V)
-        uVVu = pt.sum(self.V ** 2, dim=0)
+        YV = pt.matmul(self.V.T, self.Y)
         # JD: Again, you should be able to avoid looping over subjects here entirely.
-        for i in range(self.num_subj):
-            YV = pt.mm(self.Y[i, :, :].T, self.V)
-            ERSS[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
-        ERSS = pt.sum(U_hat * ERSS)
-        self.sigma2 = ERSS/(self.N*self.P*self.num_subj)
+        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + pt.sum(self.V ** 2, dim=0).view((self.K, 1))
+        self.sigma2 = pt.sum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # rss is calculated using V at (t-1) iteration
         # ERSS = pt.sum(U_hat * self.rss)
@@ -162,15 +158,15 @@ class MixGaussianExp(EmissionModel):
     Mixture of Gaussians with signal strength (fit gamma distribution)
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
-    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None):
+    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None, std_V=True):
         super().__init__(K, N, P, data)
+        self.std_V = std_V  # Standardize mean vectors?
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
         self.name = 'GMM_exp'
         if params is not None:
             self.set_params(params)
         self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
-        self.std_V = True  # Standardize mean vectors?
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -179,7 +175,7 @@ class MixGaussianExp(EmissionModel):
         """
         super().initialize(data)
         self.YY = self.Y ** 2
-        self.maxlength =pt.max(pt.sqrt(pt.sum(self.YY, dim=1)))
+        self.maxlength = pt.max(pt.sqrt(pt.sum(self.YY, dim=1)))
         self.s = pt.empty((self.num_subj, self.K, self.P))
         self.s2 = pt.empty((self.num_subj, self.K, self.P))
         self.rss = pt.empty((self.num_subj, self.K, self.P))
@@ -191,8 +187,8 @@ class MixGaussianExp(EmissionModel):
             set the initial random parameters for gaussian mixture
         """
         self.V = pt.randn(self.N, self.K)
-        # standardise V to unit length
-        self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
+        if self.std_V:  # standardise V to unit length
+            self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
         self.alpha = pt.tensor(1, dtype=pt.get_default_dtype())
         self.beta = pt.tensor(1, dtype=pt.get_default_dtype())
@@ -321,22 +317,19 @@ class MixGaussianExp(EmissionModel):
             U_hat: The expected emission log likelihood
         Returns: Update all model parameters, self attributes
         """
-        # SU = self.s * U_hat
-        ERSS = pt.zeros((self.num_subj, self.K, self.P))
-        YU = pt.matmul(self.Y, pt.transpose(U_hat * self.s,1,2))
+        YU = pt.matmul(self.Y, pt.transpose(U_hat * self.s, 1, 2))
         US = (U_hat * self.s).sum(dim=2)
         US2 = (U_hat * self.s2).sum(dim=2)
 
         # 1. Updating the V - standardize if requested
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
-        self.V = pt.sum(YU,dim=0) / pt.sum(US2, dim=0)
+        self.V = pt.sum(YU, dim=0) / pt.sum(US2, dim=0)
         if self.std_V:
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating the sigma squared.
-        YV = pt.matmul(self.V.T,self.Y)
-        ERSS = pt.sum(self.YY, dim=1,keepdim=True) - 2 * YV * self.s + self.s2 * pt.sum(self.V ** 2, dim=0).view((self.K, 1))
-
+        YV = pt.matmul(self.V.T, self.Y)
+        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * pt.sum(self.V ** 2, dim=0).view((self.K, 1))
         self.sigma2 = pt.sum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # 3. Updating the beta (Since this is an exponential model)
