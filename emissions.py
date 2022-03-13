@@ -6,6 +6,7 @@ from scipy import stats, special
 from torch import log, exp, sqrt
 from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 from model import Model
+from depreciated.AIS_test import annealed_importance_sampling
 
 
 class EmissionModel(Model):
@@ -240,19 +241,65 @@ class MixGaussianExp(EmissionModel):
             # Importance sampling from p(s_i|y_i, u_i). First try sample from uniformed distribution
             # plt.figure()
             if signal is None:
-
                 for k in range(self.K):
                     for p in range(self.P):
-                        # Here try to sampling the posterior of p(s_i|y_i, u_i) for each
-                        # given y_i and u_i(k)
-                        # x = pt.tensor(np.sort(np.random.uniform(0, 10, 200)), dtype=pt.get_default_dtype())
+                        # Here try to sampling the posterior of p(s_i|y_i, u_i) for each given y_i and u_i(k)
                         x = pt.linspace(0,self.maxlength*1.1,77)
                         loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
                         # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
-                        # post = pt.exp(loglike) / pt.sum(pt.exp(loglike))
                         post = loglik2prob(loglike)
                         self.s[i, k, p] = pt.sum(x * post)
                         self.s2[i, k, p] = pt.sum(x**2 * post)
+                        if pt.isnan(self.s[i, k, p]) or pt.isnan(self.s2[i, k, p]):
+                            print(i, k, p)
+                        # plt.plot(x, post)
+                    # plt.show()
+            else:
+                self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
+                self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
+
+            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
+            # the log likelihood for emission model (GMM in this case)
+            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+                          + pt.log(self.beta) - self.beta * self.s[i, :, :]
+
+        return LL
+
+    def Estep_AIS(self, Y=None, signal=None, sub=None):
+        """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
+            Collects the sufficient statistics for the M-step
+        Args:
+            sub: specify which subject to optimize
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+        """
+        if Y is not None:
+            self.initialize(Y)
+
+        if sub is None:
+            sub = range(self.Y.shape[0])
+
+        LL = pt.empty((self.Y.shape[0], self.K, self.P))
+        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+
+        for i in sub:
+            YV = pt.mm(self.Y[i, :, :].T, self.V)
+            # Importance sampling from p(s_i|y_i, u_i). First try sample from uniformed distribution
+            # plt.figure()
+            if signal is None:
+                f_n = lambda x: pt.exp(-(x - 1) ** 2 / (2 * 2 ** 2))
+                q_n = pt.distributions.normal.Normal(1, 2)
+                for k in range(self.K):
+                    for p in range(self.P):
+                        # Here try to sampling the posterior of p(s_i|y_i, u_i) for each given y_i and u_i(k)
+                        x = pt.linspace(0,self.maxlength*1.1,77)
+                        # loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
+                        likelihood = lambda a: exp(-0.5*(1/self.sigma2) * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a)
+
+                        res1, res2 = annealed_importance_sampling(likelihood, f_n, q_n, num_sample=100, interval=10)
+                        # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+                        # post = loglik2prob(loglike)
+                        self.s[i, k, p] = res1
+                        self.s2[i, k, p] = res2
                         if pt.isnan(self.s[i, k, p]) or pt.isnan(self.s2[i, k, p]):
                             print(i, k, p)
                         # plt.plot(x, post)
@@ -263,8 +310,6 @@ class MixGaussianExp(EmissionModel):
                 self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
-            # self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, self.s[i, :, :])) + \
-            #                     np.dot(VV, self.s2[i, :, :])
             # the log likelihood for emission model (GMM in this case)
             LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + pt.log(self.beta) - self.beta * self.s[i, :, :]

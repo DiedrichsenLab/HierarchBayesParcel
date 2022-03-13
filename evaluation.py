@@ -37,6 +37,17 @@ def ARI(U, Uhat):
     return metrics.adjusted_rand_score(U, Uhat)
 
 
+def homogeneity(U, Uhat):
+    """Compute the homogeneity value between the two parcellations
+    Args:
+        U: the true U's
+        Uhat: the estimated U's from fitted model
+    Returns:
+        the homogeneity score
+    """
+    return metrics.homogeneity_score(U, Uhat)
+
+
 def u_abserr(U,uhat):
     """Absolute error on U 
     Args:

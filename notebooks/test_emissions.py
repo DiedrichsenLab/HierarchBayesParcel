@@ -474,7 +474,7 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=5, P=500, N=20, num_sub=10, max_iter=50, sigma2=2.0, beta=1.0,
+    _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=50, sigma2=2.0, beta=1.0,
                        num_bins=100, std_V=False)
     pass
     # _test_GME_Estep(P=500)
