@@ -34,7 +34,7 @@ def ARI(U, Uhat):
     Returns:
         the adjusted rand index score
     """
-    return metrics.adjusted_rand_score(U, Uhat)
+    return 1-metrics.adjusted_rand_score(U, Uhat)
 
 
 def homogeneity(U, Uhat):
@@ -45,7 +45,7 @@ def homogeneity(U, Uhat):
     Returns:
         the homogeneity score
     """
-    return metrics.homogeneity_score(U, Uhat)
+    return 1-metrics.homogeneity_score(U, Uhat)
 
 
 def u_abserr(U,uhat):
@@ -77,22 +77,36 @@ def u_prederr(U, uhat, expectation=True):
         return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
 
-def coserr_YUhat(U_pred, data, prediction):
+def coserr_YUhat(U_pred, data, prediction, adjusted=False, soft_assign=True):
     """Compute the cosine distance between the data to the predicted V's
     Args:
         U_pred: the predicted U's from the trained emission model
         data: the test data, with a shape (num_sub, N, P)
         prediction: the predicted V's
+        adjusted: Compute the adjusted mean cosine error if True; Otherwise, False
+        soft_assign: Compute the expected mean cosine error if True; Otherwise, False
     Returns:
-        the cosine distance. 0 indicates the same direction;
-        1 means opposite direction. the lower the value the better
+        the averaged cosine distance. 0 indicates the same direction;
+        1 - orthogonal; 2 - opposite direction. the lower the value the better
     """
     # standardise V and data to unit length
     prediction = prediction / pt.sqrt(pt.sum(prediction ** 2, dim=0))
-    data = data / pt.sqrt(pt.sum(data**2, dim=1)).unsqueeze(1).repeat(1, data.shape[1], 1)
+    data_norm = pt.sqrt(pt.sum(data**2, dim=1)).unsqueeze(1)
 
-    cos_distance = 1 - pt.matmul(data.transpose(1, 2), prediction)
-    cos_distance = pt.sum(cos_distance.transpose(1, 2) * U_pred, dim=1)
+    if adjusted:
+        # ||Y_i||-(V_k)T(Y_i)
+        cos_distance = data_norm - pt.matmul(prediction.T, data)
+    else:
+        # 1-(V_k)T(Y_i/||Y_i||)
+        cos_distance = 1 - pt.matmul(prediction.T, data/data_norm)
+
+    if soft_assign:  # Calculate the expected cosine error
+        cos_distance = pt.sum(cos_distance * U_pred, dim=1)
+    else:
+        # Calculate the argmax U_hat (hard assignments)
+        idx = pt.argmax(U_pred, dim=1).unsqueeze(1)
+        U_pred = pt.zeros_like(U_pred).scatter_(1, idx, 1.)
+        cos_distance = pt.sum(cos_distance * U_pred, dim=1)
 
     return pt.mean(cos_distance)
 
@@ -114,43 +128,34 @@ def coserr_YYhat(data, data_hat, adjusted=False):
     return pt.mean(cos_dist)
 
 
-def msse_YYhat(data, data_hat, adjusted=False):
-    """Calculate the mean squared error between true and predicted data
-    Args:
-        data: the true data, shape (num_sub, N, P)
-        data_hat: the predicted data, shape (num_sub, N, P)
-        adjusted: if True, compute the adjusted mean squared error
-    Returns:
-        the mean squared error
-    """
-    if adjusted:
-        mag = pt.sqrt(pt.sum(data ** 2, dim=1))
-        # standardise data to unit norm
-        data = data / pt.sqrt(pt.sum(data ** 2, dim=1)).unsqueeze(1).repeat(1, data.shape[1], 1)
-    else:
-        mag = pt.ones(data.shape[0], data.shape[2])
-
-    return pt.mean(mag * pt.linalg.norm(data-data_hat, dim=1))
-
-
-def msse_YUhat(U_pred, data, prediction, adjusted=False):
-    """Compute the mean sse between true and predicted V's
+def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
+    """Compute the RMSE between true and predicted V's
     Args:
         U_pred: the inferred U hat on training set using fitted model
         data: the true data, shape (num_sub, N, P)
         prediction: the predicted V's, shape (N, K)
-        adjusted: if True, compute the adjusted mean squared error
+        soft_assign: if True, compute the expected RMSE; Otherwise, argmax
     Returns:
-        the mean squared error
+        the RMSE
     """
-    if adjusted:
-        mag = pt.sqrt(pt.sum(data ** 2, dim=1))
-        # standardise data to unit norm
-        data = data / pt.sqrt(pt.sum(data ** 2, dim=1)).unsqueeze(1).repeat(1, data.shape[1], 1)
-    else:
-        mag = pt.ones(data.shape[0], data.shape[2])
+    # standardise V and data to unit length if the V is not yet standardised to unit length
+    prediction = prediction / pt.sqrt(pt.sum(prediction ** 2, dim=0))
+    data_norm = pt.sqrt(pt.sum(data ** 2, dim=1)).unsqueeze(1)
 
-    return pt.mean(mag * pt.linalg.norm(data-prediction, dim=1))
+    # ||Y_i - V_k * |Y_i|_norm ||^2
+    dist = data.unsqueeze(2) - prediction.unsqueeze(2) * data_norm.unsqueeze(1)  # (subjs, N, K, P)
+    dist = pt.sum(dist**2, dim=1)  # (subjs, K, P)
+
+    if soft_assign:
+        # Calculate the expected squared error
+        squared_error = pt.sum(dist * U_pred, dim=1)
+    else:
+        # Calculate the argmax U_hat (hard assignments)
+        idx = pt.argmax(U_pred, dim=1).unsqueeze(1)
+        U_pred = pt.zeros_like(U_pred).scatter_(1, idx, 1.)
+        squared_error = pt.sum(dist * U_pred, dim=1)
+
+    return pt.sqrt(pt.mean(squared_error))
 
 
 def permutations(res, nums, l, h):
@@ -371,11 +376,28 @@ def evaluate_completion_emission(emissionM, Y_test, data_hat, U_true,
             eval_res[i] = nmi(U_true[i], U_predict[i])
         eval_res = pt.mean(eval_res)
 
+    elif crit == 'ari':
+        U_predict = pt.argmax(U_predict, dim=1)
+        eval_res = pt.zeros(U_true.shape[0])
+        for i in range(U_true.shape[0]):
+            eval_res[i] = ARI(U_true[i], U_predict[i])
+        eval_res = pt.mean(eval_res)
+
+    elif crit == 'homogeneity':
+        U_predict = pt.argmax(U_predict, dim=1)
+        eval_res = pt.zeros(U_true.shape[0])
+        for i in range(U_true.shape[0]):
+            eval_res[i] = homogeneity(U_true[i], U_predict[i])
+        eval_res = pt.mean(eval_res)
+
     elif crit == 'coserr_YV':
         # The criterion to compute the cosine angle between data
         # and the predicted Vs. \sum (Y.T @ Y_pred)
         V_pred = emissionM.emission.V
-        eval_res = coserr_YUhat(U_predict, Y_test, V_pred)
+        if emissionM.emission.name == 'VMF' or (emissionM.emission.name == 'GME' and emissionM.emission.std_V):
+            eval_res = coserr_YUhat(U_predict, Y_test, V_pred, adjusted=True)
+        else:
+            eval_res = coserr_YUhat(U_predict, Y_test, V_pred, adjusted=False)
 
     elif crit == 'coserr_YY':
         if emissionM.emission.name == 'VMF':
@@ -384,15 +406,12 @@ def evaluate_completion_emission(emissionM, Y_test, data_hat, U_true,
             cos_err = coserr_YYhat(Y_test, data_hat, adjusted=True)
         eval_res = cos_err
 
-    elif crit == 'adjustSSE':
+    elif crit == 'RMSE':
         # TODO: calculate the adjusted mean squared error
         V_pred = emissionM.emission.V
         # V_pred = V_pred - pt.mean(V_pred, dim=0)  # Mean centering
-        if emissionM.emission.name == 'VMF':
-            sse = msse_YYhat(Y_test, data_hat, adjusted=True)
-        else:
-            sse = msse_YYhat(Y_test, data_hat)
-        eval_res = sse
+        eval_res = rmse_YUhat(U_predict, Y_test, V_pred, soft_assign=True)
+
     else:
         raise NameError('The given criterion must be specified!')
 
@@ -400,7 +419,7 @@ def evaluate_completion_emission(emissionM, Y_test, data_hat, U_true,
 
 
 def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1.0,
-                              max_iter=100, tol=0.00001, do_plotting=False):
+                              sigma2=2.0, max_iter=100, tol=0.00001, do_plotting=False):
     """The evaluation and comparison routine between the emission models
     Args:
         data_type: which model used to generate data (0-GMM, 1-GME, 3-VMF)
@@ -418,15 +437,15 @@ def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1
     """
     # Step 1. generate the training dataset from VMF model given a signal length
     signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, P))
-    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, signal_strength=signal, do_plot=False)
+    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, sigma2=sigma2,
+                                                        beta=0.5, signal_strength=signal, do_plot=False)
     # standardise Y to unit length for VMF
     Y_train_vmf = Y_train / pt.sqrt(pt.sum(Y_train ** 2, dim=1)).unsqueeze(1).repeat(1, Y_train.shape[1], 1)
-    Y_test_vmf = Y_test / pt.sqrt(pt.sum(Y_test ** 2, dim=1)).unsqueeze(1).repeat(1, Y_test.shape[1], 1)
 
     # Step 2. Fit the competing emission model using the training data
     emissionM1 = MixGaussian(K=K, N=N, P=P, std_V=False)
-    emissionM2 = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=False)
-    emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
+    emissionM2 = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True)
+    emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=True)
     M1 = FullModel(MT.arrange, emissionM1)
     M2 = FullModel(MT.arrange, emissionM2)
     M3 = FullModel(MT.arrange, emissionM3)
@@ -438,6 +457,8 @@ def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1
     Yhat_train_gmm = pt.matmul(M1.emission.V, Uhat1_train)
     Yhat_train_gme = pt.matmul(M2.emission.V, Uhat2_train)
     Yhat_train_vmf = pt.matmul(M3.emission.V, Uhat3_train)
+    Yhat_train_gme = Yhat_train_gme / pt.sqrt(pt.sum(Yhat_train_gme ** 2, dim=1)).unsqueeze(1)
+    Yhat_train_vmf = Yhat_train_vmf / pt.sqrt(pt.sum(Yhat_train_vmf ** 2, dim=1)).unsqueeze(1)
 
     # Step 3.5. Do plot of the clustering results if required
     if do_plotting:
@@ -455,7 +476,7 @@ def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1
         fig.show()
 
     # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
-    criterion = ['nmi', 'coserr_YV', 'adjustSSE']
+    criterion = ['nmi', 'ari', 'coserr_YV', 'RMSE']
     res_train = pt.empty(len(criterion), 3)
     for c in range(len(criterion)):
         acc1 = evaluate_completion_emission(M1, Y_test, Yhat_train_gmm, U_true=U, U_predict=Uhat1_train, crit=criterion[c])
@@ -468,20 +489,25 @@ def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1
 
 if __name__ == '__main__':
     # Evaluate emission models
-    emission_models = [0, 1, 3]  # 0-GMM, 1-GME, 3-VMF
+    emission_models = [0, 1, 3]  # data generating model. 0-GMM, 1-GME, 3-VMF
     clusters = [5]
     models = ['GMM', 'GME', 'VMF']
-    iters = 10
+    iters = 2
+    N = 20
+    P = 500
+    subjs = 10
 
     for k in range(len(clusters)):
-        fig1, axs1 = plt.subplots(3, 3, figsize=(12, 12), sharey='row')
-        fig1.suptitle("Cluster K = %d, Yhat_train vs. Yhat_test" % clusters[k], fontsize=16)
+        fig1, axs1 = plt.subplots(4, 3, figsize=(12, 16), sharey='row')
+        fig1.suptitle("Cluster K = %d, Yhat_train vs. Y_test \n "
+                      "N = %d, P = %d, subjects = %d" % (clusters[k], N, P, subjs), fontsize=16)
 
         for e in range(len(emission_models)):
             res = []
             for i in range(iters):
-                res1 = _full_comparison_emission(data_type=emission_models[e], num_sub=10, P=100,
-                                                 K=clusters[k], N=30, beta=1.0)
+                # beta is to control the signal strength for VMF, sigma2 is for GMM and GME
+                res1 = _full_comparison_emission(data_type=emission_models[e], num_sub=subjs, P=P,
+                                                 K=clusters[k], N=N, beta=0.5, sigma2=5.0)
                 res.append(res1)
 
             res = pt.stack(res, 0)
@@ -489,14 +515,21 @@ if __name__ == '__main__':
                            color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
             axs1[0][e].set_ylabel('nmi')
             axs1[0][e].set_title(models[e])
+
             axs1[1][e].bar(models, res.mean(dim=0)[1, :], yerr=res.std(dim=0)[1, :],
                            color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
-            axs1[1][e].set_ylabel('coserr_YV')
+            axs1[1][e].set_ylabel('ari')
             axs1[1][e].set_title(models[e])
+
             axs1[2][e].bar(models, res.mean(dim=0)[2, :], yerr=res.std(dim=0)[2, :],
                            color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
-            axs1[2][e].set_ylabel('adjustSSE')
+            axs1[2][e].set_ylabel('coserr_YV')
             axs1[2][e].set_title(models[e])
+
+            axs1[3][e].bar(models, res.mean(dim=0)[3, :], yerr=res.std(dim=0)[3, :],
+                           color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
+            axs1[3][e].set_ylabel('RMSE')
+            axs1[3][e].set_title(models[e])
 
         plt.show()
 

@@ -156,7 +156,7 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, sigma2=1.2,
         emissionT = MixGaussian(K=k, N=dim, P=p, std_V=False)
         emissionT.sigma2 = pt.tensor(sigma2)
     elif emission == 1:  # GMM with exponential signal strength
-        emissionT = MixGaussianExp(K=k, N=dim, P=p, num_signal_bins=100, std_V=False)
+        emissionT = MixGaussianExp(K=k, N=dim, P=p, num_signal_bins=100, std_V=True)
         emissionT.sigma2 = pt.tensor(sigma2)
         emissionT.beta = pt.tensor(beta)
     elif emission == 2:  # GMM with gamma signal strength
@@ -176,11 +176,11 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, sigma2=1.2,
     if emission == 1 or emission == 2:
         Y_train, signal = MT.emission.sample(U, return_signal=True)
         Y_test = MT.emission.sample(U, signal=signal, return_signal=False)
-    elif emission == 3 and signal_strength is not None:
+    elif emission == 3 and (signal_strength is not None):
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
-        Y_train = Y_train * signal_strength.unsqueeze(1).repeat(1, dim, 1)
-        Y_test = Y_test * signal_strength.unsqueeze(1).repeat(1, dim, 1)
+        Y_train = Y_train * signal_strength.unsqueeze(1)
+        Y_test = Y_test * signal_strength.unsqueeze(1)
         signal = signal_strength
     else:
         Y_train = MT.emission.sample(U)
@@ -474,7 +474,7 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=50, sigma2=2.0, beta=1.0,
-                       num_bins=100, std_V=False)
+    _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=2.0, beta=1.0,
+                       num_bins=100, std_V=True)
     pass
     # _test_GME_Estep(P=500)

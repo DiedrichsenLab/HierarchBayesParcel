@@ -6,7 +6,7 @@ from scipy import stats, special
 from torch import log, exp, sqrt
 from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 from model import Model
-from depreciated.AIS_test import annealed_importance_sampling
+from depreciated.AIS_test import annealed_importance_sampling, rejection_sampling, importance_sampling
 
 
 class EmissionModel(Model):
@@ -164,7 +164,7 @@ class MixGaussianExp(EmissionModel):
         self.std_V = std_V  # Standardize mean vectors?
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
-        self.name = 'GMM_exp'
+        self.name = 'GME'
         if params is not None:
             self.set_params(params)
         self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
@@ -265,7 +265,7 @@ class MixGaussianExp(EmissionModel):
 
         return LL
 
-    def Estep_AIS(self, Y=None, signal=None, sub=None):
+    def Estep_ais(self, Y=None, signal=None, sub=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         Args:
@@ -287,15 +287,17 @@ class MixGaussianExp(EmissionModel):
             # plt.figure()
             if signal is None:
                 f_n = lambda x: pt.exp(-(x - 1) ** 2 / (2 * 2 ** 2))
-                q_n = pt.distributions.normal.Normal(1, 2)
+                q_n = pt.distributions.normal.Normal(3, 3)
                 for k in range(self.K):
                     for p in range(self.P):
                         # Here try to sampling the posterior of p(s_i|y_i, u_i) for each given y_i and u_i(k)
                         x = pt.linspace(0,self.maxlength*1.1,77)
-                        # loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
+                        loglike = lambda a: -0.5*(1/self.sigma2) * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a
                         likelihood = lambda a: exp(-0.5*(1/self.sigma2) * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a)
 
-                        res1, res2 = annealed_importance_sampling(likelihood, f_n, q_n, num_sample=100, interval=10)
+                        # res1, res2 = annealed_importance_sampling(likelihood, f_n, q_n, num_sample=100, interval=10)
+                        res1, res2 = rejection_sampling(likelihood, q_x=q_n, sampling_range=x, num_sample=1000)
+                        # res1, res2 = importance_sampling(likelihood, q_x=q_n, sampling_range=x, num_sample=1000)
                         # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                         # post = loglik2prob(loglike)
                         self.s[i, k, p] = res1

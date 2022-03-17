@@ -97,16 +97,118 @@ def annealed_importance_sampling(f_0, f_n, q_x, num_sample=1000, interval=50):
     return first_mom, second_mom
 
 
-if __name__ == '__main__':
+def rejection_sampling(p_x, q_x=None, sampling_range=None, num_sample=100, interval=50):
+    """Perform rejection sampling from q(x) to p(x)
+    Args:
+        p_x: the target distribution (un-normalized)
+        q_x: the proposal distribution (known pdf of torch distribution object)
+        sampling_range: the range of the sampling
+        num_sample: number of samples
+        interval: the interval between 0 to 10 for finding the C if range is None
+    Returns:
+        expectation E(x) wrt. q(x)
+    """
+    # step 1. find constant c to make q(x) to cover target distribution by sampling
+    if sampling_range is None:
+        sampling_range = pt.linspace(0, 10, interval)
 
+    if q_x is None:  # if q(x) not given, then use normal(0,1) as proposal q(x)
+        q_x = pt.distributions.normal.Normal(0, 1)
+
+    c = pt.divide(p_x(sampling_range), q_x.log_prob(sampling_range).exp()).max()
+    samples = q_x.sample((num_sample,))
+    samples = samples[(samples > sampling_range.min()) & (samples < sampling_range.max())]
+
+    mask = pt.divide(p_x(samples), c*q_x.log_prob(samples).exp())
+    u = pt.distributions.uniform.Uniform(0, 1).sample(mask.shape)
+    mask = pt.where(u <= mask, True, False)
+
+    first_moment = pt.masked_select(samples, mask).mean()
+    second_moment = pt.mean(pt.masked_select(samples, mask)**2)
+    return first_moment, second_moment
+
+
+def importance_sampling(p_x, q_x=None, sampling_range=None, num_sample=100, interval=50):
+    """Perform rejection sampling from q(x) to p(x)
+    Args:
+        p_x: the target distribution (un-normalized)
+        q_x: the proposal distribution (known pdf of torch distribution object)
+        sampling_range: the range of the sampling
+        num_sample: number of samples
+        interval: the interval between 0 to 10 for finding the C if range is None
+    Returns:
+        expectation E(x) wrt. q(x)
+    """
+    # step 1. find constant c to make q(x) to cover target distribution by sampling
+    if sampling_range is None:
+        sampling_range = pt.linspace(0, 10, interval)
+
+    if q_x is None:  # if q(x) not given, then use normal(0,1) as proposal q(x)
+        q_x = pt.distributions.normal.Normal(0, 1)
+
+    c = pt.divide(p_x(sampling_range), q_x.log_prob(sampling_range).exp()).max()
+    samples = q_x.sample((num_sample,))
+    samples = samples[(samples > sampling_range.min()) & (samples < sampling_range.max())]
+
+    weights = pt.divide(p_x(samples), c*q_x.log_prob(samples).exp())
+
+    first_moment = pt.sum(samples * weights) / pt.sum(weights)
+    second_moment = pt.sum(samples**2 * weights) / pt.sum(weights)
+    return first_moment, second_moment
+
+
+def importance_sampling_old(f_x, q_x=None, sampling_range=None, num_sample=100, interval=50):
+    """Perform importance sampling from q(x) to p(x)
+    Args:
+        p_x: the target distribution (un-normalized)
+        q_x: the proposal distribution (known pdf of torch distribution object)
+        sampling_range: the range of the sampling
+        num_sample: number of samples
+        interval: the interval between 0 to 10 for finding the C if range is None
+    Returns:
+        expectation E(x) wrt. q(x)
+    """
+    # step 1. find constant c to make q(x) to cover target distribution by sampling
+    if sampling_range is None:
+        sampling_range = pt.linspace(0, 10, interval)
+
+    if q_x is None:  # if q(x) not given, then use normal(0,1) as proposal q(x)
+        q_x = pt.distributions.normal.Normal(0, 1)
+
+    #p_x = lambda x: pt.exp(f_x(x))
+    samples = q_x.sample((num_sample,))
+    samples = samples[(samples > sampling_range.min()) & (samples < sampling_range.max())]
+
+    z = pt.sum(f_x(samples))
+    weights = pt.divide(f_x(samples), q_x.log_prob(samples).exp())
+    first_moment = pt.sum(f_x(samples) * weights) / z
+    second_moment = pt.sum(f_x(samples)**2 * weights) / z
+
+    return first_moment, second_moment
+
+
+if __name__ == '__main__':
     # test AIS
     f_0 = lambda x: pt.exp(-(x-3)**2 / (2 * 2**2))  # target distribution (unnormalized)
     f_n = lambda x: pt.exp(-(x-1)**2 / (2 * 2**2))  # proposal distribution (unnormalized)
-    q_n = pt.distributions.normal.Normal(0, 2)  # the proposal distribution (pdf)
-    mu_tol = []
-    var_tol = []
-    for i in range(50):
-        f_m, s_m = annealed_importance_sampling(f_0, f_n, q_n, num_sample=100, interval=10)
-        mu_tol.append(f_m)
-        var_tol.append(s_m)
-    print(mu_tol, var_tol)
+    q_n = pt.distributions.normal.Normal(2, 2)  # the proposal distribution (pdf)
+    # mu_tol = []
+    # var_tol = []
+    # for i in range(50):
+    #     f_m, s_m = annealed_importance_sampling(f_0, f_n, q_n, num_sample=100, interval=10)
+    #     mu_tol.append(f_m)
+    #     var_tol.append(s_m)
+    # print(mu_tol, var_tol)
+
+    # Test importance sampling accuracy
+    f_x = lambda x: 3*x + 2
+
+    # Test rejection sampling accuracy
+    e = []
+    for i in range(10):
+        # res = rejection_sampling(f_0, q_x=pt.distributions.normal.Normal(i, 3),
+        #                          sampling_range=pt.linspace(0, 10, 100),
+        #                          num_sample=1000)
+        res = importance_sampling(f_0, q_x=q_n, sampling_range=pt.linspace(0, 6, 100), num_sample=1000)
+        e.append(res)
+    print(e)
