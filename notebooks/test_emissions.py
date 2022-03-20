@@ -15,6 +15,11 @@ from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
 import time
 import copy
 import seaborn as sb
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import evaluation as ev
+import pandas as pd
+
 
 def _plot_loglike(loglike, true_loglike, color='b'):
     """Plot the log-likelihood curve and the true log-likelihood
@@ -135,53 +140,57 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
-def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, sigma2=1.2,
-                  beta=1.0, kappa=15, signal_strength=None, do_plot=False):
+def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
+                  beta=1.0, do_plot=False, same_signal=True):
     """Generate (and plots) the generated data from a given emission model
     Args:
-        emission: 0-GMM, 1-GMM_exp, 2-GMM_gamma, 3-VMF
-                  is VMF, the input argument signal_strength must be given
+        emission model: GMM, GME, GMG, VMF
         k: The number of clusters
         dim: The number of data dimensions
-        p: the number of generated dat points
+        p: the number of generated data points
         num_sub: the number of subjects
-        signal_strength: if None, no precomputed signal strength will be passed;
-                         Otherwise, use precomputed signal strength to generate data from VMF
+        dispersion: Sigma2 or kappa for distribution
+        beta (float):
+        same_signal (bool): Is signal strength the same across training and test?
     Returns:
         The generated data
     """
     # Step 1: Create the true model and initialize parameters
+
     arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
-    if emission == 0:  # GMM
+    if emission == 'GMM':
         emissionT = MixGaussian(K=k, N=dim, P=p, std_V=False)
-        emissionT.sigma2 = pt.tensor(sigma2)
-    elif emission == 1:  # GMM with exponential signal strength
+        emissionT.sigma2 = pt.tensor(dispersion)
+    elif emission == 'GME':
         emissionT = MixGaussianExp(K=k, N=dim, P=p, num_signal_bins=100, std_V=True)
-        emissionT.sigma2 = pt.tensor(sigma2)
+        emissionT.sigma2 = pt.tensor(dispersion)
         emissionT.beta = pt.tensor(beta)
-    elif emission == 2:  # GMM with gamma signal strength
+    elif emission == 'GMG':  # GMM with gamma signal strength
         emissionT = MixGaussianGamma(K=k, N=dim, P=p)
         emissionT.beta = pt.tensor(beta)
-    elif emission == 3:
-        if signal_strength is None:
-            raise ValueError("A signal strength must be given for generating data from VMF.")
+    elif emission == 'VMF':
         emissionT = MixVMF(K=k, N=dim, P=p)
-        emissionT.kappa = pt.tensor(kappa)
+        emissionT.kappa = pt.tensor(dispersion)
     else:
         raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), or 3(VMF).")
     MT = FullModel(arrangeT, emissionT)
 
     # Step 2: Generate data by sampling from the true model
     U = MT.arrange.sample(num_subj=num_sub)
-    if emission == 1 or emission == 2:
+    if emission == 'GME':
         Y_train, signal = MT.emission.sample(U, return_signal=True)
-        Y_test = MT.emission.sample(U, signal=signal, return_signal=False)
-    elif emission == 3 and (signal_strength is not None):
+        if same_signal:
+            Y_test = MT.emission.sample(U, signal=signal)
+        else:
+            Y_test = MT.emission.sample(U)
+    elif emission == 'VMF':
+        signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, 1, p))
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
-        Y_train = Y_train * signal_strength.unsqueeze(1)
-        Y_test = Y_test * signal_strength.unsqueeze(1)
-        signal = signal_strength
+        Y_train = Y_train * signal
+        if not same_signal:
+            signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, 1, p))
+        Y_test = Y_test * signal
     else:
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
@@ -470,11 +479,123 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
     print(f"time 2:{time.time()-t:.5f}")
     pass
 
+def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, beta=1.0,
+                              dispersion=2.0, max_iter=100, tol=0.00001, do_plotting=False):
+    """The evaluation and comparison routine between the emission models
+    Args:
+        data_type: which model used to generate data (GMM, GME, VMF)
+        num_sub: the number of subjects
+        P: the number of voxels
+        K: the number of clusters
+        N: the number of data dimensions
+        beta: the parameter beta for the signal strength
+        max_iter: the maximum number of iteration for EM procedure
+        tol: the tolerance of EM iterations
+        do_plotting: if True, plot the fitting results
+    Returns:
+        the evaluation results across the emission models given the criterion
+        shape of (num_criterion, num_emissionModels)
+    """
+    # Step 1. generate the training dataset from VMF model given a signal length
+    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, dispersion=dispersion,
+                                                        beta=beta,  do_plot=False)
+    model=['GMM','GME','VMF','true']
+
+    # Step 2. Fit the competing emission model using the training data
+    emissionM = []
+    emissionM.append(MixGaussian(K=K, N=N, P=P, std_V=False))
+    emissionM.append(MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True))
+    emissionM.append(MixVMF(K=K, N=N, P=P, uniform_kappa=True))
+    M = []
+    Uhat_train = [] # Probability of assignments
+    V_train = [] # Predicted mean directions
+    T = pd.DataFrame()
+    for i in range(len(model)):
+        if model[i]=='true':
+            M.append(MT)
+            Uhat,ll = MT.Estep(Y_train)
+        else:
+            M.append(FullModel(MT.arrange, emissionM[i]))
+            M[i], _, _, Uhat = M[i].fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
+        Uhat_train.append(Uhat)
+        V_train.append(M[i].emission.V)
+
+        # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
+        criterion = ['nmi', 'ari', 'coserr_E','coserrA_E']
+        D={}
+        D['data_type']=[data_type]
+        D['K']=[K]
+        D['model']=model[i]
+        for c in criterion:
+            if c in ['nmi','ari']:
+                D[c] = [ev.evaluate_U(U, Uhat_train[i], crit=c)]
+            elif c in ['coserr_E']: # expected cosine error
+                D[c]=[ev.coserr(Y_test,V_train[i],Uhat_train[i],adjusted=False,soft_assign=True)]
+            elif c in ['coserr_H']: # hard assigned cosine error
+                D[c]=[ev.coserr(Y_test,V_train[i],Uhat_train[i],adjusted=False,soft_assign=False)]
+            elif c in ['coserrA_E']: # expected adjusted cosine error
+                D[c]=[ev.coserr(Y_test,V_train[i],Uhat_train[i],adjusted=True,soft_assign=True)]
+            elif c in ['coserrA_H']: # hard assigned adjusted cosine error
+                D[c]=[ev.coserr(Y_test,V_train[i],Uhat_train[i],adjusted=True,soft_assign=False)]
+        T=pd.concat([T,pd.DataFrame(D)])
+    # Step 3.5. Do plot of the clustering results if required
+    if do_plotting:
+        fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
+                   [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_train[0], dim=1)[0])), row=1, col=2)
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_train[1], dim=1)[0])), row=2, col=1)
+        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_train[2], dim=1)[0])), row=2, col=2)
+        fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
+        fig.show()
+
+    return T
+
+
+def do_full_full_comparison_emission(clusters = 5,
+            iters = 2,
+            N = 20,
+            P  = 500,
+            subjs = 10,
+            beta=0.4,
+            true_models = ['GMM','GME','VMF'],
+            disper = [0.1,0.1,18]):
+    D=pd.DataFrame()
+    for m,e in enumerate(true_models):
+        for i in range(iters):
+            # beta is to control the signal strength for VMF, sigma2 is for GMM and GME
+            T = _full_comparison_emission(data_type=e, num_sub=subjs, P=P,
+                                                 K=clusters, N=N, beta=beta, dispersion=disper[m])
+            D = pd.concat([D,T])
+
+    return D
+
+def plot_comparision_emission(T,criterion=['nmi','ari','coserr_E','coserrA_E'],true_models=['GMM','GME','VMF']):
+    num_rows = len(criterion)
+    num_cols = len(true_models)
+    fig1, axs = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharey='row')
+    for i in range(num_rows):
+        for j in range(num_cols):
+            plt.sca(axs[i,j])
+            ind = (T.data_type==true_models[j]) & (T.model!='true')
+            sb.barplot(data=T[ind],x='model',y=criterion[i])
+            axs[i][0].set_ylabel(criterion)
+            axs[0][j].set_title(true_models[j])
+            ind = (T.data_type==true_models[j]) & (T.model=='true')
+            plt.axhline(y=T[ind][criterion[i]].mean())
+
+
 
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
     # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
-    _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=2.0, beta=1.0,
-                       num_bins=100, std_V=True)
+    # _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=2.0, beta=1.0,num_bins=100, std_V=True)
+    # pass
+    T=do_full_full_comparison_emission(iters=20)
+    T.to_csv('notebooks/emission_modelrecover_1.csv')
+    plot_comparision_emission(T)
     pass
-    # _test_GME_Estep(P=500)

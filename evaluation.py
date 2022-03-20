@@ -1,17 +1,14 @@
 """
-Evaluation - implements evaluation of emission, arrangement, or full models 
+Evaluation - implements evaluation of emission, arrangement, or full models
 Assumes that data, likelihoods, and estimates comes as NxKxP tensors
-First are basic functions for save evaluation - 
-Second are more complex functions that use different criteria 
-""" 
-import torch as pt 
+First are basic functions for save evaluation -
+Second are more complex functions that use different criteria
+"""
+import torch as pt
 import numpy as np
 from full_model import FullModel
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
-from notebooks.test_emissions import generate_data
 from sklearn import metrics
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 
 
@@ -49,12 +46,12 @@ def homogeneity(U, Uhat):
 
 
 def u_abserr(U,uhat):
-    """Absolute error on U 
+    """Absolute error on U
     Args:
-        U (tensor): Real U's 
+        U (tensor): Real U's
         uhat (tensor): Estimated U's from arrangement model
     """
-    return pt.mean(pt.abs(U-uhat))
+    return pt.mean(pt.abs(U-uhat)).item()
 
 
 def u_prederr(U, uhat, expectation=True):
@@ -71,11 +68,43 @@ def u_prederr(U, uhat, expectation=True):
     U_true = pt.zeros(uhat.shape)
     U_true = U_true.scatter_(1, U.unsqueeze(1), 1)
     if expectation:
-        return pt.mean(pt.abs(U_true - uhat))
+        return pt.mean(pt.abs(U_true - uhat)).item()
     else:
         uhat = pt.argmax(uhat, dim=1)
         return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
+def coserr(Y, V, U, adjusted=False, soft_assign=True):
+    """Compute the cosine distance between the data to the predicted V's
+    Args:
+        Y: the test data, with a shape (num_sub, N, P)
+        V: the predicted mean directions
+        U: the predicted U's from the trained emission model
+        adjusted: Adjusted for the length of the data vector?
+        soft_assign: Compute the expected mean cosine error if True; Otherwise, False
+    Returns:
+        the averaged expected cosine distance. 0 indicates the same direction;
+        1 - orthogonal; 2 - opposite direction
+    """
+    # standardise V and data to unit length
+    V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+    Ynorm = pt.sqrt(pt.sum(Y**2, dim=1,keepdim=True))
+
+    if adjusted:
+        # ||Y_i||-(V_k)T(Y_i)
+        cos_distance = Ynorm - pt.matmul(V.T, Y)
+    else:
+        # 1-(V_k)T(Y_i/||Y_i||)
+        cos_distance = 1 - pt.matmul(V.T, Y/Ynorm)
+
+    if soft_assign:  # Calculate the expected cosine error
+        cos_distance = pt.sum(cos_distance * U, dim=1)
+    else:
+        # Calculate the argmax U_hat (hard assignments)
+        idx = pt.argmax(U, dim=1,keepdim=1)
+        U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
+        cos_distance = pt.sum(cos_distance * U_max, dim=1)
+
+    return pt.mean(cos_distance).item()
 
 def coserr_YUhat(U_pred, data, prediction, adjusted=False, soft_assign=True):
     """Compute the cosine distance between the data to the predicted V's
@@ -209,7 +238,7 @@ def permute(nums):
 
 def logpY(emloglik,Uhat,offset='P'):
     """Averaged log of p(Y|U)
-    For save computation (to prevent underflow or overflow) 
+    For save computation (to prevent underflow or overflow)
     p(y|u) either gets a constant
     """
     if offset is None:
@@ -280,18 +309,18 @@ def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
     """Evaluates an arrangement model new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
     Args:
         data (tensor): Emission log-liklihood, Us (depends on crit)
-        Uhat (tensor): Probility for each node (expected U) 
+        Uhat (tensor): Probility for each node (expected U)
         crit (str): 'logpy','u_abserr'
     Returns:
         evaluation citerion: [description]
     """
     if type(data) is np.ndarray:
         data=pt.tensor(data,dtype=pt.get_default_dtype())
-    if crit=='logpY': 
+    if crit=='logpY':
         U = pt.softmax(data,dim=1)
         emloglik = data
         return logpY(emloglik,Uhat)
-    elif crit == 'u_abserr': 
+    elif crit == 'u_abserr':
         U = data
         return u_abserr(U,Uhat)
 
@@ -301,14 +330,14 @@ def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
     Args:
         arM (ArrangementModel): [description]
         data (tensor): Emission log-liklihood or U-estimates (depends on crit)
-        part (Partitions): P tensor with partition indices 
+        part (Partitions): P tensor with partition indices
         crit (str): 'logpy','u_abserr'
     Returns:
         evaluation citerion: [description]
     """
     if type(data) is np.ndarray:
         data=pt.tensor(data,dtype=pt.get_default_dtype())
-    if crit=='logpY': 
+    if crit=='logpY':
         U = pt.softmax(data,dim=1)
         emloglik = data
         if offset is None:
@@ -319,7 +348,7 @@ def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
             pyu = pt.exp(emloglik-offset)
         else:
             raise(NameError('offset needs to be P,None, or floatingpoint'))
-    elif crit == 'u_abserr': 
+    elif crit == 'u_abserr':
         U = data
     else:
         raise(NameError('unknown criterion'))
@@ -330,32 +359,27 @@ def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
         ind = part==k
         U0 = pt.clone(U)
         U0[:,:,ind] = 1./arM.K # Agnostic input
-        Uhat,_ = arM.Estep(U0,gather_ss=False) 
+        Uhat,_ = arM.Estep(U0,gather_ss=False)
         if crit=='abserr':
             loss[ind] = pt.mean(pt.abs(U[:,:,ind] - Uhat[:,:,ind]),dim=(0,1))
         elif crit=='logpY':
             py = pt.sum(pyu[:,:,ind] * Uhat[:,:,ind],dim=1)
             loss[ind] = pt.mean(pt.log(py),dim=0)
-    return pt.mean(loss) # average across vertices 
+    return pt.mean(loss) # average across vertices
 
 
-def evaluate_completion_emission(emissionM, Y_test, data_hat, U_true,
-                                 U_predict, crit='u_prederr'):
+def evaluate_U(U_true, U_predict, crit='u_prederr'):
     """ Evaluates an emission model on a given data set using a given
         criterion. This data set can be the training dataset (includes
         U and signal if applied), or a new dataset
         given criterion
     Args:
-        emissionM: this is actually the full model with freezing arrangement model
-        data: The data used to evaluate, shape (num_subj, N, P)
-        data_hat: the predicted data
-        U_true: the true U's
+        U_predict: the predicted arrangement
+        U_true: the reference (true) arrangement
         crit: the criterion to be used to evaluate the models
     Returns:
         evaluation results
     """
-    if type(Y_test) is np.ndarray:
-        Y_test = pt.tensor(Y_test, dtype=pt.get_default_dtype())
 
     # Switching between the evaluation criterion
     if crit == 'u_prederr':
@@ -389,147 +413,7 @@ def evaluate_completion_emission(emissionM, Y_test, data_hat, U_true,
         for i in range(U_true.shape[0]):
             eval_res[i] = homogeneity(U_true[i], U_predict[i])
         eval_res = pt.mean(eval_res)
-
-    elif crit == 'coserr_YV':
-        # The criterion to compute the cosine angle between data
-        # and the predicted Vs. \sum (Y.T @ Y_pred)
-        V_pred = emissionM.emission.V
-        if emissionM.emission.name == 'VMF' or (emissionM.emission.name == 'GME' and emissionM.emission.std_V):
-            eval_res = coserr_YUhat(U_predict, Y_test, V_pred, adjusted=True)
-        else:
-            eval_res = coserr_YUhat(U_predict, Y_test, V_pred, adjusted=False)
-
-    elif crit == 'coserr_YY':
-        if emissionM.emission.name == 'VMF':
-            cos_err = coserr_YYhat(Y_test, data_hat)
-        else:
-            cos_err = coserr_YYhat(Y_test, data_hat, adjusted=True)
-        eval_res = cos_err
-
-    elif crit == 'RMSE':
-        # TODO: calculate the adjusted mean squared error
-        V_pred = emissionM.emission.V
-        # V_pred = V_pred - pt.mean(V_pred, dim=0)  # Mean centering
-        eval_res = rmse_YUhat(U_predict, Y_test, V_pred, soft_assign=True)
-
     else:
         raise NameError('The given criterion must be specified!')
 
-    return eval_res
-
-
-def _full_comparison_emission(data_type=0, num_sub=10, P=1000, K=5, N=20, beta=1.0,
-                              sigma2=2.0, max_iter=100, tol=0.00001, do_plotting=False):
-    """The evaluation and comparison routine between the emission models
-    Args:
-        data_type: which model used to generate data (0-GMM, 1-GME, 3-VMF)
-        num_sub: the number of subjects
-        P: the number of voxels
-        K: the number of clusters
-        N: the number of data dimensions
-        beta: the parameter beta for the signal strength
-        max_iter: the maximum number of iteration for EM procedure
-        tol: the tolerance of EM iterations
-        do_plotting: if True, plot the fitting results
-    Returns:
-        the evaluation results across the emission models given the criterion
-        shape of (num_criterion, num_emissionModels)
-    """
-    # Step 1. generate the training dataset from VMF model given a signal length
-    signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, P))
-    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, sigma2=sigma2,
-                                                        beta=0.5, signal_strength=signal, do_plot=False)
-    # standardise Y to unit length for VMF
-    Y_train_vmf = Y_train / pt.sqrt(pt.sum(Y_train ** 2, dim=1)).unsqueeze(1).repeat(1, Y_train.shape[1], 1)
-
-    # Step 2. Fit the competing emission model using the training data
-    emissionM1 = MixGaussian(K=K, N=N, P=P, std_V=False)
-    emissionM2 = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True)
-    emissionM3 = MixVMF(K=K, N=N, P=P, uniform_kappa=True)
-    M1 = FullModel(MT.arrange, emissionM1)
-    M2 = FullModel(MT.arrange, emissionM2)
-    M3 = FullModel(MT.arrange, emissionM3)
-    M1, _, _, Uhat1_train = M1.fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
-    M2, _, _, Uhat2_train = M2.fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
-    M3, _, _, Uhat3_train = M3.fit_em(Y=Y_train_vmf, iter=max_iter, tol=tol, fit_arrangement=False)
-
-    # Step 3. Generate predicted Y from the fitted model and U_hat of training data
-    Yhat_train_gmm = pt.matmul(M1.emission.V, Uhat1_train)
-    Yhat_train_gme = pt.matmul(M2.emission.V, Uhat2_train)
-    Yhat_train_vmf = pt.matmul(M3.emission.V, Uhat3_train)
-    Yhat_train_gme = Yhat_train_gme / pt.sqrt(pt.sum(Yhat_train_gme ** 2, dim=1)).unsqueeze(1)
-    Yhat_train_vmf = Yhat_train_vmf / pt.sqrt(pt.sum(Yhat_train_vmf ** 2, dim=1)).unsqueeze(1)
-
-    # Step 3.5. Do plot of the clustering results if required
-    if do_plotting:
-        fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
-                   [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
-        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
-        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat1_train, dim=1)[0])), row=1, col=2)
-        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat2_train, dim=1)[0])), row=2, col=1)
-        fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat3_train, dim=1)[0])), row=2, col=2)
-        fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
-        fig.show()
-
-    # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
-    criterion = ['nmi', 'ari', 'coserr_YV', 'RMSE']
-    res_train = pt.empty(len(criterion), 3)
-    for c in range(len(criterion)):
-        acc1 = evaluate_completion_emission(M1, Y_test, Yhat_train_gmm, U_true=U, U_predict=Uhat1_train, crit=criterion[c])
-        acc2 = evaluate_completion_emission(M2, Y_test, Yhat_train_gme, U_true=U, U_predict=Uhat2_train, crit=criterion[c])
-        acc3 = evaluate_completion_emission(M3, Y_test, Yhat_train_vmf, U_true=U, U_predict=Uhat3_train, crit=criterion[c])
-        res_train[c, :] = pt.tensor([acc1, acc2, acc3])
-
-    return res_train
-
-
-if __name__ == '__main__':
-    # Evaluate emission models
-    emission_models = [0, 1, 3]  # data generating model. 0-GMM, 1-GME, 3-VMF
-    clusters = [5]
-    models = ['GMM', 'GME', 'VMF']
-    iters = 2
-    N = 20
-    P = 500
-    subjs = 10
-
-    for k in range(len(clusters)):
-        fig1, axs1 = plt.subplots(4, 3, figsize=(12, 16), sharey='row')
-        fig1.suptitle("Cluster K = %d, Yhat_train vs. Y_test \n "
-                      "N = %d, P = %d, subjects = %d" % (clusters[k], N, P, subjs), fontsize=16)
-
-        for e in range(len(emission_models)):
-            res = []
-            for i in range(iters):
-                # beta is to control the signal strength for VMF, sigma2 is for GMM and GME
-                res1 = _full_comparison_emission(data_type=emission_models[e], num_sub=subjs, P=P,
-                                                 K=clusters[k], N=N, beta=0.5, sigma2=5.0)
-                res.append(res1)
-
-            res = pt.stack(res, 0)
-            axs1[0][e].bar(models, res.mean(dim=0)[0, :], yerr=res.std(dim=0)[0, :],
-                           color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
-            axs1[0][e].set_ylabel('nmi')
-            axs1[0][e].set_title(models[e])
-
-            axs1[1][e].bar(models, res.mean(dim=0)[1, :], yerr=res.std(dim=0)[1, :],
-                           color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
-            axs1[1][e].set_ylabel('ari')
-            axs1[1][e].set_title(models[e])
-
-            axs1[2][e].bar(models, res.mean(dim=0)[2, :], yerr=res.std(dim=0)[2, :],
-                           color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
-            axs1[2][e].set_ylabel('coserr_YV')
-            axs1[2][e].set_title(models[e])
-
-            axs1[3][e].bar(models, res.mean(dim=0)[3, :], yerr=res.std(dim=0)[3, :],
-                           color=['r', 'g', 'b'], alpha=0.5, ecolor='black', capsize=10)
-            axs1[3][e].set_ylabel('RMSE')
-            axs1[3][e].set_title(models[e])
-
-        plt.show()
-
+    return eval_res.item()

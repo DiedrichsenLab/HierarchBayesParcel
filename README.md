@@ -429,19 +429,21 @@ $$
 
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
 
-### Evaluation of emission models
+## Model Evaluation
 
-After model fitting, we need a fair way to quantitatively compare different emission models between a Gaussian mixture model (GMM), a Gaussian Mixture with exponential signal strength (GMM_exp), and a directional model (VMF). Due to the fact that the three models are defined in different space, such as the GMM and GMM_exp are defined in $\mathbb{R}^N$ state space while the VMF is defined in $(N-1)$-hypersphere surface. Therefore, the traditional marginal log-likelihood based criterion (BIC, Bayes Factor) cannot provide a fair comparison. The main purpose of this section is trying to find some unbiased evaluation criterion (goodness of fit test) for the model defined in different space.
+After model fitting, we need a fair way to quantitatively compare different emission models between a Gaussian mixture model (GMM), a Gaussian Mixture with exponential signal strength (GMM_exp), and a directional model (VMF). Unfortunately, the three models are defined in different space: the GMM and GMM_exp are defined in $\mathbb{R}^N$ state space while the VMF is defined in $(N-1)$-hypersphere surface. Therefore, the traditional marginal log-likelihood based criterion (BIC, Bayes Factor) cannot provide a fair comparison, as the probability densities would cover different spaces. The main purpose of this section is trying to find evaluation criteria  that would be suitable to compare model defined in different space.
 
-#### Comparing the true $\mathbf{U}$ and the inferred $\hat{\mathbf{U}}$
+### Comparing the true $\mathbf{U}$ and the inferred $\hat{\mathbf{U}}$
+
+Note that these criteria only have value for simulations, for which we have the true 
 
 #### 1. the absolute error between $\mathbf{U}$ and $\hat{\mathbf{U}}$
 
 the first evaluation criterion is to calculate the absolute error between the true parcellation $\mathbf{U}$ and the expected $\mathbf{\hat{U}}$ which inferred on the training data. It defined as,
 $$
-\bar{U}_{error}=\frac{\sum_i|\mathbf{u_i}-\sum_k\langle u_{i}^{(k)}\rangle_{q}(\hat{\mathbf{u_i}}=k)|}{P}
+\bar{U}_{error}=\frac{\sum_i|\mathbf{u_i}-\langle \mathbf{u}_{i}\rangle_{q}|}{P}
 $$
-where the $\mathbf{u_i}$ represents the true cluster label of $i$, and $\sum_k\langle u_{i}^{(k)}\rangle_{q}(\hat{\mathbf{u_i}}=k)$ is the expected cluster label of brain location $i$ under the expectation $q$. The term $\sum_k\langle u_{i}^{(k)}\rangle_{q}(\hat{\mathbf{u_i}}=k)$ can be replaced by $\underset{k}{\operatorname{argmax}} (\hat{\mathbf{u_i}}=k)$ if we want to calculate the prediction error on the hard parcellation. 
+where the $\mathbf{u_i}$ represents the true cluster label of $i$ and $\langle \mathbf{u}_{i}\rangle_{q}$ is the expected cluster label of brain location $i$ under the expectation $q$. Both are multinomial encoded vectors. We can also replace the expectation with a the hard parcellation, again coded as a one-hot vector. 
 
 Note, this calculation of the mean absolute error is subject to the premutation of the parcellation, so that a loop over all possible permutations and find the minimum error is applied.
 
@@ -451,6 +453,8 @@ the second criteria is the normalized mutual information which examine the actua
 $$
 NMI(U,V)=\frac{MI(U,V)}{mean(H(U), H(V))}, \;\;\;\;\;\;\text{where}\;\; MI(U,V)=\sum_i^{K_{|U|}}\sum_j^{K_{|V|}}p(i, j)\log \frac{p(i,j)}{p(i)p'(j)}\\
 $$
+THIS IS NOT CLEAR: PLEASE REWRITE USING 
+
 where $H(U)$ and $H(V)$ represents the entropy summed across all $K_{|U|}$ parcels in $U$ and all  $K_{|V|}$ parcels in $V$, respectively. The term $p(i)$ is the probability that a brain location picked at random from $U$ falls into class $K_{|U|}=i$, similarly the $p(j)$ in $V$. $p(i,j)$ means the probability of a brain location picked at random that both falls into classes $K_{|U|}=i$ and $K_{|V|}=j$.
 
 Note, the NMI calculation would not suffer from the permutation.
@@ -461,7 +465,10 @@ the third one is the commonly used adjust rand index to test how similar the two
 
 
 
-#### Cross-validation between the $\mathbf{Y}_{test}$ and the predicted $\hat{\mathbf{Y}}_{train}$
+### Evaluation on independent test data ($\mathbf{Y}_{test}$)
+
+
+
 
 #### 1. the adjusted mean cosine distance measure
 
@@ -471,11 +478,11 @@ $$
 $$
 where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation. We then compute the mean cosine distance across all $P$ brain locations. Another option is to calculate the *expected* mean cosine distance under the $q(\mathbf{u}_i)$ which defined as below:
 $$
-\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k \langle \hat{\mathbf{u}}_i^{(k)} (||\mathbf{y}_i||-{\mathbf{v}_k}^{T}\mathbf{y}_i) \rangle_q
+\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k \langle \hat{u}_i^{(k)} (||\mathbf{y}_i||-{\mathbf{v}_k}^{T}\mathbf{y}_i) \rangle_q
 $$
-where $\hat{\mathbf{u}}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
+where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
 
-#### 2. the adjusted RMSE measure
+#### 2. the adjusted RMSE measure (I DO NOT UNDERSTAND THIS ONE HERE!)
 
 the second evaluation criterion is to calculate the adjusted square root of mean squared error, which defined as:
 $$

@@ -81,7 +81,7 @@ class MixGaussian(EmissionModel):
             Therefore, there are total k+1 parameters in this mixture model
             set the initial random parameters for gaussian mixture
         """
-        self.V = pt.randn(self.N, self.K)
+        self.V = pt.randn(self.N, self.K)/np.sqrt(self.N)
         if self.std_V:  # standardise V to unit length
             # Not clear why this should be constraint for GMM, but ok
             self.V = self.V / pt.sqrt(pt.sum(self.V**2, dim=0))
@@ -424,12 +424,14 @@ class MixVMF(EmissionModel):
 
     def initialize(self, data):
         """ Calculates the sufficient stats on the data that does not depend on U,
-        and allocates memory for the sufficient stats that does.
+        and allocates memory for the sufficient stats that does. For the VMF, it length-standardizes the
+        data to length one.
         Args:
             data: the input data array.
         Returns: None. Store the data in emission model itself.
         """
         super().initialize(data)
+        self.Y  = self.Y / pt.sqrt(pt.sum(data ** 2, dim=1, keepdim=True))
         self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
@@ -476,13 +478,17 @@ class MixVMF(EmissionModel):
 
         return approx
 
-    def Estep(self, sub=None):
+    def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         Args:
-            sub: specify which subject to optimize
+            Y : Data (optional)
+            sub: specify which subject to optimize (optional)
         Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
+        if Y is not None:
+            self.initialize(Y)
+
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
