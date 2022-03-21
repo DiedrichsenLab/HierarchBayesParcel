@@ -480,7 +480,7 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
     pass
 
 def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, beta=1.0,
-                              dispersion=2.0, max_iter=100, tol=0.00001, do_plotting=False):
+                              dispersion=2.0, max_iter=100, tol=0.00001, do_plotting=False,same_signal=True):
     """The evaluation and comparison routine between the emission models
     Args:
         data_type: which model used to generate data (GMM, GME, VMF)
@@ -498,7 +498,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     """
     # Step 1. generate the training dataset from VMF model given a signal length
     Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, dispersion=dispersion,
-                                                        beta=beta,  do_plot=False)
+                                                        beta=beta,  do_plot=False,same_signal=same_signal)
     model=['GMM','GME','VMF','true']
 
     # Step 2. Fit the competing emission model using the training data
@@ -556,23 +556,24 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     return T
 
 
-def do_full_full_comparison_emission(clusters = 5,
+def do_full_comparison_emission(clusters = 5,
             iters = 2,
             N = 20,
             P  = 500,
             subjs = 10,
             beta=0.4,
             true_models = ['GMM','GME','VMF'],
-            disper = [0.1,0.1,18]):
+            disper = [0.1,0.1,18],
+            same_signal=True):
     D=pd.DataFrame()
     for m,e in enumerate(true_models):
         for i in range(iters):
             # beta is to control the signal strength for VMF, sigma2 is for GMM and GME
             T = _full_comparison_emission(data_type=e, num_sub=subjs, P=P,
-                                                 K=clusters, N=N, beta=beta, dispersion=disper[m])
+                                                 K=clusters, N=N, beta=beta, dispersion=disper[m],same_signal=same_signal)
             D = pd.concat([D,T])
-
     return D
+
 
 def plot_comparision_emission(T,criterion=['nmi','ari','coserr_E','coserrA_E'],true_models=['GMM','GME','VMF']):
     num_rows = len(criterion)
@@ -583,10 +584,10 @@ def plot_comparision_emission(T,criterion=['nmi','ari','coserr_E','coserrA_E'],t
             plt.sca(axs[i,j])
             ind = (T.data_type==true_models[j]) & (T.model!='true')
             sb.barplot(data=T[ind],x='model',y=criterion[i])
-            axs[i][0].set_ylabel(criterion)
+            axs[i][0].set_ylabel(criterion[i])
             axs[0][j].set_title(true_models[j])
             ind = (T.data_type==true_models[j]) & (T.model=='true')
-            plt.axhline(y=T[ind][criterion[i]].mean())
+            plt.axhline(y=T[ind][criterion[i]].mean(),linestyle=':',color='k')
 
 
 
@@ -595,7 +596,13 @@ if __name__ == '__main__':
     # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
     # _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=2.0, beta=1.0,num_bins=100, std_V=True)
     # pass
-    T=do_full_full_comparison_emission(iters=20)
-    T.to_csv('notebooks/emission_modelrecover_1.csv')
+    # T=do_full_comparison_emission(iters=20)
+    T=do_full_comparison_emission(iters=10,
+            beta=0.4,
+            true_models = ['GMM','GME','VMF'],
+            disper = [0.1,0.1,18],
+            same_signal=False)
+    T.to_csv('notebooks/emission_modelrecover_2.csv')
+    T=pd.read_csv('notebooks/emission_modelrecover_1.csv')
     plot_comparision_emission(T)
     pass
