@@ -250,8 +250,9 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     idx = matching_params(true_V, predicted_V, once=False)
 
     _plot_diff(true_V, predicted_V, index=idx, name='V')
-    _plt_single_param_diff(theta_true[M.get_param_indices('emission.sigma2')],
-                           theta[:, M.get_param_indices('emission.sigma2')], name='sigma2')
+    
+    ind = M.get_param_indices('emission.sigma2')
+    _plt_single_param_diff(np.log(theta_true[ind]),np.log(theta[:, ind]), name='log sigma2')
 
     plt.show()
     print('Done simulation GMM.')
@@ -328,6 +329,67 @@ def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2
 
 
 def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
+        sigma2=1.0, beta=1.0, num_bins=100, std_V=False,
+        type_estep='linspace'):
+    """Simulation function used for testing full model with a GMM_exp emission
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        sigma2: the sigma2 for GMM_exp emission model
+        beta: the beta for GMM_exp emission model
+    Returns:
+        Several evaluation plots.
+    """
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V)
+    emissionT.sigma2 = pt.tensor(sigma2)
+    emissionT.beta = pt.tensor(beta)
+    # Step 2: Generate data by sampling from the above model
+    T = FullModel(arrangeT, emissionT)
+    U = arrangeT.sample(num_subj=num_sub)
+    Y, signal = emissionT.sample(U, return_signal=True)
+
+    # Step 3: Compute the log likelihood from the true model
+    Uhat_true, loglike_true = T.Estep(Y=Y)
+    theta_true = T.get_params()
+
+    # Step 4: Generate new models for fitting
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V,type_estep=type_estep)
+    emissionM.std_V = True # Set to False if you don't want to standardize V....
+    # new_params = emissionM.get_params()
+    # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
+    # new_params[emissionM.get_param_indices('beta')] = emissionT.get_params()[emissionT.get_param_indices('beta')]
+    # emissionM.set_params(new_params)
+    M = FullModel(arrangeM, emissionM)
+
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
+
+    # Plotfitting results
+    _plot_loglike(ll, loglike_true, color='b')
+    ind = M.get_param_indices('emission.V')
+    true_V = theta_true[ind].reshape(N, K)
+    predicted_V = theta[:, ind]
+    idx = matching_params(true_V, predicted_V, once=False)
+    _plot_diff(true_V, predicted_V, index=idx, name='V')
+
+    ind = M.get_param_indices('emission.sigma2')
+    _plt_single_param_diff(np.log(theta_true[ind]),np.log(theta[:, ind]), name='log sigma2')
+
+    ind = M.get_param_indices('emission.beta')
+    _plt_single_param_diff(theta_true[ind],theta[:, ind], name='beta')
+    # SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
+
+    plt.show()
+    print('Done simulation GME.')
+
+
+def _simulate_full_GME_comp(K=5, P=1000, N=20, num_sub=10, max_iter=100,
         sigma2=1.0, beta=1.0, num_bins=100, std_V=False):
     """Simulation function used for testing full model with a GMM_exp emission
     Args:
@@ -359,24 +421,24 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V)
     emissionM.std_V = True # Set to False if you don't want to standardize V....
-    # new_params = emissionM.get_params()
-    # new_params[emissionM.get_param_indices('sigma2')] = emissionT.get_params()[emissionT.get_param_indices('sigma2')]
-    # new_params[emissionM.get_param_indices('beta')] = emissionT.get_params()[emissionT.get_param_indices('beta')]
-    # emissionM.set_params(new_params)
-    M = FullModel(arrangeM, emissionM)
+    emissionM.type_estep='linspace'
+    M1 = FullModel(arrangeM, emissionM)
+    M2 = copy.deepcopy(M1)
+    M2.emission.type_estep='import'
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
-    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
+    M1, ll1, theta, _ = M1.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
+    M2, ll2, theta, _ = M2.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
 
     # Plotfitting results
-    _plot_loglike(ll, loglike_true, color='b')
-    ind = M.get_param_indices('emission.V')
+    _plot_loglike(ll1, loglike_true, color='b')
+    ind = M1.get_param_indices('emission.V')
     true_V = theta_true[ind].reshape(N, K)
     predicted_V = theta[:, ind]
     idx = matching_params(true_V, predicted_V, once=False)
     _plot_diff(true_V, predicted_V, index=idx, name='V')
 
-    ind = M.get_param_indices('emission.sigma2')
+    ind = M1.get_param_indices('emission.sigma2')
     _plt_single_param_diff(np.log(theta_true[ind]),np.log(theta[:, ind]), name='log sigma2')
 
     ind = M.get_param_indices('emission.beta')
@@ -423,22 +485,23 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=
 
     # Plotfitting results
     _plot_loglike(ll, loglike_true, color='b')
-    true_V = theta_true[M.get_param_indices('emission.V')].reshape(N, K)
-    predicted_V = theta[:, M.get_param_indices('emission.V')]
+    ind = M.get_param_indices('emission.V')
+    true_V = theta_true[ind].reshape(N, K)
+    predicted_V = theta[:, ind]
     idx = matching_params(true_V, predicted_V, once=False)
-
     _plot_diff(true_V, predicted_V, index=idx, name='V')
 
+    ind = M.get_param_indices('emission.kappa')
     if uniform_kappa:
         # Plot if kappa is uniformed
-        _plt_single_param_diff(theta_true[M.get_param_indices('emission.kappa')],
-                               theta[:, M.get_param_indices('emission.kappa')], name='kappa')
+        _plt_single_param_diff(theta_true[ind],
+                               theta[:, ind], name='kappa')
     else:
         # Plot if kappa is not uniformed
-        idx = matching_params(theta_true[M.get_param_indices('emission.kappa')].reshape(1, K),
-                              theta[:, M.get_param_indices('emission.kappa')], once=False)
-        _plot_diff(theta_true[M.get_param_indices('emission.kappa')].reshape(1, K),
-                   theta[:, M.get_param_indices('emission.kappa')], index=idx, name='kappa')
+        idx = matching_params(theta_true[ind].reshape(1, K),
+                              theta[:, ind], once=False)
+        _plot_diff(theta_true[ind].reshape(1, K),
+                   theta[:, ind], index=idx, name='kappa')
 
     plt.show()
     print('Done simulation VMF.')
@@ -472,10 +535,10 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 
     # Check old and new Estep
     t = time.time()
-    LL1 = em1.Estep(Y=Y)
+    LL1 = em1.Estep_linspace(Y=Y)
     print(f"time 2:{time.time()-t:.5f}")
     t = time.time()
-    LL2 = em2.Estep_old(Y=Y)
+    LL2 = em2.Estep_import(Y=Y)
     print(f"time 2:{time.time()-t:.5f}")
     pass
 
@@ -597,13 +660,15 @@ if __name__ == '__main__':
     # _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=2.0, beta=1.0,num_bins=100, std_V=True)
     # pass
     # T=do_full_comparison_emission(iters=20)
-    T=do_full_comparison_emission(iters=10,
-            clusters = 20,
-            beta=0.4,
-            true_models = ['GMM','GME','VMF'],
-            disper = [0.1,0.1,18],
-            same_signal=True)
-    T.to_csv('notebooks/emission_modelrecover_2.csv')
-    T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
-    plot_comparision_emission(T)
+    #T=do_full_comparison_emission(iters=10,
+    #        clusters = 20,
+    #        beta=0.4,
+    #        true_models = ['GMM','GME','VMF'],
+    #        disper = [0.1,0.1,18],
+    #        same_signal=True)
+    #T.to_csv('notebooks/emission_modelrecover_2.csv')
+    #T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
+    #plot_comparision_emission(T)
+    _simulate_full_GME_comp()
+    
     pass

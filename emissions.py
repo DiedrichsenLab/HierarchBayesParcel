@@ -159,7 +159,7 @@ class MixGaussianExp(EmissionModel):
     Mixture of Gaussians with signal strength (fit gamma distribution)
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
-    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None, std_V=True):
+    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None, std_V=True,type_estep='linspace'):
         super().__init__(K, N, P, data)
         self.std_V = std_V  # Standardize mean vectors?
         self.random_params()
@@ -168,6 +168,7 @@ class MixGaussianExp(EmissionModel):
         if params is not None:
             self.set_params(params)
         self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
+        self.type_estep =  type_estep # Added for a period until we have the best techique
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -318,7 +319,48 @@ class MixGaussianExp(EmissionModel):
 
         return LL
 
-    def Estep(self, Y=None, signal=None):
+    def Estep_import(self, Y=None, signal=None):
+        """ Estep using importance sampling from exp(beta):
+        Sampling is done per iteration for all voxels and clusters
+        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+        Args:
+            sub: specify which subject to optimize
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+        """
+        if Y is not None:
+            self.initialize(Y)
+
+        n_subj= self.Y.shape[0]
+
+        LL = pt.empty((n_subj, self.K, self.P))
+        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+
+        YV = pt.matmul(self.V.T,self.Y)
+
+        # Instead of evenly spaced, sample from exp(beta)
+        dist = pt.distributions.exponential.Exponential(self.beta)
+        x = dist.sample((self.num_signal_bins,))
+
+        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+        if signal is None:
+                # This is p(y,s|u)
+            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
+                # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+            post = pt.softmax(loglike,dim=3)
+            self.s = pt.sum(x * post,dim=3)
+            self.s2 = pt.sum(x**2 * post,dim=3)
+
+        else:
+            self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
+            self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
+
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
+        # the log likelihood for emission model (GMM in this case)
+        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
+
+        return LL
+
+    def Estep_linspace(self, Y=None, signal=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         Args:
@@ -355,6 +397,15 @@ class MixGaussianExp(EmissionModel):
         LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
 
         return LL
+
+    def Estep(self, Y=None, signal=None):
+        if self.type_estep == 'linspace':
+            LL = self.Estep_linspace(Y,signal)
+        elif self.type_estep == 'import': 
+            LL = self.Estep_import(Y,signal)
+        elif self.type_estep == 'ais': 
+            LL = self.Estep_ais(Y,signal)
+        return LL 
 
     def Mstep(self, U_hat):
         """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
