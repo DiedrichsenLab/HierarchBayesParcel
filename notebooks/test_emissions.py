@@ -598,11 +598,12 @@ if __name__ == '__main__':
     # pass
     # T=do_full_comparison_emission(iters=20)
     T=do_full_comparison_emission(iters=10,
+            clusters = 20,
             beta=0.4,
             true_models = ['GMM','GME','VMF'],
             disper = [0.1,0.1,18],
-            same_signal=False)
+            same_signal=True)
     T.to_csv('notebooks/emission_modelrecover_2.csv')
-    T=pd.read_csv('notebooks/emission_modelrecover_1.csv')
+    T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
     plot_comparision_emission(T)
     pass

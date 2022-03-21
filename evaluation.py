@@ -78,7 +78,7 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     Args:
         Y: the test data, with a shape (num_sub, N, P)
         V: the predicted mean directions
-        U: the predicted U's from the trained emission model
+        U: the predicted U's from the trained emission model (in multinomial notation)
         adjusted: Adjusted for the length of the data vector?
         soft_assign: Compute the expected mean cosine error if True; Otherwise, False
     Returns:
@@ -150,10 +150,9 @@ def coserr_YYhat(data, data_hat, adjusted=False):
         1 means opposite direction. the lower the value the better
     """
     # standardise data to unit norm
-    data = data / pt.sqrt(pt.sum(data ** 2, dim=1)).unsqueeze(1).repeat(1, data.shape[1], 1)
-    data_hat = data_hat / pt.sqrt(pt.sum(data_hat ** 2, dim=1)).unsqueeze(1).repeat(1, data_hat.shape[1], 1)
+    data = data / pt.sqrt(pt.sum(data ** 2, dim=1,keepdim=True))
+    data_hat = data_hat / pt.sqrt(pt.sum(data_hat ** 2, dim=1,keepdim=1))
     cos_dist = 1 - pt.matmul(data.transpose(1, 2), data_hat)
-
     return pt.mean(cos_dist)
 
 

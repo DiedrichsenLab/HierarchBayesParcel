@@ -467,12 +467,24 @@ the third one is the commonly used adjust rand index to test how similar the two
 
 ### Evaluation on independent test data ($\mathbf{Y}_{test}$)
 
+#### 1. Cosine error
+
+the first evaluation criterion based on the difference between some observed activity profiles $\mathbf{Y}_{test}$ and the predicted mean directions from the model  $\mathbf{v}_k$ given some expectation of which voxel belongs to what cluster $\langle \mathbf{u}_i \rangle$ . One possibility is to use for each voxel the most likely predicted mean direction. 
+$$
+\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
+$$
+where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation for that voxel. We then compute the mean cosine distance across all $P$ brain locations. We can also compute the  *expected* mean cosine distance under the $q(\mathbf{u}_i)$ which defined as below:
+$$
+\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} (1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
+$$
+where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
+
+#### 
 
 
+#### 2. the adjusted mean cosine distance measure
 
-#### 1. the adjusted mean cosine distance measure
-
-the first evaluation criterion based on the cross validation between true $\mathbf{Y}_{test}$ and the predicted $\hat{\mathbf{Y}}_{train}$ is to calculate the mean cosine distance, which defined as:
+A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the length of the data vector. This effectively calculates the root mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\||\mathbf{y}_i||\mathbf{v}_k$):
 $$
 \bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (||\mathbf{y}_i||-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i)
 $$
