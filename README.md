@@ -490,7 +490,7 @@ $$
 $$
 where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation. We then compute the mean cosine distance across all $P$ brain locations. Another option is to calculate the *expected* mean cosine distance under the $q(\mathbf{u}_i)$ which defined as below:
 $$
-\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k \langle \hat{u}_i^{(k)} (||\mathbf{y}_i||-{\mathbf{v}_k}^{T}\mathbf{y}_i) \rangle_q
+\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||-{\mathbf{v}_k}^{T}\mathbf{y}_i)
 $$
 where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
 
