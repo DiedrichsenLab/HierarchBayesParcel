@@ -106,54 +106,6 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
 
     return pt.mean(cos_distance).item()
 
-def coserr_YUhat(U_pred, data, prediction, adjusted=False, soft_assign=True):
-    """Compute the cosine distance between the data to the predicted V's
-    Args:
-        U_pred: the predicted U's from the trained emission model
-        data: the test data, with a shape (num_sub, N, P)
-        prediction: the predicted V's
-        adjusted: Compute the adjusted mean cosine error if True; Otherwise, False
-        soft_assign: Compute the expected mean cosine error if True; Otherwise, False
-    Returns:
-        the averaged cosine distance. 0 indicates the same direction;
-        1 - orthogonal; 2 - opposite direction. the lower the value the better
-    """
-    # standardise V and data to unit length
-    prediction = prediction / pt.sqrt(pt.sum(prediction ** 2, dim=0))
-    data_norm = pt.sqrt(pt.sum(data**2, dim=1)).unsqueeze(1)
-
-    if adjusted:
-        # ||Y_i||-(V_k)T(Y_i)
-        cos_distance = data_norm - pt.matmul(prediction.T, data)
-    else:
-        # 1-(V_k)T(Y_i/||Y_i||)
-        cos_distance = 1 - pt.matmul(prediction.T, data/data_norm)
-
-    if soft_assign:  # Calculate the expected cosine error
-        cos_distance = pt.sum(cos_distance * U_pred, dim=1)
-    else:
-        # Calculate the argmax U_hat (hard assignments)
-        idx = pt.argmax(U_pred, dim=1).unsqueeze(1)
-        U_pred = pt.zeros_like(U_pred).scatter_(1, idx, 1.)
-        cos_distance = pt.sum(cos_distance * U_pred, dim=1)
-
-    return pt.mean(cos_distance)
-
-
-def coserr_YYhat(data, data_hat, adjusted=False):
-    """Compute the cosine distance between the data to the predicted data
-    Args:
-        data: the true data
-        data_hat: the predicted data generated from fitted model
-    Returns:
-        the cosine distance. 0 indicates the same direction;
-        1 means opposite direction. the lower the value the better
-    """
-    # standardise data to unit norm
-    data = data / pt.sqrt(pt.sum(data ** 2, dim=1,keepdim=True))
-    data_hat = data_hat / pt.sqrt(pt.sum(data_hat ** 2, dim=1,keepdim=1))
-    cos_dist = 1 - pt.matmul(data.transpose(1, 2), data_hat)
-    return pt.mean(cos_dist)
 
 
 def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
