@@ -401,11 +401,11 @@ class MixGaussianExp(EmissionModel):
     def Estep(self, Y=None, signal=None):
         if self.type_estep == 'linspace':
             LL = self.Estep_linspace(Y,signal)
-        elif self.type_estep == 'import': 
+        elif self.type_estep == 'import':
             LL = self.Estep_import(Y,signal)
-        elif self.type_estep == 'ais': 
+        elif self.type_estep == 'ais':
             LL = self.Estep_ais(Y,signal)
-        return LL 
+        return LL
 
     def Mstep(self, U_hat):
         """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
@@ -423,7 +423,7 @@ class MixGaussianExp(EmissionModel):
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
         self.V = pt.sum(YU, dim=0) / pt.sum(US2, dim=0)
         if self.std_V:
-            self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
+             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating the sigma squared.
         YV = pt.matmul(self.V.T, self.Y)
