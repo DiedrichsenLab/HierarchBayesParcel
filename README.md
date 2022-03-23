@@ -447,19 +447,17 @@ where the $\mathbf{u_i}$ represents the true cluster label of $i$ and $\langle \
 
 Note, this calculation of the mean absolute error is subject to the premutation of the parcellation, so that a loop over all possible permutations and find the minimum error is applied.
 
-#### 2. Normalized Mutual information (NMI) between $\mathbf{U}$ and $argmax\hat{\mathbf{U}}$
+#### 2. Normalized Mutual information (NMI) between $\mathbf{U}$ and $\hat{\mathbf{U}}$
 
-the second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations $U$ and $V$.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
+the second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations $\mathbf{U}$ and $\hat{\mathbf{U}}$.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
 $$
-NMI(U,V)=\frac{MI(U,V)}{mean(H(U), H(V))}, \;\;\;\;\;\;\text{where}\;\; MI(U,V)=\sum_i^{K_{|U|}}\sum_j^{K_{|V|}}p(i, j)\log \frac{p(i,j)}{p(i)p'(j)}\\
+NMI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\sum_{i=1}^{k_\mathbf{u}}\sum_{j=1}^{k_\mathbf{\hat{u}}}\frac{|\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j|}{P}\log (P\frac{||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||}{|\mathbf{u}=i|\cdot|\mathbf{\hat{u}}=j|})}{\sum_{i=1}^{k_\mathbf{u}}\frac{|\mathbf{u}=i|}{P}\log(\frac{|\mathbf{u}=i|}{P})+\sum_{j=1}^{k_{\mathbf{\hat{u}}}}\frac{|\hat{\mathbf{u}}=j|}{P}\log(\frac{|\hat{\mathbf{u}}=j|}{P})}
 $$
-THIS IS NOT CLEAR: PLEASE REWRITE USING 
+where $k_{\mathbf{u}}=\{1,2,3,...,k\}$ and $k_{\mathbf{\hat{u}}}=\{1,2,3,...,k\}$ represents the cluster labels of $\mathbf{U}$ and $\hat{\mathbf{U}}$ respectively. The term$|\mathbf{u}=i|$ and $|\hat{\mathbf{u}}=j|$ are the number of brain locations that belongs to cluster $k_\mathbf{u}=i$ in parcellation $\mathbf{U}$ or to cluster $k_\mathbf{\hat{u}}=j$ in $\mathbf{\hat{U}}$, in other words, the terms $\frac{|\mathbf{u}=i|}{P}$ and $\frac{|\mathbf{\hat{u}}=j|}{P}$ represents the probability that a brain location picked at random from $\mathbf{U}$ falls into class $k_{\mathbf{u}}=i$, or from $\mathbf{\hat{U}}$ falls into class $k_{\mathbf{\hat{u}}}=j$. 
 
-where $H(U)$ and $H(V)$ represents the entropy summed across all $K_{|U|}$ parcels in $U$ and all  $K_{|V|}$ parcels in $V$, respectively. The term $p(i)$ is the probability that a brain location picked at random from $U$ falls into class $K_{|U|}=i$, similarly the $p(j)$ in $V$. $p(i,j)$ means the probability of a brain location picked at random that both falls into classes $K_{|U|}=i$ and $K_{|V|}=j$.
+Similarly, the $||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||$ means the total number of a brain locations that both falls into classes $k_{\mathbf{u}}=i$ and $k_{\mathbf{\hat{u}}}=j$. Note, the NMI calculation would not suffer from the permutation.
 
-Note, the NMI calculation would not suffer from the permutation.
-
-#### 3. Adjusted rand index (ARI) between $\mathbf{U}$ and $argmax\hat{\mathbf{U}}$
+#### 3. Adjusted rand index (ARI) between $\mathbf{U}$ and $\hat{\mathbf{U}}$
 
 the third one is the commonly used adjust rand index to test how similar the two given parcellations are.
 
@@ -467,7 +465,7 @@ the third one is the commonly used adjust rand index to test how similar the two
 
 ### Evaluation on independent test data ($\mathbf{Y}_{test}$)
 
-#### 1. Cosine error
+#### 1a. Cosine error
 
 the first evaluation criterion based on the difference between some observed activity profiles $\mathbf{Y}_{test}$ and the predicted mean directions from the model  $\mathbf{v}_k$ given some expectation of which voxel belongs to what cluster $\langle \mathbf{u}_i \rangle$ . One possibility is to use for each voxel the most likely predicted mean direction. 
 $$
@@ -479,10 +477,8 @@ $$
 $$
 where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
 
-#### 
 
-
-#### 2. the adjusted mean cosine distance measure
+#### 1b. the adjusted Cosine error
 
 A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the length of the data vector. This effectively calculates the root mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\||\mathbf{y}_i||\mathbf{v}_k$):
 $$
@@ -494,14 +490,16 @@ $$
 $$
 where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
 
-#### 2. the adjusted RMSE measure (I DO NOT UNDERSTAND THIS ONE HERE!)
+
+
+#### 2. the adjusted RMSE
 
 the second evaluation criterion is to calculate the adjusted square root of mean squared error, which defined as:
 $$
-\bar{\epsilon}_{RMSE} = \sqrt{\frac{1}{P}\sum_i (||\mathbf{y}_i-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}\bar{\mathbf{y}}_i ||^2)}
+\bar{\epsilon}_{RMSE} = \sqrt{\frac{\sum_i (\mathbf{y}_i-||\mathbf{y}_i||\cdot{\mathbf{v}_\underset{k}{\operatorname{argmax}}})^2}{P}}
 $$
-where $\bar{\mathbf{y}}_i$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation (argmax). We then compute the root of mean squared error across all $P$ brain locations. Another option is to calculate the *expected* RMSE under the $q(\mathbf{u}_i)$ which defined as below:
+where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation (argmax). We then compute the root of mean squared error across all $P$ brain locations. Another option is to calculate the *expected* RMSE under the $q(\mathbf{u}_i)$ which defined as below:
 $$
-\langle\bar{\epsilon}_{RMSE}\rangle_q = \sqrt{\frac{1}{P}\sum_i \sum_k \langle \hat{\mathbf{u}}_i^{(k)} (||\mathbf{y}_i-{\mathbf{v}_k}\bar{\mathbf{y}}_i ||^2)\rangle_q}
+\langle\bar{\epsilon}_{RMSE}\rangle_q = \sqrt{\frac{\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} (\mathbf{y}_i-||\mathbf{y}_i|| \cdot\mathbf{v}_k)^2}{P}}
 $$
 where $\hat{\mathbf{u}}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.

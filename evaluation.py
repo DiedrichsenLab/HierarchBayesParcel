@@ -34,17 +34,6 @@ def ARI(U, Uhat):
     return 1-metrics.adjusted_rand_score(U, Uhat)
 
 
-def homogeneity(U, Uhat):
-    """Compute the homogeneity value between the two parcellations
-    Args:
-        U: the true U's
-        Uhat: the estimated U's from fitted model
-    Returns:
-        the homogeneity score
-    """
-    return 1-metrics.homogeneity_score(U, Uhat)
-
-
 def u_abserr(U,uhat):
     """Absolute error on U
     Args:
@@ -73,6 +62,7 @@ def u_prederr(U, uhat, expectation=True):
         uhat = pt.argmax(uhat, dim=1)
         return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
+
 def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """Compute the cosine distance between the data to the predicted V's
     Args:
@@ -87,7 +77,7 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """
     # standardise V and data to unit length
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-    Ynorm = pt.sqrt(pt.sum(Y**2, dim=1,keepdim=True))
+    Ynorm = pt.sqrt(pt.sum(Y**2, dim=1, keepdim=True))
 
     if adjusted:
         # ||Y_i||-(V_k)T(Y_i)
@@ -100,12 +90,11 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         cos_distance = pt.sum(cos_distance * U, dim=1)
     else:
         # Calculate the argmax U_hat (hard assignments)
-        idx = pt.argmax(U, dim=1,keepdim=1)
+        idx = pt.argmax(U, dim=1, keepdim=1)
         U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
         cos_distance = pt.sum(cos_distance * U_max, dim=1)
 
     return pt.mean(cos_distance).item()
-
 
 
 def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
@@ -358,12 +347,6 @@ def evaluate_U(U_true, U_predict, crit='u_prederr'):
             eval_res[i] = ARI(U_true[i], U_predict[i])
         eval_res = pt.mean(eval_res)
 
-    elif crit == 'homogeneity':
-        U_predict = pt.argmax(U_predict, dim=1)
-        eval_res = pt.zeros(U_true.shape[0])
-        for i in range(U_true.shape[0]):
-            eval_res[i] = homogeneity(U_true[i], U_predict[i])
-        eval_res = pt.mean(eval_res)
     else:
         raise NameError('The given criterion must be specified!')
 

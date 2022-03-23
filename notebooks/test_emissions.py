@@ -21,7 +21,7 @@ import evaluation as ev
 import pandas as pd
 
 
-def _plot_loglike(loglike, true_loglike, color='b'):
+def _plot_loglike(ax, loglike, true_loglike, color='b'):
     """Plot the log-likelihood curve and the true log-likelihood
     Args:
         loglike: The log-likelihood curve of the EM iterations
@@ -31,13 +31,13 @@ def _plot_loglike(loglike, true_loglike, color='b'):
     Returns:
         The plot
     """
-    plt.figure()
-    plt.plot(loglike, color=color)
-    plt.axhline(y=true_loglike, color='r', linestyle=':')
-    plt.title('True log-likelihood (red) vs. estimated log-likelihood (blue)')
+    ax.plot(loglike, color=color)
+    ax.axhline(y=true_loglike, color='r', linestyle=':')
+    ax.set_title('log-likelihood')
+    return ax
 
 
-def _plot_diff(true_param, predicted_params, index=None, name='V'):
+def _plot_diff(ax, true_param, predicted_params, index=None, name='V'):
     """ Plot the model parameters differences.
 
     Args:
@@ -64,12 +64,13 @@ def _plot_diff(true_param, predicted_params, index=None, name='V'):
             else:
                 dist = pt.linalg.norm(this_pred[:, k] - true_param[:, k])
             diff[i, k] = dist
-    plt.figure()
-    plt.plot(diff)
-    plt.title('the differences between true %ss and estimated %ss for each k' % (name, name))
+
+    ax.plot(diff)
+    ax.set_title('differences of true/estimated %ss' % name)
+    return ax
 
 
-def _plt_single_param_diff(theta_true, theta, name=None):
+def _plt_single_param_diff(ax, theta_true, theta, name=None):
     """Plot the single estimated parameter array and the true parameter
     Args:
         theta_true: the true parameter
@@ -79,14 +80,14 @@ def _plt_single_param_diff(theta_true, theta, name=None):
     Returns:
         The plot
     """
-    plt.figure()
     if name is not None:
-        plt.title('True %s (red) vs estimated %s (blue)' % (name, name))
+        ax.set_title('True/estimated %s' % name)
 
     iter = theta.shape[0]
     theta_true = np.repeat(theta_true, iter)
-    plt.plot(theta_true, linestyle='--', color='r')
-    plt.plot(theta, color='b')
+    ax.plot(theta_true, linestyle='--', color='r')
+    ax.plot(theta, color='b')
+    return ax
 
 
 def sample_spherical(npoints, ndim=3):
@@ -244,21 +245,25 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     M, ll, theta, Uhat_fit = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
 
     # Plot fitting results
-    _plot_loglike(ll, loglike_true, color='b')
+    fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+    _plot_loglike(axs[0], ll, loglike_true, color='b')
+
     true_V = theta_true[M.get_param_indices('emission.V')].reshape(N, K)
     predicted_V = theta[:, M.get_param_indices('emission.V')]
     idx = matching_params(true_V, predicted_V, once=False)
-
-    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
 
     ind = M.get_param_indices('emission.sigma2')
-    _plt_single_param_diff(np.log(theta_true[ind]),np.log(theta[:, ind]), name='log sigma2')
+    _plt_single_param_diff(axs[2], np.log(theta_true[ind]),
+                           np.log(theta[:, ind]), name='log sigma2')
 
+    fig.suptitle('GMM fitting results')
+    plt.tight_layout()
     plt.show()
     print('Done simulation GMM.')
 
 
-def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
+def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, beta=0.5, sigma2=1.0):
     """Simulation function used for testing full model with a GMM emission
     Args:
         K: the number of clusters
@@ -293,7 +298,7 @@ def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2
     M = FullModel(arrangeM, emissionM)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
-    signal = pt.distributions.exponential.Exponential(0.5).sample((num_sub, P))
+    signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, P))
     Ys = Y * signal.unsqueeze(1).repeat(1, N, 1)
 
     import plotly.graph_objects as go
@@ -370,22 +375,27 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
 
     # Plotfitting results
-    _plot_loglike(ll, loglike_true, color='b')
+    fig, axs = plt.subplots(1, 4, figsize=(16, 4))
+    _plot_loglike(axs[0], ll, loglike_true, color='b')
+
     ind = M.get_param_indices('emission.V')
     true_V = theta_true[ind].reshape(N, K)
     predicted_V = theta[:, ind]
     idx = matching_params(true_V, predicted_V, once=False)
-    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
 
     ind = M.get_param_indices('emission.sigma2')
-    _plt_single_param_diff(np.log(theta_true[ind]),np.log(theta[:, ind]), name='log sigma2')
+    _plt_single_param_diff(axs[2], np.log(theta_true[ind]), np.log(theta[:, ind]), name='log sigma2')
 
     ind = M.get_param_indices('emission.beta')
-    _plt_single_param_diff(theta_true[ind],theta[:, ind], name='beta')
+    _plt_single_param_diff(axs[3], theta_true[ind],theta[:, ind], name='beta')
     # SSE = mean_adjusted_sse(Y, M.emission.V, U_hat, adjusted=True, soft_assign=False)
 
+    fig.suptitle('GME fitting results')
+    plt.tight_layout()
     plt.show()
     print('Done simulation GME.')
+
 
 def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=True):
     """Simulation function used for testing full model with a VMF emission
@@ -422,25 +432,26 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
 
     # Plotfitting results
-    _plot_loglike(ll, loglike_true, color='b')
+    fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+    _plot_loglike(axs[0], ll, loglike_true, color='b')
+
     ind = M.get_param_indices('emission.V')
     true_V = theta_true[ind].reshape(N, K)
     predicted_V = theta[:, ind]
     idx = matching_params(true_V, predicted_V, once=False)
-    _plot_diff(true_V, predicted_V, index=idx, name='V')
+    _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
 
     ind = M.get_param_indices('emission.kappa')
     if uniform_kappa:
         # Plot if kappa is uniformed
-        _plt_single_param_diff(theta_true[ind],
-                               theta[:, ind], name='kappa')
+        _plt_single_param_diff(axs[2], theta_true[ind], theta[:, ind], name='kappa')
     else:
         # Plot if kappa is not uniformed
-        idx = matching_params(theta_true[ind].reshape(1, K),
-                              theta[:, ind], once=False)
-        _plot_diff(theta_true[ind].reshape(1, K),
-                   theta[:, ind], index=idx, name='kappa')
+        idx = matching_params(theta_true[ind].reshape(1, K), theta[:, ind], once=False)
+        _plot_diff(axs[2], theta_true[ind].reshape(1, K), theta[:, ind], index=idx, name='kappa')
 
+    fig.suptitle('VMF fitting results')
+    plt.tight_layout()
     plt.show()
     print('Done simulation VMF.')
 
@@ -614,60 +625,57 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     return T
 
 
-def do_full_comparison_emission(clusters = 5,
-            iters = 2,
-            N = 20,
-            P  = 500,
-            subjs = 10,
-            beta=0.4,
-            true_models = ['GMM','GME','VMF'],
-            disper = [0.1,0.1,18],
-            same_signal=True):
-    D=pd.DataFrame()
-    for m,e in enumerate(true_models):
+def do_full_comparison_emission(clusters=5, iters=2, N=20, P=500, subjs=10, beta=0.4,
+                                true_models=['GMM', 'GME', 'VMF'], disper=[0.1, 0.1, 18],
+                                same_signal=True):
+    D = pd.DataFrame()
+    for m, e in enumerate(true_models):
         for i in range(iters):
             # beta is to control the signal strength for VMF, sigma2 is for GMM and GME
-            T = _full_comparison_emission(data_type=e, num_sub=subjs, P=P,
-                                                 K=clusters, N=N, beta=beta, dispersion=disper[m],same_signal=same_signal)
-            D = pd.concat([D,T])
+            T = _full_comparison_emission(data_type=e, num_sub=subjs, P=P, K=clusters,
+                                          N=N, beta=beta, dispersion=disper[m],
+                                          same_signal=same_signal)
+            D = pd.concat([D, T])
     return D
 
 
-def plot_comparision_emission(T,criterion=['nmi','ari','coserr_E','coserrA_E'],true_models=['GMM','GME','VMF']):
+def plot_comparision_emission(T, criterion=['nmi', 'ari', 'coserr_E', 'coserrA_E'],
+                              true_models=['GMM', 'GME', 'VMF']):
     num_rows = len(criterion)
     num_cols = len(true_models)
     fig1, axs = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharey='row')
     for i in range(num_rows):
         for j in range(num_cols):
-            plt.sca(axs[i,j])
-            ind = (T.data_type==true_models[j]) & (T.model!='true')
-            sb.barplot(data=T[ind],x='model',y=criterion[i])
+            plt.sca(axs[i, j])
+            ind = (T.data_type == true_models[j]) & (T.model != 'true')
+            sb.barplot(data=T[ind], x='model', y=criterion[i])
             axs[i][0].set_ylabel(criterion[i])
             axs[0][j].set_title(true_models[j])
-            ind = (T.data_type==true_models[j]) & (T.model=='true')
-            plt.axhline(y=T[ind][criterion[i]].mean(),linestyle=':',color='k')
-
+            ind = (T.data_type == true_models[j]) & (T.model == 'true')
+            plt.axhline(y=T[ind][criterion[i]].mean(), linestyle=':', color='k')
 
 
 if __name__ == '__main__':
     # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
-    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100)
-    # _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=0.1, beta=2.0,num_bins=100, std_V=True)
-    T=_param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100,num_bins=300, std_V=True,num_iter=5,type_estep='import')
+    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
+    # _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=0.1, beta=2.0,
+    #                    num_bins=100, std_V=True)
+    # T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
+    #                         std_V=True, num_iter=5, type_estep='import')
     # pass
-    # T=do_full_comparison_emission(iters=20)
-    #T=do_full_comparison_emission(iters=10,
+
+    # T=do_full_comparison_emission(iters=10,
     #        clusters = 20,
     #        beta=0.4,
     #        true_models = ['GMM','GME','VMF'],
     #        disper = [0.1,0.1,18],
     #        same_signal=True)
-    #T.to_csv('notebooks/emission_modelrecover_2.csv')
-    #T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
-    #plot_comparision_emission(T)
-    # _simulate_full_GME()
-    plt.subplot(2,1,1)
-    sb.lineplot(data=T,x='sigma2_true',y='sigma2_hat',hue='beta_true')
-    plt.subplot(2,1,2)
-    sb.lineplot(data=T,x='beta_true',y='beta_hat',hue='sigma2_true')
+    # T.to_csv('notebooks/emission_modelrecover_2.csv')
+    # T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
+    # plot_comparision_emission(T)
+
+    # plt.subplot(2,1,1)
+    # sb.lineplot(data=T,x='sigma2_true',y='sigma2_hat',hue='beta_true')
+    # plt.subplot(2,1,2)
+    # sb.lineplot(data=T,x='beta_true',y='beta_hat',hue='sigma2_true')
     pass
