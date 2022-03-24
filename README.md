@@ -447,6 +447,8 @@ where the $\mathbf{u_i}$ represents the true cluster label of $i$ and $\langle \
 
 Note, this calculation of the mean absolute error is subject to the premutation of the parcellation, so that a loop over all possible permutations and find the minimum error is applied.
 
+
+
 #### 2. Normalized Mutual information (NMI) between $\mathbf{U}$ and $\hat{\mathbf{U}}$
 
 the second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations $\mathbf{U}$ and $\hat{\mathbf{U}}$.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
@@ -457,9 +459,17 @@ where $k_{\mathbf{u}}=\{1,2,3,...,k\}$ and $k_{\mathbf{\hat{u}}}=\{1,2,3,...,k\}
 
 Similarly, the $||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||$ means the total number of a brain locations that both falls into classes $k_{\mathbf{u}}=i$ and $k_{\mathbf{\hat{u}}}=j$. Note, the NMI calculation would not suffer from the permutation.
 
+
+
 #### 3. Adjusted rand index (ARI) between $\mathbf{U}$ and $\hat{\mathbf{U}}$
 
-the third one is the commonly used adjust rand index to test how similar the two given parcellations are.
+the third one is the commonly used adjust rand index to test how similar the two given parcellations are. It defined as:
+$$
+ARI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\times(M_{11}M_{00}-M_{10}M_{01})}{(M_{00}+M_{10})(M_{10}+M_{11})+(M_{00}+M_{01})(M_{01}+M_{11})}
+$$
+where $M_{11}$ corresponds to the number of pairs that are assigned to the same parcel in both $\mathbf{U}$ and $\mathbf{\hat{U}}$, $M_{00}$ corresponds to the number of pairs that are assigned to different clusters in both $\mathbf{U}$ and $\mathbf{\hat{U}}$, $M_{10}$ corresponds to the number of pairs that are assigned to the same parcel in $\mathbf{U}$, but different parcels in $\mathbf{\hat{U}}$, and $M_{01}$ corresponds to the number of pairs that are assigned to the same parcel in $\mathbf{\hat{U}}$, but different parcels in $\mathbf{\hat{U}}$.
+
+Intuitively, $M_{00}$ and $M_{11}$ account for the agreement of parcellations, whereas $M_{10}$ and $M_{01}$ indicate their disagreement. Note, the ARI calculation would not suffer from the permutation.
 
 
 

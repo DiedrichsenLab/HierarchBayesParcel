@@ -9,6 +9,8 @@ Author: DZHI
 import numpy as np
 import torch as pt
 import matplotlib.pyplot as plt
+
+import evaluation
 from full_model import FullModel
 from arrangements import ArrangeIndependent
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
@@ -655,27 +657,24 @@ def plot_comparision_emission(T, criterion=['nmi', 'ari', 'coserr_E', 'coserrA_E
             plt.axhline(y=T[ind][criterion[i]].mean(), linestyle=':', color='k')
 
 
-if __name__ == '__main__':
-    # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
-    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
-    # _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=0.1, beta=2.0,
-    #                    num_bins=100, std_V=True)
-    # T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
-    #                         std_V=True, num_iter=5, type_estep='import')
-    # pass
-
-    # T=do_full_comparison_emission(iters=10,
-    #        clusters = 20,
-    #        beta=0.4,
-    #        true_models = ['GMM','GME','VMF'],
-    #        disper = [0.1,0.1,18],
-    #        same_signal=True)
-    # T.to_csv('notebooks/emission_modelrecover_2.csv')
-    # T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
-    # plot_comparision_emission(T)
-
-    # plt.subplot(2,1,1)
-    # sb.lineplot(data=T,x='sigma2_true',y='sigma2_hat',hue='beta_true')
-    # plt.subplot(2,1,2)
-    # sb.lineplot(data=T,x='beta_true',y='beta_hat',hue='sigma2_true')
-    pass
+# if __name__ == '__main__':
+#     _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
+#     _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
+#     _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=0.1, beta=2.0,
+#                        num_bins=100, std_V=True)
+#     T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
+#                             std_V=True, num_iter=5, type_estep='import')
+#     pass
+#
+#     T = do_full_comparison_emission(clusters=5, iters=10, beta=0.4, true_models=['GMM', 'GME', 'VMF'],
+#                                     disper=[0.1, 0.1, 18], same_signal=True)
+#     T.to_csv('notebooks/emission_modelrecover_2.csv')
+#     T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
+#     plot_comparision_emission(T)
+#
+#     plt.subplot(2,1,1)
+#     sb.lineplot(data=T,x='sigma2_true',y='sigma2_hat',hue='beta_true')
+#     plt.subplot(2,1,2)
+#     sb.lineplot(data=T,x='beta_true',y='beta_hat',hue='sigma2_true')
+#     plt.show()
+#     pass
