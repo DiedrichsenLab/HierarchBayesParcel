@@ -8,6 +8,9 @@ from sample_vmf import rand_von_mises_fisher, rand_von_Mises
 from model import Model
 from depreciated.AIS_test import annealed_importance_sampling, rejection_sampling, importance_sampling
 
+PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
+log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
+
 
 class EmissionModel(Model):
     def __init__(self, K=4, N=10, P=20, data=None):
@@ -168,7 +171,7 @@ class MixGaussianExp(EmissionModel):
         if params is not None:
             self.set_params(params)
         self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
-        self.type_estep =  type_estep # Added for a period until we have the best techique
+        self.type_estep = type_estep  # Added for a period until we have the best technique
 
     def initialize(self, data):
         """Stores the data in emission model itself
@@ -319,6 +322,44 @@ class MixGaussianExp(EmissionModel):
 
         return LL
 
+    def Estep_import_old(self, Y=None, signal=None):
+        """ Estep using importance sampling from exp(beta):
+        Sampling is done per iteration for all voxels and clusters
+        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+        Args:
+            sub: specify which subject to optimize
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+        """
+        if Y is not None:
+            self.initialize(Y)
+
+        n_subj = self.Y.shape[0]
+        LL = pt.empty((n_subj, self.K, self.P))
+        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(self.V.T,self.Y)
+
+        # Instead of evenly spaced, sample from exp(beta)
+        dist = pt.distributions.exponential.Exponential(self.beta)
+        x = dist.sample((self.num_signal_bins,))
+
+        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+        if signal is None:
+            # This is p(y,s|u)
+            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
+            # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+            post = pt.softmax(loglike, dim=3)
+            self.s = pt.sum(x * post, dim=3)
+            self.s2 = pt.sum(x**2 * post, dim=3)
+        else:
+            self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
+            self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
+
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
+        # the log likelihood for emission model (GMM in this case)
+        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
+
+        return LL
+
     def Estep_import(self, Y=None, signal=None):
         """ Estep using importance sampling from exp(beta):
         Sampling is done per iteration for all voxels and clusters
@@ -330,26 +371,30 @@ class MixGaussianExp(EmissionModel):
         if Y is not None:
             self.initialize(Y)
 
-        n_subj= self.Y.shape[0]
-
-        LL = pt.empty((n_subj, self.K, self.P))
+        n_subj = self.Y.shape[0]
         uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(self.V.T, self.Y)
 
-        YV = pt.matmul(self.V.T,self.Y)
-
-        # Instead of evenly spaced, sample from exp(beta)
+        # Instead of evenly spaced, sample from q(x) (here is exp(beta))
         dist = pt.distributions.exponential.Exponential(self.beta)
         x = dist.sample((self.num_signal_bins,))
+        qx_pdf = dist.log_prob(x).exp()
 
         logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
         if signal is None:
-                # This is p(y,s|u)
-            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
-                # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
-            post = pt.softmax(loglike,dim=3)
-            self.s = pt.sum(x * post,dim=3)
-            self.s2 = pt.sum(x**2 * post,dim=3)
+            # This is p(y,s|u)
+            loglike = -0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
+            likelihood = pt.softmax(loglike, dim=3)
 
+            # Here to compute the ratio of p(x)/q(x) as the weights for each sample
+            # The p(x) is the true distribution which can be either normalized or un-normalized
+            ratio = likelihood / qx_pdf
+
+            # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+            # post = pt.softmax(ratio, dim=3)
+            post = ratio / pt.sum(ratio, dim=3, keepdim=True)
+            self.s = pt.sum(x * post, dim=3)
+            self.s2 = pt.sum(x**2 * post, dim=3)
         else:
             self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
             self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
@@ -357,6 +402,52 @@ class MixGaussianExp(EmissionModel):
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
         LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
+
+        return LL
+
+    def Estep_reject(self, Y=None, signal=None):
+        """ Estep using importance sampling from exp(beta):
+        Sampling is done per iteration for all voxels and clusters
+        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+        Args:
+            sub: specify which subject to optimize
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+        """
+        if Y is not None:
+            self.initialize(Y)
+
+        n_subj = self.Y.shape[0]
+        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(self.V.T, self.Y)
+
+        # Instead of evenly spaced, sample from q(x) (here is exp(beta))
+        dist = pt.distributions.exponential.Exponential(self.beta)
+        x = dist.sample((self.num_signal_bins,))
+        qx_pdf = dist.log_prob(x).exp()
+
+        if signal is None:
+            # This is p(y,s|u)
+            loglike = -0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
+            likelihood = pt.softmax(loglike, dim=3)
+
+            # Here to compute the ratio of p(x)/q(x) as the weights for each sample
+            # The p(x) is the true distribution which can be either normalized or un-normalized
+            M, _ = pt.max(likelihood / qx_pdf, dim=3, keepdim=True)
+            ratio = likelihood / (M*qx_pdf)
+
+            u = pt.distributions.uniform.Uniform(0, 1).sample(ratio.shape)
+            mask = pt.where(u <= ratio, 1.0, 0.0)
+            # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+            # post = pt.softmax(ratio, dim=3)
+            self.s = pt.sum(x * mask, dim=3)/mask.sum(dim=3)
+            self.s2 = pt.sum(x**2 * mask, dim=3)/mask.sum(dim=3)
+        else:
+            self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
+            self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
+
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
+        # the log likelihood for emission model (GMM in this case)
+        LL = -0.5 * self.N * (pt.log(2*PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss + pt.log(self.beta) - self.beta * self.s
 
         return LL
 
@@ -375,19 +466,18 @@ class MixGaussianExp(EmissionModel):
         LL = pt.empty((n_subj, self.K, self.P))
         uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
 
-        YV = pt.matmul(self.V.T,self.Y)
+        YV = pt.matmul(self.V.T, self.Y)
         signal_max = self.maxlength*1.2  # Make the maximum signal 1.2 times the max data magnitude
         signal_bin = signal_max / self.num_signal_bins
-        x = pt.linspace(signal_bin/2,signal_max,self.num_signal_bins)
+        x = pt.linspace(signal_bin/2, signal_max, self.num_signal_bins)
         logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
         if signal is None:
-                # This is p(y,s|u)
+            # This is p(y,s|u)
             loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2)) - self.beta * x
-                # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
-            post = pt.softmax(loglike,dim=3)
-            self.s = pt.sum(x * post,dim=3)
-            self.s2 = pt.sum(x**2 * post,dim=3)
-
+            # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
+            post = pt.softmax(loglike, dim=3)
+            self.s = pt.sum(x * post, dim=3)
+            self.s2 = pt.sum(x**2 * post, dim=3)
         else:
             self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
             self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
@@ -400,12 +490,17 @@ class MixGaussianExp(EmissionModel):
 
     def Estep(self, Y=None, signal=None):
         if self.type_estep == 'linspace':
-            LL = self.Estep_linspace(Y,signal)
+            return self.Estep_linspace(Y, signal)
         elif self.type_estep == 'import':
-            LL = self.Estep_import(Y,signal)
+            return self.Estep_import(Y, signal)
+        elif self.type_estep == 'import_old':
+            return self.Estep_import_old(Y, signal)
+        elif self.type_estep == 'reject':
+            return self.Estep_reject(Y, signal)
         elif self.type_estep == 'ais':
-            LL = self.Estep_ais(Y,signal)
-        return LL
+            return self.Estep_ais(Y, signal)
+        else:
+            raise NameError('An E-step method must be given.')
 
     def Mstep(self, U_hat):
         """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
@@ -456,7 +551,7 @@ class MixGaussianExp(EmissionModel):
             Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
         # Only return signal when asked: compatibility with other models
         if return_signal:
-            return Y,signal
+            return Y, signal
         else:
             return Y
 

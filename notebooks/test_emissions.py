@@ -351,8 +351,10 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
         Several evaluation plots.
     """
     # Step 1: Set the true model to some interesting value
-    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V)
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False,
+                                  remove_redundancy=False)
+    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins,
+                               std_V=std_V)
     emissionT.sigma2 = pt.tensor(sigma2)
     emissionT.beta = pt.tensor(beta)
     # Step 2: Generate data by sampling from the above model
@@ -365,8 +367,10 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     theta_true = T.get_params()
 
     # Step 4: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V,type_estep=type_estep)
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False,
+                                  remove_redundancy=False)
+    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins,
+                               std_V=std_V, type_estep=type_estep)
     emissionM.std_V = std_V
     # emissionM.V =emissionT.V
     # emissionM.sigma2 =emissionT.sigma2
@@ -493,6 +497,7 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
     print(f"time 2:{time.time()-t:.5f}")
     pass
 
+
 def _param_recovery_GME(K=5, P=20, N=20, num_sub=10, max_iter=100,
         sigma2=[0.1,0.5,1.0,1.5,2.0], beta=[0.1,0.5,1.0,2.0,10.0], num_bins=100, std_V=True,
         type_estep='linspace',num_iter =10):
@@ -548,6 +553,78 @@ def _param_recovery_GME(K=5, P=20, N=20, num_sub=10, max_iter=100,
                 dd['beta_hat'] = [M.emission.beta.item()]
                 D=pd.concat([D,pd.DataFrame(dd)],ignore_index=True)
     return D
+
+
+def _test_sampling_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100, sigma2=1.0,
+                       beta=1.0, num_bins=100, std_V=True, type_estep=['linspace']):
+    """ Comparing the GME model recovery using different sampling methods
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        sigma2: the sigma2 for GMM_exp emission model
+        beta: the beta for GMM_exp emission model
+        num_bins: the sampling size
+        std_V: standardize V's if set to True. Otherwise, no standardization
+        type_estep: specify the sampling methods
+    Returns:
+        Several evaluation plots to compare the results.
+    """
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False,
+                                  remove_redundancy=False)
+    emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins,
+                               std_V=std_V)
+    emissionT.sigma2 = pt.tensor(sigma2)
+    emissionT.beta = pt.tensor(beta)
+
+    # Step 2: Generate data by sampling from the above model
+    T = FullModel(arrangeT, emissionT)
+    U = arrangeT.sample(num_subj=num_sub)
+    Y, signal = emissionT.sample(U, return_signal=True)
+
+    # Step 3: Compute the log likelihood from the true model
+    Uhat_true, loglike_true = T.Estep(Y=Y)
+    theta_true = T.get_params()
+
+    # Step 4: Generate new models using different sampling for fitting
+    for type in type_estep:
+        emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins,
+                                   std_V=std_V, type_estep=type)
+        emissionM.std_V = std_V
+        M = FullModel(arrangeT, emissionM)
+
+        # Step 5: Estimate the parameter thetas to fit the new model using EM
+        M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
+
+        # Step 6: Plot fitting results
+        fig, axs = plt.subplots(1, 4, figsize=(16, 4))
+
+        # fig 1: true log-likelihood vs. predicted log-likelihood curve
+        _plot_loglike(axs[0], ll, loglike_true, color='b')
+
+        # fig 2: the plot of differences between true Vs and predicted Vs at each iter
+        ind = M.get_param_indices('emission.V')
+        true_V = theta_true[ind].reshape(N, K)
+        predicted_V = theta[:, ind]
+        idx = matching_params(true_V, predicted_V, once=False)
+        _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
+
+        # fig 3: true sigma2 vs. predicted sigma2
+        ind = M.get_param_indices('emission.sigma2')
+        _plt_single_param_diff(axs[2], np.log(theta_true[ind]), np.log(theta[:, ind]), name='log sigma2')
+
+        # fig 4: true beta vs. the predicted beta
+        ind = M.get_param_indices('emission.beta')
+        _plt_single_param_diff(axs[3], theta_true[ind], theta[:, ind], name='beta')
+
+        fig.suptitle('GME fitting results using %s' % type)
+        plt.tight_layout()
+        plt.show()
+
+    print('Done comparing GME E_step.')
 
 
 def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, beta=1.0,
@@ -660,10 +737,13 @@ def plot_comparision_emission(T, criterion=['nmi', 'ari', 'coserr_E', 'coserrA_E
 # if __name__ == '__main__':
 #     _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
 #     _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
-#     _simulate_full_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, sigma2=0.1, beta=2.0,
-#                        num_bins=100, std_V=True)
+#     _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=2.0,
+#                        num_bins=100, std_V=True, type_estep='import')
 #     T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
 #                             std_V=True, num_iter=5, type_estep='import')
+#     _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=5.0,
+#                        beta=0.5, num_bins=200, std_V=True,
+#                        type_estep=['linspace', 'import_old', 'import', 'reject'])
 #     pass
 #
 #     T = do_full_comparison_emission(clusters=5, iters=10, beta=0.4, true_models=['GMM', 'GME', 'VMF'],
