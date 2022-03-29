@@ -97,11 +97,12 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """
     # standardise V and data to unit length
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-    Ynorm = pt.sqrt(pt.sum(Y**2, dim=1, keepdim=True))
+    Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
+    Ynorm = pt.sqrt(Ynorm2)
 
     if adjusted:
         # ||Y_i||-(V_k)T(Y_i)
-        cos_distance = Ynorm - pt.matmul(V.T, Y)
+        cos_distance = Ynorm2 - pt.matmul(V.T, Y * Ynorm)
     else:
         # 1-(V_k)T(Y_i/||Y_i||)
         cos_distance = 1 - pt.matmul(V.T, Y/Ynorm)

@@ -475,7 +475,7 @@ Intuitively, $M_{00}$ and $M_{11}$ account for the agreement of parcellations, w
 
 ### Evaluation on independent test data ($\mathbf{Y}_{test}$)
 
-#### 1a. Cosine error
+#### 1. Cosine error
 
 the first evaluation criterion based on the difference between some observed activity profiles $\mathbf{Y}_{test}$ and the predicted mean directions from the model  $\mathbf{v}_k$ given some expectation of which voxel belongs to what cluster $\langle \mathbf{u}_i \rangle$ . One possibility is to use for each voxel the most likely predicted mean direction. 
 $$
@@ -487,22 +487,23 @@ $$
 $$
 where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
 
+#### 2. the Adjusted Cosine error
 
-#### 1b. the adjusted Cosine error
-
-A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the length of the data vector. This effectively calculates the root mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\||\mathbf{y}_i||\mathbf{v}_k$):
+A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the squared length of the data vector:
 $$
-\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (||\mathbf{y}_i||-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i)
+\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||)
 $$
 where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation. We then compute the mean cosine distance across all $P$ brain locations. Another option is to calculate the *expected* mean cosine distance under the $q(\mathbf{u}_i)$ which defined as below:
 $$
-\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||-{\mathbf{v}_k}^{T}\mathbf{y}_i)
+\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
 $$
 where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
 
+This effectively calculates the mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\||\mathbf{y}_i||\mathbf{v}_k$): 
+
+PROOF!!! (DA Zhi) 
 
 
-#### 2. the adjusted RMSE
 
 the second evaluation criterion is to calculate the adjusted square root of mean squared error, which defined as:
 $$
