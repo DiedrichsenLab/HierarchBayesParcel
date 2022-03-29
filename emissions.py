@@ -162,7 +162,8 @@ class MixGaussianExp(EmissionModel):
     Mixture of Gaussians with signal strength (fit gamma distribution)
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
-    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None, std_V=True,type_estep='linspace'):
+    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None,
+                 std_V=True, type_estep='linspace'):
         super().__init__(K, N, P, data)
         self.std_V = std_V  # Standardize mean vectors?
         self.random_params()
@@ -322,7 +323,7 @@ class MixGaussianExp(EmissionModel):
 
         return LL
 
-    def Estep_import_old(self, Y=None, signal=None):
+    def Estep_import(self, Y=None, signal=None):
         """ Estep using importance sampling from exp(beta):
         Sampling is done per iteration for all voxels and clusters
         The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
@@ -360,51 +361,6 @@ class MixGaussianExp(EmissionModel):
 
         return LL
 
-    def Estep_import(self, Y=None, signal=None):
-        """ Estep using importance sampling from exp(beta):
-        Sampling is done per iteration for all voxels and clusters
-        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
-        Args:
-            sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
-        """
-        if Y is not None:
-            self.initialize(Y)
-
-        n_subj = self.Y.shape[0]
-        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
-        YV = pt.matmul(self.V.T, self.Y)
-
-        # Instead of evenly spaced, sample from q(x) (here is exp(beta))
-        dist = pt.distributions.exponential.Exponential(self.beta)
-        x = dist.sample((self.num_signal_bins,))
-        qx_pdf = dist.log_prob(x).exp()
-
-        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
-        if signal is None:
-            # This is p(y,s|u)
-            loglike = -0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
-            likelihood = pt.softmax(loglike, dim=3)
-
-            # Here to compute the ratio of p(x)/q(x) as the weights for each sample
-            # The p(x) is the true distribution which can be either normalized or un-normalized
-            ratio = likelihood / qx_pdf
-
-            # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
-            # post = pt.softmax(ratio, dim=3)
-            post = ratio / pt.sum(ratio, dim=3, keepdim=True)
-            self.s = pt.sum(x * post, dim=3)
-            self.s2 = pt.sum(x**2 * post, dim=3)
-        else:
-            self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
-            self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
-
-        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
-        # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
-
-        return LL
-
     def Estep_reject(self, Y=None, signal=None):
         """ Estep using importance sampling from exp(beta):
         Sampling is done per iteration for all voxels and clusters
@@ -427,7 +383,7 @@ class MixGaussianExp(EmissionModel):
 
         if signal is None:
             # This is p(y,s|u)
-            loglike = -0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
+            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2)) - self.beta * x
             likelihood = pt.softmax(loglike, dim=3)
 
             # Here to compute the ratio of p(x)/q(x) as the weights for each sample
@@ -493,8 +449,6 @@ class MixGaussianExp(EmissionModel):
             return self.Estep_linspace(Y, signal)
         elif self.type_estep == 'import':
             return self.Estep_import(Y, signal)
-        elif self.type_estep == 'import_old':
-            return self.Estep_import_old(Y, signal)
         elif self.type_estep == 'reject':
             return self.Estep_reject(Y, signal)
         elif self.type_estep == 'ais':

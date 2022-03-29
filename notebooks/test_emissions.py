@@ -499,8 +499,8 @@ def _test_GME_Estep(K=5, P=200, N=8, num_sub=10, max_iter=100,
 
 
 def _param_recovery_GME(K=5, P=20, N=20, num_sub=10, max_iter=100,
-        sigma2=[0.1,0.5,1.0,1.5,2.0], beta=[0.1,0.5,1.0,2.0,10.0], num_bins=100, std_V=True,
-        type_estep='linspace',num_iter =10):
+                        sigma2=[0.1,0.5,1.0,1.5,2.0], beta=[0.1,0.5,1.0,2.0,10.0],
+                        num_bins=100, std_V=True, type_estep=['linspace'], num_iter=10):
     """Simulation function used for testing full model with a GMM_exp emission
     Args:
         K: the number of clusters
@@ -522,36 +522,35 @@ def _param_recovery_GME(K=5, P=20, N=20, num_sub=10, max_iter=100,
     D= pd.DataFrame()
     for s in sigma2:
         for b in beta:
-            for n in range(num_iter):
-                dd = {}
-                print(f'{s} {b}')
-                T.emission.sigma2 = pt.tensor(s)
-                T.emission.beta = pt.tensor(b)
-                # Step 2: Generate data by sampling from the above model
-                Y, signal = emissionT.sample(U, return_signal=True)
+            for t in type_estep:
+                for n in range(num_iter):
+                    dd = {}
+                    # print(f'sigma={s}, beta={b}, iter={n}, type={t}')
+                    T.emission.sigma2 = pt.tensor(s)
+                    T.emission.beta = pt.tensor(b)
+                    # Step 2: Generate data by sampling from the above model
+                    Y, signal = emissionT.sample(U, return_signal=True)
 
-                # Step 3: Compute the log likelihood from the true model
-                Uhat_true, loglike_true = T.Estep(Y=Y)
-                theta_true = T.get_params()
+                    # Step 3: Compute the log likelihood from the true model
+                    Uhat_true, loglike_true = T.Estep(Y=Y)
+                    theta_true = T.get_params()
 
-                # Step 4: Generate new models for fitting
-                arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-                emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins, std_V=std_V,type_estep=type_estep)
-                emissionM.std_V = std_V
-                # emissionM.V =emissionT.V
-                # emissionM.sigma2 =emissionT.sigma2
-                # emissionM.beta =emissionT.beta
-                M = FullModel(arrangeM, emissionM)
+                    # Step 4: Generate new models for fitting
+                    emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins,
+                                               std_V=std_V, type_estep=t)
+                    M = FullModel(arrangeT, emissionM)
 
-                # Step 5: Estimate the parameter thetas to fit the new model using EM
-                M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
+                    # Step 5: Estimate the parameter thetas to fit the new model using EM
+                    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001,
+                                               fit_arrangement=False)
 
-                ind = M.get_param_indices('emission.sigma2')
-                dd['sigma2_true'] = [s]
-                dd['beta_true'] = [b]
-                dd['sigma2_hat'] = [M.emission.sigma2.item()]
-                dd['beta_hat'] = [M.emission.beta.item()]
-                D=pd.concat([D,pd.DataFrame(dd)],ignore_index=True)
+                    ind = M.get_param_indices('emission.sigma2')
+                    dd['type'] = [t]
+                    dd['sigma2_true'] = [s]
+                    dd['beta_true'] = [b]
+                    dd['sigma2_hat'] = [M.emission.sigma2.item()]
+                    dd['beta_hat'] = [M.emission.beta.item()]
+                    D = pd.concat([D, pd.DataFrame(dd)], ignore_index=True)
     return D
 
 
@@ -734,27 +733,44 @@ def plot_comparision_emission(T, criterion=['nmi', 'ari', 'coserr_E', 'coserrA_E
             plt.axhline(y=T[ind][criterion[i]].mean(), linestyle=':', color='k')
 
 
+def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
+                                type_estep=['linspace', 'import', 'reject']):
+    num_rows = len(params_name)
+    num_cols = len(type_estep)
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(num_cols*4, num_rows*4), sharey='row')
+    for i in range(num_rows):
+        for j in range(num_cols):
+            data = T[T['type'] == type_estep[j]]
+            plt.sca(axs[i, j])
+            sb.lineplot(ax=axs[i, j], data=data, x=params_name[i]+'_true',
+                        y=np.abs(data[params_name[i]+'_true'] - data[params_name[i]+'_hat']),
+                        hue=params_name[1-i]+'_true', palette='tab10')
+            axs[i][j].set_ylabel(params_name[i]+' recovery')
+            axs[i][j].set_xlabel(params_name[i])
+            axs[i][j].set_title(type_estep[j])
+
+    plt.suptitle('parameter recovery using different E_step (GME)')
+    plt.tight_layout()
+
+
 # if __name__ == '__main__':
 #     _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
 #     _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
 #     _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=2.0,
 #                        num_bins=100, std_V=True, type_estep='import')
-#     T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
-#                             std_V=True, num_iter=5, type_estep='import')
 #     _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=5.0,
 #                        beta=0.5, num_bins=200, std_V=True,
-#                        type_estep=['linspace', 'import_old', 'import', 'reject'])
-#     pass
+#                        type_estep=['linspace', 'import', 'import', 'reject'])
+#     T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
+#                             std_V=True, num_iter=5, sigma2=[0.1, 0.5, 5.0], beta=[0.1, 0.5, 2.0],
+#                             type_estep=['linspace', 'import', 'reject'])
+#     plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
 #
 #     T = do_full_comparison_emission(clusters=5, iters=10, beta=0.4, true_models=['GMM', 'GME', 'VMF'],
 #                                     disper=[0.1, 0.1, 18], same_signal=True)
 #     T.to_csv('notebooks/emission_modelrecover_2.csv')
-#     T=pd.read_csv('notebooks/emission_modelrecover_2.csv')
+#     T = pd.read_csv('notebooks/emission_modelrecover_2.csv')
 #     plot_comparision_emission(T)
-#
-#     plt.subplot(2,1,1)
-#     sb.lineplot(data=T,x='sigma2_true',y='sigma2_hat',hue='beta_true')
-#     plt.subplot(2,1,2)
-#     sb.lineplot(data=T,x='beta_true',y='beta_hat',hue='sigma2_true')
 #     plt.show()
 #     pass
+

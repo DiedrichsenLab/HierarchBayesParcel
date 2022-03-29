@@ -491,26 +491,30 @@ where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using t
 
 A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the squared length of the data vector:
 $$
-\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||)
+\bar{\epsilon}_{Acosine} = \frac{1}{P}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||) \label{ref1}
 $$
 where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation. We then compute the mean cosine distance across all $P$ brain locations. Another option is to calculate the *expected* mean cosine distance under the $q(\mathbf{u}_i)$ which defined as below:
 $$
-\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
+\langle\bar{\epsilon}_{Acosine}\rangle_q = \frac{1}{P}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
 $$
-where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
+where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model. This effectively calculates the mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\mathbf{v}_k||\mathbf{y}_i||$): 
 
-This effectively calculates the mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\||\mathbf{y}_i||\mathbf{v}_k$): 
+**Proof of the adjusted cosine distance is equivalent to MSE**   
 
-PROOF!!! (DA Zhi) 
-
-
-
-the second evaluation criterion is to calculate the adjusted square root of mean squared error, which defined as:
+For simplicity, we use $\mathbf{v}_k$ to represent the most likely predicted mean direction ${\mathbf{v}_\underset{k}{\operatorname{argmax}}}$ for each voxel in the following proof. And the mean squared error (MSE) between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\mathbf{v}_k||\mathbf{y}_i||$) is defined as:
 $$
-\bar{\epsilon}_{RMSE} = \sqrt{\frac{\sum_i (\mathbf{y}_i-||\mathbf{y}_i||\cdot{\mathbf{v}_\underset{k}{\operatorname{argmax}}})^2}{P}}
+\begin{align*}
+\bar{\epsilon}_{MSE} &= \frac{1}{P}\sum_i (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2\\
+&=\frac{1}{P}\sum_i[(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
+&=\frac{1}{P}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2)\\
+&=\frac{1}{P}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
+&=\frac{2}{P}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||)
+\end{align*}
 $$
-where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation (argmax). We then compute the root of mean squared error across all $P$ brain locations. Another option is to calculate the *expected* RMSE under the $q(\mathbf{u}_i)$ which defined as below:
+By equation $(\ref{ref1})$, we can see that $\bar{\epsilon}_{MSE} = 2\bar{\epsilon}_{Acosine}$, and similarly we can easily proof below equation:
 $$
-\langle\bar{\epsilon}_{RMSE}\rangle_q = \sqrt{\frac{\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} (\mathbf{y}_i-||\mathbf{y}_i|| \cdot\mathbf{v}_k)^2}{P}}
+\begin{align*}
+\langle\bar{\epsilon}_{MSE}\rangle_q &= \frac{1}{P}\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2=2\langle\bar{\epsilon}_{Acosine}\rangle_q
+\end{align*}
 $$
 where $\hat{\mathbf{u}}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.
