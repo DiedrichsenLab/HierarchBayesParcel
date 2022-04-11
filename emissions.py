@@ -444,6 +444,50 @@ class MixGaussianExp(EmissionModel):
 
         return LL
 
+    def Estep_mcmc_hasting(self, Y=None, signal=None, iters=10):
+        """ Estep using MCMC: Sampling is done per iteration for all voxels and clusters
+        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+        Args:
+            sub: specify which subject to optimize
+        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+        """
+        if Y is not None:
+            self.initialize(Y)
+
+        n_subj = self.Y.shape[0]
+        LL = pt.empty((n_subj, self.K, self.P))
+        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(self.V.T, self.Y)
+
+        # The unnormalized distribution that we want to compute the expecation
+        p_x = lambda a: exp(- 0.5 / self.sigma2 * (-2 * YV.view(n_subj, self.K, self.P, 1) * a +
+                        uVVu.view(self.K, 1, 1) * (a ** 2)) - self.beta * a)
+        x_t = pt.full((n_subj, self.K, self.P, 1), self.beta)
+
+        if signal is None:
+            for i in range(iters):
+                # Sample x' ~ q(x'|x_t)
+                x_prime = 1 / pt.distributions.exponential.Exponential(x_t).sample()
+                ll_proposal = pt.distributions.exponential.Exponential(x_prime).log_prob(x_t).exp()
+                ll_current = pt.distributions.exponential.Exponential(x_t).log_prob(x_prime).exp()
+                acc_rate = (ll_proposal*p_x(x_prime)) / (ll_current*p_x(x_t))
+
+                random_u = pt.distributions.uniform.Uniform(0, 1).sample(acc_rate.size())
+                x_t = pt.where(random_u <= acc_rate, x_prime, x_t)
+                self.s = x_t.squeeze(3)
+                self.s2 = x_t.squeeze(3)**2
+        else:
+            self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
+            self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1) ** 2
+
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape(
+            (self.K, 1))
+        # the log likelihood for emission model (GMM in this case)
+        LL = -0.5 * self.N * (log(2*PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss + pt.log(
+            self.beta) - self.beta * self.s
+
+        return LL
+
     def Estep(self, Y=None, signal=None):
         if self.type_estep == 'linspace':
             return self.Estep_linspace(Y, signal)
@@ -453,6 +497,8 @@ class MixGaussianExp(EmissionModel):
             return self.Estep_reject(Y, signal)
         elif self.type_estep == 'ais':
             return self.Estep_ais(Y, signal)
+        elif self.type_estep == 'mcmc':
+            return self.Estep_mcmc_hasting(Y, signal)
         else:
             raise NameError('An E-step method must be given.')
 
