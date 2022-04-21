@@ -21,6 +21,85 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import evaluation as ev
 import pandas as pd
+import h5py
+import nibabel as nb
+
+
+def make_label_gifti(data, anatomical_struct='CortexLeft', label_names=[],
+                     column_names=[], label_RGBA=[]):
+    """
+    Generates a label GiftiImage from a numpy array
+       @author joern.diedrichsen@googlemail.com, Feb 2019 (Python conversion: switt)
+    INPUTS:
+        data (np.array):
+             numVert x numCol data
+        anatomical_struct (string):
+            Anatomical Structure for the Meta-data default= 'CortexLeft'
+        label_names (list):
+            List of label names
+        column_names (list):
+            List of strings for names for columns
+        label_RGBA (np.array):
+            numLabels x 4 np-array (each element is 0-1)
+    OUTPUTS:
+        gifti (label GiftiImage)
+    """
+    numVerts, numCols = data.shape
+    numLabels = len(np.unique(data))
+
+    # Create naming and coloring if not specified in varargin
+    # Make columnNames if empty
+    if len(column_names) == 0:
+        for i in range(numLabels):
+            column_names.append("col_{:02d}".format(i+1))
+
+    # Determine color scale if empty
+    if len(label_RGBA) == 0:
+        hsv = plt.cm.get_cmap('hsv',numLabels)
+        color = hsv(np.linspace(0,1,numLabels))
+        # Shuffle the order so that colors are more visible
+        color = color[np.random.permutation(numLabels)]
+        label_RGBA = np.zeros([numLabels,4])
+        for i in range(numLabels):
+            label_RGBA[i] = color[i]
+
+    # Create label names
+    if len(label_names) == 0:
+        for i in range(numLabels):
+            label_names.append("label-{:02d}".format(i+1))
+
+    # Create label.gii structure
+    C = nb.gifti.GiftiMetaData.from_dict({
+        'AnatomicalStructurePrimary': anatomical_struct,
+        'encoding': 'XML_BASE64_GZIP'})
+
+    num_labels = np.arange(numLabels)
+    E_all = []
+    for (label, rgba, name) in zip(num_labels, label_RGBA, label_names):
+        E = nb.gifti.gifti.GiftiLabel()
+        E.key = label
+        E.label= name
+        E.red = rgba[0]
+        E.green = rgba[1]
+        E.blue = rgba[2]
+        E.alpha = rgba[3]
+        E.rgba = rgba[:]
+        E_all.append(E)
+
+    D = list()
+    for i in range(numCols):
+        d = nb.gifti.GiftiDataArray(
+            data=np.float32(data[:, i]),
+            intent='NIFTI_INTENT_LABEL',
+            datatype='NIFTI_TYPE_UINT8',
+            meta=nb.gifti.GiftiMetaData.from_dict({'Name': column_names[i]})
+        )
+        D.append(d)
+
+    # Make and return the gifti file
+    gifti = nb.gifti.GiftiImage(meta=C, darrays=D)
+    gifti.labeltable.labels.extend(E_all)
+    return gifti
 
 
 def _plot_loglike(ax, loglike, true_loglike, color='b'):
@@ -753,24 +832,73 @@ def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
     plt.tight_layout()
 
 
-# if __name__ == '__main__':
-#     _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
-#     _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
-#     _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=2.0,
-#                        num_bins=100, std_V=True, type_estep='import')
-#     _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=5.0,
-#                        beta=0.5, num_bins=200, std_V=True,
-#                        type_estep=['linspace', 'import', 'import', 'reject'])
-#     T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
-#                             std_V=True, num_iter=5, sigma2=[0.1, 0.5, 5.0], beta=[0.1, 0.5, 2.0],
-#                             type_estep=['linspace', 'import', 'reject'])
-#     plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
-#
-#     T = do_full_comparison_emission(clusters=5, iters=10, beta=0.4, true_models=['GMM', 'GME', 'VMF'],
-#                                     disper=[0.1, 0.1, 18], same_signal=True)
-#     T.to_csv('notebooks/emission_modelrecover_2.csv')
-#     T = pd.read_csv('notebooks/emission_modelrecover_2.csv')
-#     plot_comparision_emission(T)
-#     plt.show()
-#     pass
+if __name__ == '__main__':
+    # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
+    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
+    # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=2.0,
+    #                    num_bins=100, std_V=True, type_estep='import')
+    # _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=3.0,
+    #                    beta=0.5, num_bins=200, std_V=True,
+    #                    type_estep=['linspace', 'import', 'import', 'reject', 'mcmc'])
+    # T = _param_recovery_GME(K=5, P=200, N=20, num_sub=5, max_iter=100, num_bins=300,
+    #                         std_V=True, num_iter=5, sigma2=[0.1, 0.5, 5.0], beta=[0.1, 0.5, 2.0],
+    #                         type_estep=['linspace', 'import', 'reject'])
+    # plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
+    #
+    # T = do_full_comparison_emission(clusters=5, iters=10, beta=0.4, true_models=['GMM', 'GME', 'VMF'],
+    #                                 disper=[0.1, 0.1, 18], same_signal=True)
+    # T.to_csv('notebooks/emission_modelrecover_2.csv')
+    # T = pd.read_csv('notebooks/emission_modelrecover_2.csv')
+    # plot_comparision_emission(T)
+    # plt.show()
+    # pass
 
+    subj_name = ['s01', 's02', 's03', 's04', 's05', 's06', 's07', 's08', 's09', 's10', 's11',
+                 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21', 's22', 's23',
+                 's24', 's25', 's26', 's27', 's28', 's29', 's30', 's31']
+    goodsubj = [2, 3, 4, 6, 8, 9, 10, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29,
+                30, 31]
+    train_participants = [2, 3]
+    test_participants = [4]
+    sess = 1
+    Y_train, Y_test = [], []
+
+    for sub in train_participants:
+        file = h5py.File("../data/%s/Y_glm7_cerebellum_suit.mat" % subj_name[sub - 1])
+        c = pt.chunk(pt.tensor(np.array(file['data'])), 2, dim=1)
+        this_data = pt.stack(pt.chunk(c[sess], 8, dim=1))
+        this_data = this_data.sum(dim=0) / this_data.count_nonzero(dim=0)
+        Y_train.append(this_data.nan_to_num().T)
+
+    for sub in test_participants:
+        file = h5py.File("../data/%s/Y_glm7_cerebellum_suit.mat" % subj_name[sub-1])
+        c = pt.chunk(pt.tensor(np.array(file['data'])), 2, dim=1)
+        this_data = pt.stack(pt.chunk(c[sess], 8, dim=1))
+        this_data = this_data.sum(dim=0)/this_data.count_nonzero(dim=0)
+        Y_test.append(this_data.nan_to_num().T)
+
+    Y_train, Y_test = pt.stack(Y_train), pt.stack(Y_test)
+    K = 10
+    num_sub_train, N, P = Y_train.shape
+
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionM = MixGaussian(K=K, N=N, P=P, std_V=False)
+    # emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=False,
+    #                            type_estep='linspace')
+    # emissionM = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
+    M = FullModel(arrangeM, emissionM)
+
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
+    M, ll, theta, U_hat = M.fit_em(Y=Y_train, iter=100, tol=0.0001, fit_arrangement=True)
+
+    colors = plt.cm.jet(np.linspace(0, 1, K))
+    labels = U_hat.mean(dim=0).T.detach().numpy()
+    # G = make_label_gifti(np.argmax(labels, axis=1).reshape(-1,1),
+    #                      anatomical_struct='Cerebellum', label_names=[],
+    #                      column_names=[], label_RGBA=colors)
+    D = []
+    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=False, soft_assign=True))
+    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=False, soft_assign=False))
+    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=True, soft_assign=True))
+    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=True, soft_assign=False))
+    print(D)

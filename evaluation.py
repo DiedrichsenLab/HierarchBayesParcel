@@ -115,7 +115,7 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
         cos_distance = pt.sum(cos_distance * U_max, dim=1)
 
-    return pt.mean(cos_distance).item()
+    return pt.nanmean(cos_distance).item()
 
 
 def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
@@ -267,7 +267,8 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
 
 
 def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
-    """Evaluates an arrangement model new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
+    """Evaluates an arrangement model new data set using pattern completion from partition to
+       partition, using a leave-one-partition out crossvalidation approach.
     Args:
         data (tensor): Emission log-liklihood, Us (depends on crit)
         Uhat (tensor): Probility for each node (expected U)
@@ -287,7 +288,8 @@ def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
 
 
 def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
-    """Evaluates an arrangement model new data set using pattern completion from partition to partition, using a leave-one-partition out crossvalidation approach.
+    """Evaluates an arrangement model new data set using pattern completion from partition to
+       partition, using a leave-one-partition out crossvalidation approach.
     Args:
         arM (ArrangementModel): [description]
         data (tensor): Emission log-liklihood or U-estimates (depends on crit)
