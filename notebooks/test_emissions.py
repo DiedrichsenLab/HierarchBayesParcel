@@ -6,11 +6,14 @@ The script the test different emission models standalone
 
 Author: DZHI
 """
+# general import packages
 import numpy as np
 import torch as pt
 import matplotlib.pyplot as plt
 
+# for testing and evaluating models
 import evaluation
+import os
 from full_model import FullModel
 from arrangements import ArrangeIndependent
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
@@ -22,84 +25,66 @@ from plotly.subplots import make_subplots
 import evaluation as ev
 import pandas as pd
 import h5py
-import nibabel as nb
+import scipy.io as spio
+import nibabel as nib
+from SUITPy import flatmap, make_label_gifti
 
 
-def make_label_gifti(data, anatomical_struct='CortexLeft', label_names=[],
-                     column_names=[], label_RGBA=[]):
+def convert_to_vol(data, xyz, voldef):
     """
-    Generates a label GiftiImage from a numpy array
-       @author joern.diedrichsen@googlemail.com, Feb 2019 (Python conversion: switt)
-    INPUTS:
-        data (np.array):
-             numVert x numCol data
-        anatomical_struct (string):
-            Anatomical Structure for the Meta-data default= 'CortexLeft'
-        label_names (list):
-            List of label names
-        column_names (list):
-            List of strings for names for columns
-        label_RGBA (np.array):
-            numLabels x 4 np-array (each element is 0-1)
-    OUTPUTS:
-        gifti (label GiftiImage)
+    This function converts 1D numpy array data to 3D vol space, and returns nib obj
+    that can then be saved out as a nifti file
+    Args:
+        data (list or 1d numpy array)
+            voxel data, shape (num_vox, )
+        xyz (nd-array)
+            3 x P array world coordinates of voxels
+        voldef (nib obj)
+            nib obj with affine
+    Returns:
+        list of Nib Obj
+
     """
-    numVerts, numCols = data.shape
-    numLabels = len(np.unique(data))
+    # get dat, mat, and dim from the mask
+    dim = voldef.shape
+    mat = voldef.affine
 
-    # Create naming and coloring if not specified in varargin
-    # Make columnNames if empty
-    if len(column_names) == 0:
-        for i in range(numLabels):
-            column_names.append("col_{:02d}".format(i+1))
+    # xyz to ijk
+    ijk = flatmap.coords_to_voxelidxs(xyz, voldef)
+    ijk = ijk.astype(int)
 
-    # Determine color scale if empty
-    if len(label_RGBA) == 0:
-        hsv = plt.cm.get_cmap('hsv',numLabels)
-        color = hsv(np.linspace(0,1,numLabels))
-        # Shuffle the order so that colors are more visible
-        color = color[np.random.permutation(numLabels)]
-        label_RGBA = np.zeros([numLabels,4])
-        for i in range(numLabels):
-            label_RGBA[i] = color[i]
+    vol_data = np.zeros(dim)
+    vol_data[ijk[0],ijk[1],ijk[2]] = data
 
-    # Create label names
-    if len(label_names) == 0:
-        for i in range(numLabels):
-            label_names.append("label-{:02d}".format(i+1))
+    # convert to nifti
+    nib_obj = nib.Nifti1Image(vol_data, mat)
+    return nib_obj
 
-    # Create label.gii structure
-    C = nb.gifti.GiftiMetaData.from_dict({
-        'AnatomicalStructurePrimary': anatomical_struct,
-        'encoding': 'XML_BASE64_GZIP'})
 
-    num_labels = np.arange(numLabels)
-    E_all = []
-    for (label, rgba, name) in zip(num_labels, label_RGBA, label_names):
-        E = nb.gifti.gifti.GiftiLabel()
-        E.key = label
-        E.label= name
-        E.red = rgba[0]
-        E.green = rgba[1]
-        E.blue = rgba[2]
-        E.alpha = rgba[3]
-        E.rgba = rgba[:]
-        E_all.append(E)
+def convert_cerebellum_to_nifti(data):
+    """
+    Args:
+        data (np-arrray): N x 6937 length data array
+        or 1-d (6937,) array
+    Returns:
+        nifti (List of nifti1image): N output images
+    """
+    # Load the region file
+    region = spio.loadmat('../data/group/regions_cerebellum_suit.mat')["R"][0][0][0][0][4]
 
-    D = list()
-    for i in range(numCols):
-        d = nb.gifti.GiftiDataArray(
-            data=np.float32(data[:, i]),
-            intent='NIFTI_INTENT_LABEL',
-            datatype='NIFTI_TYPE_UINT8',
-            meta=nb.gifti.GiftiMetaData.from_dict({'Name': column_names[i]})
-        )
-        D.append(d)
+    # NII File for volume definition
+    nii_suit = nib.load('../data/group/cerebellarGreySUIT3mm.nii')
 
-    # Make and return the gifti file
-    gifti = nb.gifti.GiftiImage(meta=C, darrays=D)
-    gifti.labeltable.labels.extend(E_all)
-    return gifti
+    # Map the data
+    nii_mapped = []
+    if data.ndim == 2:
+        for i in range(data.shape[0]):
+            nii_mapped.append(convert_to_vol(data[i], region.T, nii_suit))
+    elif data.ndim == 1:
+        nii_mapped.append(convert_to_vol(data, region.T, nii_suit))
+    else:
+        raise(NameError('data needs to be 1 or 2-dimensional'))
+    return nii_mapped
 
 
 def _plot_loglike(ax, loglike, true_loglike, color='b'):
@@ -223,17 +208,19 @@ def matching_params(true_param, predicted_params, once=False):
 
 
 def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
-                  beta=1.0, do_plot=False, same_signal=True):
+                  beta=1.0, do_plot=False, same_signal=True, missingdata=None):
     """Generate (and plots) the generated data from a given emission model
     Args:
-        emission model: GMM, GME, GMG, VMF
+        emission: GMM, GME, GMG, VMF
         k: The number of clusters
         dim: The number of data dimensions
         p: the number of generated data points
         num_sub: the number of subjects
         dispersion: Sigma2 or kappa for distribution
-        beta (float):
+        beta (float): the beta parameter for GME model
+        do_plot: plot the generated data if necessary
         same_signal (bool): Is signal strength the same across training and test?
+        missingdata: the portion of missing data if applied
     Returns:
         The generated data
     """
@@ -254,7 +241,8 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
         emissionT = MixVMF(K=k, N=dim, P=p)
         emissionT.kappa = pt.tensor(dispersion)
     else:
-        raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), or 3(VMF).")
+        raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), "
+                         "or 3(VMF).")
     MT = FullModel(arrangeT, emissionT)
 
     # Step 2: Generate data by sampling from the true model
@@ -290,10 +278,17 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
         plt.title('Test data (first two dimensions)')
         plt.show()
 
+    # Making incomplete dataset if applied
+    if missingdata is not None:
+        idx = pt.randint(0, p-1, (num_sub, int(missingdata*p)))
+        Y_train = pt.transpose(Y_train, 1, 2)
+        Y_train[pt.arange(Y_train.shape[0]).unsqueeze(-1), idx] = pt.nan
+        Y_train = pt.transpose(Y_train, 1, 2)
+
     return Y_train, Y_test, signal, U, MT
 
 
-def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
+def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,missingdata=None):
     """Simulation function used for testing full model with a GMM emission
     Args:
         K: the number of clusters
@@ -318,6 +313,12 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0):
     # Step 3: Compute the true log likelihood from the true model
     Uhat_true, loglike_true = T.Estep(Y)
     theta_true = T.get_params()
+
+    if missingdata is not None:
+        idx = pt.randint(0, P-1, (num_sub, int(missingdata*P)))
+        Y = pt.transpose(Y, 1, 2)
+        Y[pt.arange(Y.shape[0]).unsqueeze(-1), idx] = pt.nan
+        Y = pt.transpose(Y, 1, 2)
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
@@ -416,7 +417,7 @@ def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, beta=
 
 def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
         sigma2=1.0, beta=1.0, num_bins=100, std_V=True,
-        type_estep='linspace'):
+        type_estep='linspace', missingdata=None):
     """Simulation function used for testing full model with a GMM_exp emission
     Args:
         K: the number of clusters
@@ -445,15 +446,18 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     Uhat_true, loglike_true = T.Estep(Y=Y)
     theta_true = T.get_params()
 
+    if missingdata is not None:
+        idx = pt.randint(0, P-1, (num_sub, int(missingdata*P)))
+        Y = pt.transpose(Y, 1, 2)
+        Y[pt.arange(Y.shape[0]).unsqueeze(-1), idx] = pt.nan
+        Y = pt.transpose(Y, 1, 2)
+
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False,
                                   remove_redundancy=False)
     emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=num_bins,
                                std_V=std_V, type_estep=type_estep)
     emissionM.std_V = std_V
-    # emissionM.V =emissionT.V
-    # emissionM.sigma2 =emissionT.sigma2
-    # emissionM.beta =emissionT.beta
     M = FullModel(arrangeM, emissionM)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
@@ -482,7 +486,8 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     print('Done simulation GME.')
 
 
-def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=True):
+def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,
+                       uniform_kappa=True, missingdata=None):
     """Simulation function used for testing full model with a VMF emission
     Args:
         K: the number of clusters
@@ -507,6 +512,12 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, uniform_kappa=
     # Step 3: Compute the log likelihood from the true model
     Uhat_true, loglike_true = T.Estep(Y=Y)  # Run only Estep!
     theta_true = T.get_params()
+
+    if missingdata is not None:
+        idx = pt.randint(0, P-1, (num_sub, int(missingdata*P)))
+        Y = pt.transpose(Y, 1, 2)
+        Y[pt.arange(Y.shape[0]).unsqueeze(-1), idx] = pt.nan
+        Y = pt.transpose(Y, 1, 2)
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
@@ -706,7 +717,8 @@ def _test_sampling_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100, sigma2=1.0,
 
 
 def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, beta=1.0,
-                              dispersion=2.0, max_iter=100, tol=0.00001, do_plotting=False,same_signal=True):
+                              dispersion=2.0, max_iter=100, tol=0.00001, do_plotting=False,
+                              same_signal=True):
     """The evaluation and comparison routine between the emission models
     Args:
         data_type: which model used to generate data (GMM, GME, VMF)
@@ -723,9 +735,11 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
         shape of (num_criterion, num_emissionModels)
     """
     # Step 1. generate the training dataset from VMF model given a signal length
-    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, dispersion=dispersion,
-                                                        beta=beta,  do_plot=False,same_signal=same_signal)
-    model=['GMM','GME','VMF','true']
+    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P,
+                                                        dispersion=dispersion, beta=beta,
+                                                        do_plot=False, same_signal=same_signal,
+                                                        missingdata=0.2)
+    model=['GMM', 'GME', 'VMF', 'true']
 
     # Step 2. Fit the competing emission model using the training data
     emissionM = []
@@ -733,13 +747,13 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     emissionM.append(MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True))
     emissionM.append(MixVMF(K=K, N=N, P=P, uniform_kappa=True))
     M = []
-    Uhat_train = [] # Probability of assignments
-    V_train = [] # Predicted mean directions
+    Uhat_train = []  # Probability of assignments
+    V_train = []  # Predicted mean directions
     T = pd.DataFrame()
     for i in range(len(model)):
-        if model[i]=='true':
+        if model[i] == 'true':
             M.append(MT)
-            Uhat,ll = MT.Estep(Y_train)
+            Uhat, ll = MT.Estep(Y_train)
         else:
             M.append(FullModel(MT.arrange, emissionM[i]))
             M[i], _, _, Uhat = M[i].fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
@@ -747,15 +761,15 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
         V_train.append(M[i].emission.V)
 
         # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
-        criterion = ['nmi', 'ari', 'coserr_E','coserrA_E']
-        D={}
-        D['data_type']=[data_type]
-        D['K']=[K]
-        D['model']=model[i]
+        criterion = ['nmi', 'ari', 'coserr_E', 'coserrA_E']
+        D = {}
+        D['data_type'] = [data_type]
+        D['K'] = [K]
+        D['model'] = model[i]
         for c in criterion:
-            if c in ['nmi','ari']:
+            if c in ['nmi', 'ari']:
                 D[c] = [ev.evaluate_U(U, Uhat_train[i], crit=c)]
-            elif c in ['coserr_E']: # expected cosine error
+            elif c in ['coserr_E']:  # expected cosine error
                 D[c]=[ev.coserr(Y_test,V_train[i],Uhat_train[i],adjusted=False,soft_assign=True)]
             elif c in ['coserr_H']: # hard assigned cosine error
                 D[c]=[ev.coserr(Y_test,V_train[i],Uhat_train[i],adjusted=False,soft_assign=False)]
@@ -767,15 +781,23 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     # Step 3.5. Do plot of the clustering results if required
     if do_plotting:
         fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
-                   [{'type': 'surface'}, {'type': 'surface'}]], subplot_titles=["True", "GMM", "GME", "VMF"])
+                                                   [{'type': 'surface'}, {'type': 'surface'}]],
+                            subplot_titles=["True", "GMM", "GME", "VMF"])
         fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])), row=1, col=1)
+                                   mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])),
+                      row=1, col=1)
         fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_train[0], dim=1)[0])), row=1, col=2)
+                                   mode='markers', marker=dict(size=3, opacity=0.7,
+                                                               color=pt.argmax(Uhat_train[0], dim=1)[0])),
+                      row=1, col=2)
         fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_train[1], dim=1)[0])), row=2, col=1)
+                                   mode='markers', marker=dict(size=3, opacity=0.7,
+                                                               color=pt.argmax(Uhat_train[1], dim=1)[0])),
+                      row=2, col=1)
         fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
-                                   mode='markers', marker=dict(size=3, opacity=0.7, color=pt.argmax(Uhat_train[2], dim=1)[0])), row=2, col=2)
+                                   mode='markers', marker=dict(size=3, opacity=0.7,
+                                                               color=pt.argmax(Uhat_train[2], dim=1)[0])),
+                      row=2, col=2)
         fig.update_layout(title_text='Comparison of fitting', height=800, width=800)
         fig.show()
 
@@ -832,11 +854,83 @@ def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
     plt.tight_layout()
 
 
+def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/glm7',
+                     train_participants=None, test_participants=None, sess=None,
+                     K = 10, emission='VMF', max_iter=200):
+    subj_name = ['s01', 's02', 's03', 's04', 's05', 's06', 's07', 's08', 's09', 's10', 's11',
+                 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21', 's22', 's23',
+                 's24', 's25', 's26', 's27', 's28', 's29', 's30', 's31']
+    goodsubj = [2, 3, 4, 6, 8, 9, 10, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29,
+                30, 31]
+    if train_participants is None:
+        train_participants = [2, 3]
+    if test_participants is None:
+        test_participants = [4]
+    if sess is None:
+        sess = 1
+    Y_train, Y_test = [], []
+
+    # Preparing training data from MDTB dataset
+    for sub in train_participants:
+        file = h5py.File(os.path.join(root_dir, f'{subj_name[sub - 1]}/Y_glm7_cerebellum_suit.mat'))
+        c = pt.chunk(pt.tensor(np.array(file['data'])), 2, dim=1)
+        this_data = pt.stack(pt.chunk(c[sess], 8, dim=1))
+        this_data[this_data == 0] = pt.nan
+        Y_train.append(this_data.mean(dim=0).T)
+
+    # Preparing test data from MDTB dataset
+    for sub in test_participants:
+        file = h5py.File(os.path.join(root_dir, f'{subj_name[sub - 1]}/Y_glm7_cerebellum_suit.mat'))
+        c = pt.chunk(pt.tensor(np.array(file['data'])), 2, dim=1)
+        this_data = pt.stack(pt.chunk(c[sess], 8, dim=1))
+        this_data[this_data == 0] = pt.nan
+        Y_test.append(this_data.mean(dim=0).T)
+
+    Y_train, Y_test = pt.stack(Y_train), pt.stack(Y_test)
+    num_sub_train, N, P = Y_train.shape
+
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    if emission == 'GMM':
+        emissionM = MixGaussian(K=K, N=N, P=P, std_V=False)
+    elif emission == 'GME':
+        emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=False,
+                                   type_estep='linspace')
+    elif emission == 'VMF':
+        emissionM = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
+    else:
+        raise ValueError('An emission type must be given to train the model.')
+
+    M = FullModel(arrangeM, emissionM)
+
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
+    M, ll, theta, U_hat = M.fit_em(Y=Y_train, iter=max_iter, tol=0.0001, fit_arrangement=True)
+
+    colors = plt.cm.jet(np.linspace(0, 1, K))
+    # colors = np.random.uniform(size=(K, 3))
+    # colors = np.c_[colors, np.ones(K)]
+    labels = U_hat.mean(dim=0).T.detach().numpy()
+    G = convert_cerebellum_to_nifti(np.argmax(labels, axis=1))
+    G = flatmap.vol_to_surf(G, stats='mode')
+    G = make_label_gifti(G, anatomical_struct='Cerebellum', label_names=[],
+                         column_names=[], label_RGBA=colors)
+
+    Uhat_test, _ = M.Estep(Y=Y_test)
+
+    D = []
+    D.append(ev.coserr(Y_test, M.emission.V, Uhat_test, adjusted=False, soft_assign=True))
+    D.append(ev.coserr(Y_test, M.emission.V, Uhat_test, adjusted=False, soft_assign=False))
+    D.append(ev.coserr(Y_test, M.emission.V, Uhat_test, adjusted=True, soft_assign=True))
+    D.append(ev.coserr(Y_test, M.emission.V, Uhat_test, adjusted=True, soft_assign=False))
+    print(D)
+    return G, D
+
+
 if __name__ == '__main__':
-    # _simulate_full_VMF(K=5, P=100, N=20, num_sub=10, max_iter=100, uniform_kappa=False)
-    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=10)
-    # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=2.0,
-    #                    num_bins=100, std_V=True, type_estep='import')
+    _simulate_full_VMF(K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=False,
+                       missingdata=0.05)
+    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=0.05)
+    # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=0.4,
+    #                    num_bins=100, std_V=True, type_estep='linspace', missingdata=0.05)
     # _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=3.0,
     #                    beta=0.5, num_bins=200, std_V=True,
     #                    type_estep=['linspace', 'import', 'import', 'reject', 'mcmc'])
@@ -853,52 +947,8 @@ if __name__ == '__main__':
     # plt.show()
     # pass
 
-    subj_name = ['s01', 's02', 's03', 's04', 's05', 's06', 's07', 's08', 's09', 's10', 's11',
-                 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21', 's22', 's23',
-                 's24', 's25', 's26', 's27', 's28', 's29', 's30', 's31']
-    goodsubj = [2, 3, 4, 6, 8, 9, 10, 12, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29,
-                30, 31]
-    train_participants = [2, 3]
-    test_participants = [4]
-    sess = 1
-    Y_train, Y_test = [], []
+    G, D = train_mdtb_dirty(K=5, train_participants=[2, 3, 4, 6, 8, 9, 10, 12, 14, 15],
+                            test_participants=[29, 30, 31], emission='VMF')
+    nib.save(G, 'test_5.label.gii')
 
-    for sub in train_participants:
-        file = h5py.File("../data/%s/Y_glm7_cerebellum_suit.mat" % subj_name[sub - 1])
-        c = pt.chunk(pt.tensor(np.array(file['data'])), 2, dim=1)
-        this_data = pt.stack(pt.chunk(c[sess], 8, dim=1))
-        this_data = this_data.sum(dim=0) / this_data.count_nonzero(dim=0)
-        Y_train.append(this_data.nan_to_num().T)
-
-    for sub in test_participants:
-        file = h5py.File("../data/%s/Y_glm7_cerebellum_suit.mat" % subj_name[sub-1])
-        c = pt.chunk(pt.tensor(np.array(file['data'])), 2, dim=1)
-        this_data = pt.stack(pt.chunk(c[sess], 8, dim=1))
-        this_data = this_data.sum(dim=0)/this_data.count_nonzero(dim=0)
-        Y_test.append(this_data.nan_to_num().T)
-
-    Y_train, Y_test = pt.stack(Y_train), pt.stack(Y_test)
-    K = 10
-    num_sub_train, N, P = Y_train.shape
-
-    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixGaussian(K=K, N=N, P=P, std_V=False)
-    # emissionM = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=False,
-    #                            type_estep='linspace')
-    # emissionM = MixVMF(K=K, N=N, P=P, uniform_kappa=False)
-    M = FullModel(arrangeM, emissionM)
-
-    # Step 5: Estimate the parameter thetas to fit the new model using EM
-    M, ll, theta, U_hat = M.fit_em(Y=Y_train, iter=100, tol=0.0001, fit_arrangement=True)
-
-    colors = plt.cm.jet(np.linspace(0, 1, K))
-    labels = U_hat.mean(dim=0).T.detach().numpy()
-    # G = make_label_gifti(np.argmax(labels, axis=1).reshape(-1,1),
-    #                      anatomical_struct='Cerebellum', label_names=[],
-    #                      column_names=[], label_RGBA=colors)
-    D = []
-    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=False, soft_assign=True))
-    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=False, soft_assign=False))
-    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=True, soft_assign=True))
-    D.append(ev.coserr(Y_test, M.emission.V, U_hat, adjusted=True, soft_assign=False))
-    print(D)
+    print('Done simulation.')

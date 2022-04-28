@@ -109,19 +109,21 @@ class MixGaussian(EmissionModel):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5*self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2))-0.5/self.sigma2 * self.rss[i, :, :]
+            LL[i, :, :] = -0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2))\
+                          - 0.5 / self.sigma2 * self.rss[i, :, :]
 
-        return LL
+        return pt.nan_to_num(LL)
 
     def Mstep(self, U_hat):
         """ Performs the M-step on a specific U-hat.
             In this emission model, the parameters need to be updated
             are V and sigma2.
         """
-        YU = pt.matmul(self.Y, pt.transpose(U_hat, 1, 2))
-        ERSS = pt.zeros(self.rss.shape)
+        nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
+        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
 
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
+        U_hat[nan_voxIdx] = 0
         self.V = pt.sum(YU, dim=0) / U_hat.sum(dim=(0, 2))
         if self.std_V:
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
@@ -130,7 +132,7 @@ class MixGaussian(EmissionModel):
         YV = pt.matmul(self.V.T, self.Y)
         # JD: Again, you should be able to avoid looping over subjects here entirely.
         ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + pt.sum(self.V ** 2, dim=0).view((self.K, 1))
-        self.sigma2 = pt.sum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
+        self.sigma2 = pt.nansum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # rss is calculated using V at (t-1) iteration
         # ERSS = pt.sum(U_hat * self.rss)
@@ -181,7 +183,7 @@ class MixGaussianExp(EmissionModel):
         """
         super().initialize(data)
         self.YY = self.Y ** 2
-        self.maxlength = pt.max(pt.sqrt(pt.sum(self.YY, dim=1)))
+        self.maxlength = pt.max(pt.sqrt(pt.sum(self.YY, dim=1)).nan_to_num())
         self.s = pt.empty((self.num_subj, self.K, self.P))
         self.s2 = pt.empty((self.num_subj, self.K, self.P))
         self.rss = pt.empty((self.num_subj, self.K, self.P))
@@ -316,12 +318,13 @@ class MixGaussianExp(EmissionModel):
                 self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
                 self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
-            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
+            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] \
+                                + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
-                          + pt.log(self.beta) - self.beta * self.s[i, :, :]
+            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2))\
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] + pt.log(self.beta) - self.beta * self.s[i, :, :]
 
-        return LL
+        return pt.nan_to_num(LL)
 
     def Estep_import(self, Y=None, signal=None):
         """ Estep using importance sampling from exp(beta):
@@ -346,7 +349,8 @@ class MixGaussianExp(EmissionModel):
         logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
         if signal is None:
             # This is p(y,s|u)
-            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2))
+            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x
+                                           + uVVu.view(self.K,1,1) * (x ** 2))
             # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
             post = pt.softmax(loglike, dim=3)
             self.s = pt.sum(x * post, dim=3)
@@ -355,11 +359,13 @@ class MixGaussianExp(EmissionModel):
             self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
             self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
-        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
+                   + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
+        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
+             + pt.log(self.beta) - self.beta * self.s
 
-        return LL
+        return pt.nan_to_num(LL)
 
     def Estep_reject(self, Y=None, signal=None):
         """ Estep using importance sampling from exp(beta):
@@ -383,7 +389,8 @@ class MixGaussianExp(EmissionModel):
 
         if signal is None:
             # This is p(y,s|u)
-            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2)) - self.beta * x
+            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x
+                                           + uVVu.view(self.K,1,1) * (x ** 2)) - self.beta * x
             likelihood = pt.softmax(loglike, dim=3)
 
             # Here to compute the ratio of p(x)/q(x) as the weights for each sample
@@ -401,11 +408,13 @@ class MixGaussianExp(EmissionModel):
             self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
             self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
-        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
+                   + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (pt.log(2*PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss + pt.log(self.beta) - self.beta * self.s
+        LL = -0.5 * self.N * (pt.log(2*PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss \
+             + pt.log(self.beta) - self.beta * self.s
 
-        return LL
+        return pt.nan_to_num(LL)
 
     def Estep_linspace(self, Y=None, signal=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
@@ -417,8 +426,7 @@ class MixGaussianExp(EmissionModel):
         if Y is not None:
             self.initialize(Y)
 
-        n_subj= self.Y.shape[0]
-
+        n_subj = self.Y.shape[0]
         LL = pt.empty((n_subj, self.K, self.P))
         uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
 
@@ -429,7 +437,8 @@ class MixGaussianExp(EmissionModel):
         logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
         if signal is None:
             # This is p(y,s|u)
-            loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x + uVVu.view(self.K,1,1) * (x ** 2)) - self.beta * x
+            loglike = - 0.5/self.sigma2 * (-2*YV.view(n_subj,self.K,self.P,1)*x
+                                           + uVVu.view(self.K,1,1) * (x**2)) - self.beta*x
             # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
             post = pt.softmax(loglike, dim=3)
             self.s = pt.sum(x * post, dim=3)
@@ -438,11 +447,13 @@ class MixGaussianExp(EmissionModel):
             self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
             self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
-        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape((self.K, 1))
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
+                   + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5/ self.sigma2 * self.rss + pt.log(self.beta) - self.beta * self.s
+        LL = -0.5 * self.N * (logpi + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
+             + pt.log(self.beta) - self.beta * self.s
 
-        return LL
+        return pt.nan_to_num(LL)
 
     def Estep_mcmc_hasting(self, Y=None, signal=None, iters=10):
         """ Estep using MCMC: Sampling is done per iteration for all voxels and clusters
@@ -480,13 +491,13 @@ class MixGaussianExp(EmissionModel):
             self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
             self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1) ** 2
 
-        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * uVVu.reshape(
-            (self.K, 1))
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
+                   + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (log(2*PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss + pt.log(
-            self.beta) - self.beta * self.s
+        LL = -0.5 * self.N * (log(2*PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
+             + pt.log(self.beta) - self.beta * self.s
 
-        return LL
+        return pt.nan_to_num(LL)
 
     def Estep(self, Y=None, signal=None):
         if self.type_estep == 'linspace':
@@ -510,9 +521,11 @@ class MixGaussianExp(EmissionModel):
             U_hat: The expected emission log likelihood
         Returns: Update all model parameters, self attributes
         """
-        YU = pt.matmul(self.Y, pt.transpose(U_hat * self.s, 1, 2))
-        US = (U_hat * self.s).sum(dim=2)
-        US2 = (U_hat * self.s2).sum(dim=2)
+        nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
+        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat * self.s, 1, 2).nan_to_num())
+        U_hat[nan_voxIdx] = 0
+        US = (U_hat * self.s).nansum(dim=2)
+        US2 = (U_hat * self.s2).nansum(dim=2)
 
         # 1. Updating the V - standardize if requested
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
@@ -523,7 +536,7 @@ class MixGaussianExp(EmissionModel):
         # 2. Updating the sigma squared.
         YV = pt.matmul(self.V.T, self.Y)
         ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * pt.sum(self.V ** 2, dim=0).view((self.K, 1))
-        self.sigma2 = pt.sum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
+        self.sigma2 = pt.nansum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P * self.num_subj / pt.sum(US)
@@ -577,7 +590,7 @@ class MixVMF(EmissionModel):
         Returns: None. Store the data in emission model itself.
         """
         super().initialize(data)
-        self.Y  = self.Y / pt.sqrt(pt.sum(data ** 2, dim=1, keepdim=True))
+        self.Y = self.Y / pt.sqrt(pt.sum(data ** 2, dim=1, keepdim=True))
         self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
@@ -644,16 +657,24 @@ class MixVMF(EmissionModel):
         if type(self.kappa) is np.ndarray:
             self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
-        # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
-        for i in sub:
-            YV = pt.mm(self.Y[i, :, :].T, self.V)
-            # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
-            logCnK = (self.N / 2 - 1) * pt.log(self.kappa) - (self.N / 2) * log(pt.as_tensor(2*np.pi)) - \
-                     self._log_bessel_function(self.N / 2 - 1, self.kappa)
-            # the log likelihood for emission model (VMF in this case)
-            LL[i, :, :] = (logCnK + self.kappa * YV).T
+        # # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
+        # for i in sub:
+        #     YV = pt.mm(self.Y[i, :, :].T, self.V)
+        #     # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
+        #     logCnK = (self.N / 2 - 1) * pt.log(self.kappa) - (self.N / 2) * log(pt.as_tensor(2*np.pi)) - \
+        #              self._log_bessel_function(self.N / 2 - 1, self.kappa)
+        #     # the log likelihood for emission model (VMF in this case)
+        #     LL[i, :, :] = (logCnK + self.kappa * YV).T
 
-        return LL
+        YV = pt.matmul(self.V.T, self.Y)
+        logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
+                 self._log_bessel_function(self.N/2 - 1, self.kappa)
+        if self.uniform_kappa:
+            LL = logCnK + self.kappa * YV
+        else:
+            LL = logCnK.unsqueeze(1) + self.kappa.unsqueeze(1) * YV
+
+        return pt.nan_to_num(LL)
 
     def Mstep(self, U_hat):
         """ Performs the M-step on a specific U-hat. In this emission model,
@@ -666,11 +687,17 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        YU = pt.zeros((self.N, self.K))
-        UU = pt.zeros((self.K, self.P))
-        for i in range(self.num_subj):
-            YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
-            UU = UU + U_hat[i, :, :]
+        # YU = pt.zeros((self.N, self.K))
+        # UU = pt.zeros((self.K, self.P))
+        #
+        # for i in range(self.num_subj):
+        #     YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
+        #     UU = UU + U_hat[i, :, :]
+
+        nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
+        U_hat[nan_voxIdx] = 0
+        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
+        UU = pt.sum(U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
         self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
