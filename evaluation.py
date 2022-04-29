@@ -374,3 +374,25 @@ def evaluate_U(U_true, U_predict, crit='u_prederr'):
         raise NameError('The given criterion must be specified!')
 
     return eval_res.item()
+
+
+def matching_U(U_true, U_predict):
+    """Matching the parcel labels of U_hat with the true Us.
+    Args:
+        U_true: The ground truth Us
+        U_predict: U_hat, the predicted Us
+    Returns:
+        The U_hat with aligned labels
+    """
+    U_predict = pt.argmax(U_predict, dim=1)
+    perm = permute(np.unique(U_predict))
+    min_err = 1
+    for idx in perm:
+        this_U_pred = np.choose(U_predict, idx)
+        u_abserr = pt.mean(pt.abs(U_true - this_U_pred).type(pt.float16)).item()
+        if u_abserr < min_err:
+            min_err = u_abserr
+            U_match = pt.clone(this_U_pred)
+
+    return U_match, min_err
+

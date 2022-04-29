@@ -2,63 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="87ba84bb-63f0-4862-abbf-20d12119c063" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/Y_glm7_cerebellum_suit.h5" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s02/Y_glm7_cerebellum_suit.mat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s02/s02.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s02/s02.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s03/Y_glm7_cerebellum_suit.mat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s03/s03.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s03/s03.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s04/Y_glm7_cerebellum_suit.mat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s04/s04.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s04/s04.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s06/s06.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s06/s06.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s08/s08.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s08/s08.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s09/s09.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s09/s09.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s10/s10.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s10/s10.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s12/s12.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s12/s12.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s14/s14.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s14/s14.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s15/s15.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s15/s15.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s17/s17.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s17/s17.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s18/s18.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s18/s18.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s19/s19.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s19/s19.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s20/s20.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s20/s20.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s21/s21.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s21/s21.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s22/s22.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s22/s22.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s24/s24.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s24/s24.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s25/s25.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s25/s25.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s26/s26.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s26/s26.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s27/s27.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s27/s27.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s28/s28.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s28/s28.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s29/s29.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s29/s29.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s30/s30.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s30/s30.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s31/s31.L.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/s31/s31.R.wbeta.32k.func.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/test.label.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/test_emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_emissions.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/evaluation.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_missingData-checkpoint.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_missingData-checkpoint.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/simulate_missingData.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/simulate_missingData.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/simulate_missingData.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/simulate_missingData.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -247,7 +194,7 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/generativeMRF$simulate_missingData.coverage" NAME="simulate_missingData Coverage Results" MODIFIED="1651184856708" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$simulate_missingData.coverage" NAME="simulate_missingData Coverage Results" MODIFIED="1651272664568" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
     <SUITE FILE_PATH="coverage/generativeMRF$test_emissions.coverage" NAME="test_emissions Coverage Results" MODIFIED="1651083609543" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
     <SUITE FILE_PATH="coverage/generativeMRF$emissions.coverage" NAME="emissions Coverage Results" MODIFIED="1651008660821" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$evaluation.coverage" NAME="evaluation Coverage Results" MODIFIED="1646253969207" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />

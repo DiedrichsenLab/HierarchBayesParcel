@@ -16,6 +16,7 @@ from full_model import FullModel
 import arrangements as ar
 import emissions as em
 import spatial as sp
+import evaluation as ev
 
 
 def _plot_loglike(ax, loglike, true_loglike, color='b'):
@@ -68,6 +69,41 @@ def _plot_diff(ax, true_param, predicted_params, index=None, name='V', plot_sing
     ax.plot(diff)
     ax.set_title('differences of true/estimated %ss' % name)
     return ax, diff
+
+
+def _compute_diff(true_param, predicted_params, index=None, compute_single=False):
+    """ Compute the model parameters differences.
+
+    Args:
+        true_param: the params from the true model
+        predicted_params: the estimated params
+        index: the matching index of parameters
+        compute_single: If True, compute all parameters difference.
+                        Otherwise, cluster specific
+    Returns: The parameters difference between true model and predicted model
+    """
+    # Convert input to tensor if ndarray
+    if type(true_param) is np.ndarray:
+        true_param = pt.tensor(true_param, dtype=pt.get_default_dtype())
+    if type(predicted_params) is np.ndarray:
+        predicted_params = pt.tensor(predicted_params, dtype=pt.get_default_dtype())
+
+    N, K = true_param.shape
+    diff = pt.empty(predicted_params.shape[0], K)
+
+    for i in range(predicted_params.shape[0]):
+        this_pred = predicted_params[i].reshape(N, K)
+        for k in range(K):
+            if index is not None:
+                dist = pt.linalg.norm(this_pred[:, k] - true_param[:, index[i, k]])
+            else:
+                dist = pt.linalg.norm(this_pred[:, k] - true_param[:, k])
+            diff[i, k] = dist
+
+    if compute_single:
+        diff = diff.sum(1)
+
+    return diff
 
 
 def _plt_single_param_diff(ax, theta_true, theta, name=None):
@@ -128,8 +164,8 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
-def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=50,sigma2=1.0,
-                       missingdata=None):
+def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=50, sigma2=1.0,
+                          missingdata=None):
     """Simulation function used for testing full model with a GMM emission
     Args:
         K: the number of clusters
@@ -141,12 +177,9 @@ def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=5
     Returns:
         Several evaluation plots.
     """
-    # Ytrain, Ytest, Utrue, Mtrue = make_mrf_data(width=width, K=K, N=N, theta_mu=100, theta_w=20,
-    #                                             sigma2=sigma2, do_plot=True)
-
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width, height=height)
-    arrangeT = ar.PottsModel(grid.W, K=K)
+    arrangeT = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
     emissionT = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
     emissionT.sigma2 = pt.tensor(sigma2)
 
@@ -154,61 +187,147 @@ def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=5
     arrangeT.random_smooth_pi(grid.Dist, theta_mu=150)
     arrangeT.theta_w = pt.tensor(20)
 
-    # Step 3: Plot the prior of the true mode
-    plt.figure()
-    grid.plot_maps(pt.exp(arrangeT.logpi), cmap='jet', vmax=1, grid=[1, K])
-    cluster = np.argmax(arrangeT.logpi, axis=0)
-    grid.plot_maps(cluster, cmap='tab20')
-
     # Step 4: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
     U = T.arrange.sample(num_subj=num_sub, burnin=30)
     Y_train = T.emission.sample(U)
-    Y_test = T.emission.sample(U)
-
-    plt.figure(figsize=(10, 4))
-    grid.plot_maps(U[0:10], cmap='tab20', vmax=K, grid=[2, int(num_sub/2)])
+    # Y_test = T.emission.sample(U)
 
     # Making incomplete data if needed
+    D = []
     if missingdata is not None:
-        radius = np.sqrt(missingdata * grid.P/np.pi)
-        centroid = np.random.choice(grid.P, (num_sub,))
+        for m in missingdata:
+            radius = np.sqrt(m * grid.P/np.pi)
+            centroid = np.random.choice(grid.P, (num_sub,))
+            mask = pt.ones(num_sub, grid.P)
+            mask[pt.where(grid.Dist[centroid] < radius)] = pt.nan
+            Y_train = mask.unsqueeze(1) * Y_train
+
+            # Step 6: Generate new models for fitting
+            arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
+                                             remove_redundancy=False)
+            emissionM = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
+            M = FullModel(arrangeM, emissionM)
+            M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.00001,
+                                              fit_arrangement=True)
+            D.append({'U_nan': mask*U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
+    else:
         mask = pt.ones(num_sub, grid.P)
-        mask[pt.where(grid.Dist[centroid] < radius)] = pt.nan
-        Y_train = mask.unsqueeze(1) * Y_train
-        # mask = pt.randint(0, grid.P-1, (num_sub, int(missingdata*grid.P)))
-        # Y_train = pt.transpose(Y_train, 1, 2)
-        # Y_train[pt.arange(Y_train.shape[0]).unsqueeze(-1), mask] = pt.nan
-        # Y_train = pt.transpose(Y_train, 1, 2)
-        grid.plot_maps(mask * U, cmap='tab20', vmax=K, grid=[2, int(num_sub / 2)])
+        # Step 6: Generate new models for fitting
+        arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
+                                         remove_redundancy=False)
+        emissionM = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
+        M = FullModel(arrangeM, emissionM)
+        M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.00001,
+                                          fit_arrangement=True)
+        D.append({'U_nan': mask*U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
 
-    # Step 6: Generate new models for fitting
-    # arrangeM = ar.PottsModel(grid.W, K=K)
-    arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True, remove_redundancy=False)
-    emissionM = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-    M = FullModel(arrangeM, emissionM)
-    M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.00001, fit_arrangement=True)
+    return grid, T, U, D
 
-    # Step 7: Plot fitting results
-    fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-    # _plot_loglike(axs[0], ll, loglike_true, color='b')
 
-    true_V = T.emission.V
-    predicted_V = theta[:, M.get_param_indices('emission.V')]
-    idx = matching_params(true_V, predicted_V, once=False)
-    _, diff = _plot_diff(axs[0], true_V, predicted_V, index=idx, name='V', plot_single=True)
+def do_simulation_missingData(K=5, num_sub=10, missingRate=[0.01, 0.05, 0.1, 0.2],
+                              savePic=True):
+    """Run the missing data simulation at given missing rate
+    Args:
+        K: the clusters number
+        num_sub: the subject number
+        missingRate: the missing data percentage
+        savePic: if True, save the simulation figures
+    Returns:
+        theta_all: All parameters at each EM iteration
+        Uerr_all: The absolute error between U and U_hat for each missing rate
+        U: The ground truth Us
+        U_nan_all: the ground truth Us with missing data
+        U_hat_all: the predicted U_hat for each missing rate
+    """
+    print('Start simulation')
+    grid, T, U, D = _simulate_missingData(K=K, N=20, num_sub=num_sub,
+                                          max_iter=100, sigma2=0.2,
+                                          missingdata=missingRate)
 
-    ind = M.get_param_indices('emission.sigma2')
-    _plt_single_param_diff(axs[1], np.log(T.emission.sigma2),
-                           np.log(theta[:, ind]), name='log sigma2')
+    Uerr_all, theta_all, U_nan_all, U_hat_all = [], [], [], []
+    # Plot the individual parcellations sampled from prior
+    for m in range(len(missingRate)):
+        U_nan = D[m]['U_nan']
+        theta = D[m]['theta']
+        M = D[m]['M']
+        Uhat_fit, U_err = ev.matching_U(U, D[m]['Uhat_fit'])
+        plots = [U, U_nan, Uhat_fit]
+        plt.figure(figsize=(20, 2))
+        for i in range(len(plots)):
+            if savePic:
+                plt.figure(figsize=(10, 4))
+                grid.plot_maps(plots[i], cmap='tab20', vmax=K, grid=[1, int(num_sub)])
+                plt.savefig('missing%d_%d.png' % (missingRate[m] * 100, i), format='png')
+                plt.clf()
 
-    fig.suptitle('GMM fitting results')
-    plt.tight_layout()
-    # plt.show()
-    print('Done simulation GMM.')
-    return Uhat_fit, diff
+        U_nan_all.append(U_nan)
+        U_hat_all.append(Uhat_fit)
+        Uerr_all.append(U_err)
+        idx = matching_params(T.emission.V, theta[:, M.get_param_indices('emission.V')], once=False)
+        diff_V = _compute_diff(T.emission.V, theta[:, M.get_param_indices('emission.V')],
+                               index=idx, compute_single=True)
+        diff_sigma = pt.abs(T.emission.sigma2 -
+                            theta[:, M.get_param_indices('emission.sigma2')].reshape(-1))
+        theta_all.append(diff_V + diff_sigma)
+
+    return theta_all, Uerr_all, U, U_nan_all, U_hat_all
 
 
 if __name__ == '__main__':
-    Uhat, diff = _simulate_missingData(K=5, N=20, num_sub=10, max_iter=100, sigma2=0.2,
-                                       missingdata=0.1)
+    K = 5
+    num_sub = 10
+    missingRate = [0.01, 0.05, 0.1, 0.2]
+    theta_all, Uerr_all, U, U_nan_all, U_hat_all = do_simulation_missingData(K=K, num_sub=num_sub,
+                                                                             missingRate=missingRate,
+                                                                             savePic=False)
+
+    # # Step 7: Plot fitting results
+    # for n in range(len(U)):
+    #     ax = plt.subplot(1, num_sub, n+1)
+    #     ax.imshow(U[n].reshape((30,30)), cmap='tab20', interpolation='nearest', vmax=K)
+    #     ax.axes.xaxis.set_visible(False)
+    #     ax.axes.yaxis.set_visible(False)
+    # plt.show()
+    #
+    # U_nan = pt.stack(U_nan_all).flatten(end_dim=1)
+    # plt.figure(figsize=(20, 8))
+    # for n in range(len(U_nan)):
+    #     ax = plt.subplot(len(U_nan_all), num_sub, n + 1)
+    #     ax.imshow(U_nan[n].reshape((30, 30)), cmap='tab20', interpolation='nearest', vmax=K)
+    #     ax.axes.xaxis.set_visible(False)
+    #     ax.axes.yaxis.set_visible(False)
+    #     if n % num_sub == 0:
+    #         ax.axes.yaxis.set_visible(True)
+    #         ax.set_ylabel('r = %s' % str(missingRate[int(n / num_sub)]))
+    # plt.show()
+    #
+    # U_hat = pt.stack(U_hat_all).flatten(end_dim=1)
+    # plt.figure(figsize=(20, 8))
+    # for n in range(len(U_hat)):
+    #     ax = plt.subplot(len(U_hat_all), num_sub, n + 1)
+    #     ax.imshow(U_hat[n].reshape((30, 30)), cmap='tab20', interpolation='nearest', vmax=K)
+    #     ax.axes.xaxis.set_visible(False)
+    #     ax.axes.yaxis.set_visible(False)
+    #     if n % num_sub == 0:
+    #         ax.axes.yaxis.set_visible(True)
+    #         ax.set_ylabel('r = %s' % str(missingRate[int(n / num_sub)]))
+    # plt.show()
+    #
+    # fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    # labels = 'r = '
+    # labels += '% s'
+    # labels = [labels % i for i in missingRate]
+    # axs[0].plot(pt.stack(theta_all).T, label=labels)
+    # axs[0].legend(loc="upper right")
+    # axs[0].set_xlabel('number of iterations')
+    # axs[0].set_ylabel(r'Difference between $\theta$ and $\hat{\theta}$')
+    #
+    # axs[1].bar(labels, Uerr_all)
+    # axs[1].set_ylabel(r'Absolute error between $\mathbf{U}$ and $\hat{\mathbf{U}}$')
+    #
+    # fig.suptitle('Simulation results on different missing data percentage.')
+    # plt.tight_layout()
+    # # plt.show()
+    # print('Done simulation missing data.')
+    # plt.show()
