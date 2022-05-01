@@ -225,8 +225,8 @@ def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=5
     return grid, T, U, D
 
 
-def do_simulation_missingData(K=5, num_sub=10, missingRate=[0.01, 0.05, 0.1, 0.2],
-                              savePic=True):
+def do_simulation_missingData(K=5, width=30, height=30, num_sub=10,
+                              missingRate=[0.01, 0.05, 0.1, 0.2], savePic=True):
     """Run the missing data simulation at given missing rate
     Args:
         K: the clusters number
@@ -241,9 +241,8 @@ def do_simulation_missingData(K=5, num_sub=10, missingRate=[0.01, 0.05, 0.1, 0.2
         U_hat_all: the predicted U_hat for each missing rate
     """
     print('Start simulation')
-    grid, T, U, D = _simulate_missingData(K=K, N=20, num_sub=num_sub,
-                                          max_iter=100, sigma2=0.2,
-                                          missingdata=missingRate)
+    grid, T, U, D = _simulate_missingData(K=K, N=20, width=width, height=height, num_sub=num_sub,
+                                          max_iter=100, sigma2=0.2, missingdata=missingRate)
 
     Uerr_all, theta_all, U_nan_all, U_hat_all = [], [], [], []
     # Plot the individual parcellations sampled from prior
@@ -274,60 +273,63 @@ def do_simulation_missingData(K=5, num_sub=10, missingRate=[0.01, 0.05, 0.1, 0.2
     return theta_all, Uerr_all, U, U_nan_all, U_hat_all
 
 
+def _plot_maps(U, cmap='tab20', grid=None, offset=1, dim=(30, 30), vmax=19, row_labels=None):
+    # Step 7: Plot fitting results
+    N, P = U.shape
+    if grid is None:
+        grid = np.zeros((2,), np.int32)
+        grid[0] = np.ceil(np.sqrt(N))
+        grid[1] = np.ceil(N / grid[0])
+
+    for n in range(N):
+        ax = plt.subplot(grid[0], grid[1], n+offset)
+        ax.imshow(U[n].reshape(dim), cmap='tab20', interpolation='nearest', vmax=vmax)
+        ax.axes.xaxis.set_visible(False)
+        ax.axes.yaxis.set_visible(False)
+        if (row_labels is not None) and (n % num_sub == 0):
+            ax.axes.yaxis.set_visible(True)
+            ax.set_yticks([])
+            ax.set_ylabel(row_labels[int(n / num_sub)])
+
+
 if __name__ == '__main__':
+    # Set up experiment parameters
     K = 5
     num_sub = 10
-    missingRate = [0.01, 0.05, 0.1, 0.2]
+    rate = [0.01, 0.05, 0.1, 0.2]
+    labels = ['r = ' + str(x) for x in rate]
+    w, h = 30, 30
     theta_all, Uerr_all, U, U_nan_all, U_hat_all = do_simulation_missingData(K=K, num_sub=num_sub,
-                                                                             missingRate=missingRate,
+                                                                             width=w, height=h,
+                                                                             missingRate=rate,
                                                                              savePic=False)
 
-    # # Step 7: Plot fitting results
-    # for n in range(len(U)):
-    #     ax = plt.subplot(1, num_sub, n+1)
-    #     ax.imshow(U[n].reshape((30,30)), cmap='tab20', interpolation='nearest', vmax=K)
-    #     ax.axes.xaxis.set_visible(False)
-    #     ax.axes.yaxis.set_visible(False)
-    # plt.show()
-    #
-    # U_nan = pt.stack(U_nan_all).flatten(end_dim=1)
-    # plt.figure(figsize=(20, 8))
-    # for n in range(len(U_nan)):
-    #     ax = plt.subplot(len(U_nan_all), num_sub, n + 1)
-    #     ax.imshow(U_nan[n].reshape((30, 30)), cmap='tab20', interpolation='nearest', vmax=K)
-    #     ax.axes.xaxis.set_visible(False)
-    #     ax.axes.yaxis.set_visible(False)
-    #     if n % num_sub == 0:
-    #         ax.axes.yaxis.set_visible(True)
-    #         ax.set_ylabel('r = %s' % str(missingRate[int(n / num_sub)]))
-    # plt.show()
-    #
-    # U_hat = pt.stack(U_hat_all).flatten(end_dim=1)
-    # plt.figure(figsize=(20, 8))
-    # for n in range(len(U_hat)):
-    #     ax = plt.subplot(len(U_hat_all), num_sub, n + 1)
-    #     ax.imshow(U_hat[n].reshape((30, 30)), cmap='tab20', interpolation='nearest', vmax=K)
-    #     ax.axes.xaxis.set_visible(False)
-    #     ax.axes.yaxis.set_visible(False)
-    #     if n % num_sub == 0:
-    #         ax.axes.yaxis.set_visible(True)
-    #         ax.set_ylabel('r = %s' % str(missingRate[int(n / num_sub)]))
-    # plt.show()
-    #
-    # fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-    # labels = 'r = '
-    # labels += '% s'
-    # labels = [labels % i for i in missingRate]
-    # axs[0].plot(pt.stack(theta_all).T, label=labels)
-    # axs[0].legend(loc="upper right")
-    # axs[0].set_xlabel('number of iterations')
-    # axs[0].set_ylabel(r'Difference between $\theta$ and $\hat{\theta}$')
-    #
-    # axs[1].bar(labels, Uerr_all)
-    # axs[1].set_ylabel(r'Absolute error between $\mathbf{U}$ and $\hat{\mathbf{U}}$')
-    #
-    # fig.suptitle('Simulation results on different missing data percentage.')
-    # plt.tight_layout()
-    # # plt.show()
-    # print('Done simulation missing data.')
-    # plt.show()
+    # Plot the true Us, true Us with missing data, and the estimated Us
+    _plot_maps(U, cmap='tab20', grid=[1, num_sub], dim=(w, h), row_labels=['True_U'])
+    plt.show()
+
+    U_nan = pt.stack(U_nan_all).flatten(end_dim=1)
+    _plot_maps(U_nan, cmap='tab20', grid=[len(rate), num_sub], dim=(w, h),
+               row_labels=labels)
+    plt.show()
+
+    U_hat = pt.stack(U_hat_all).flatten(end_dim=1)
+    _plot_maps(U_hat, cmap='tab20', grid=[len(rate), num_sub], dim=(w, h),
+               row_labels=labels)
+    plt.show()
+
+    # Plot the difference of model recovery params, and absolute errors of U and U_hat
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    axs[0].plot(pt.stack(theta_all).T, label=labels)
+    axs[0].legend(loc="upper right")
+    axs[0].set_xlabel('number of iterations')
+    axs[0].set_ylabel(r'Difference between $\theta$ and $\hat{\theta}$')
+
+    axs[1].bar(labels, Uerr_all)
+    axs[1].set_ylabel(r'Absolute error between $\mathbf{U}$ and $\hat{\mathbf{U}}$')
+
+    fig.suptitle('Simulation results on different missing data percentage.')
+    plt.tight_layout()
+    plt.show()
+    print('Done simulation missing data.')
+
