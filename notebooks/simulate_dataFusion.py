@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-The script of simulating the generative model training when the data is incomplete,
+The script of simulating the generative model training when across dataset,
 and test the model recovery ability.
 
-Created on 4/27/2022 at 2:51 PM
+Created on 5/3/2022 at 2:09 PM
 Author: dzhi
 """
 import numpy as np
@@ -164,8 +164,8 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
-def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=50, sigma2=1.0,
-                          uniform_kappa=True, missingdata=None):
+def _simulate_dataFusion(K=5, width=30, height=30, N=40, num_sub=10, max_iter=50, sigma2=1.0,
+                          uniform_kappa=True, missingdata=None, nsub_list=None):
     """Simulation function used for testing full model with a GMM emission
     Args:
         K: the number of clusters
@@ -181,18 +181,20 @@ def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=5
     grid = sp.SpatialGrid(width=width, height=height)
     arrangeT = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
     # emissionT = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-    emissionT = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
-    emissionT.kappa = pt.tensor(sigma2)
+    emissionT1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+    emissionT1.kappa = pt.tensor(sigma2)
+    # emissionT2 = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
+    # emissionT2.sigma2 = pt.tensor(sigma2)
+    emissionT2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+    emissionT2.kappa = pt.tensor(sigma2)
 
     # Step 2: Initialize the parameters of the true model
     arrangeT.random_smooth_pi(grid.Dist, theta_mu=150)
     arrangeT.theta_w = pt.tensor(20)
 
     # Step 4: Generate data by sampling from the above model
-    T = FullModel(arrangeT, emissionT)
-    U = T.arrange.sample(num_subj=num_sub, burnin=30)
-    Y_train = T.emission.sample(U)
-    # Y_test = T.emission.sample(U)
+    T = FullMultiModel(arrangeT, [emissionT1, emissionT2])
+    U, Y_train = T.sample(num_subj=nsub_list)
 
     # Making incomplete data if needed
     D = []
@@ -208,26 +210,30 @@ def _simulate_missingData(K=5, width=30, height=30, N=40, num_sub=10, max_iter=5
             arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
                                              remove_redundancy=False)
             # emissionM = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-            emissionM = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
-            M = FullModel(arrangeM, emissionM)
-            M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.00001,
-                                              fit_arrangement=True)
+            emissionM1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+            # emissionM2 = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
+            emissionM2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+            M = FullMultiModel(arrangeM, [emissionM1, emissionM2])
+            M, ll, theta, Uhat_fit = M.fit_em(Y=pt.split(Y_train, nsub_list), iter=max_iter,
+                                              tol=0.00001, fit_arrangement=True)
             D.append({'U_nan': mask*U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
     else:
         mask = pt.ones(num_sub, grid.P)
         # Step 6: Generate new models for fitting
         arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
                                          remove_redundancy=False)
-        emissionM = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-        M = FullModel(arrangeM, emissionM)
-        M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.00001,
-                                          fit_arrangement=True)
-        D.append({'U_nan': mask*U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
+        emissionM1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+        # emissionM2 = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
+        emissionM2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+        M = FullMultiModel(arrangeM, [emissionM1, emissionM2])
+        M, ll, theta, Uhat_fit = M.fit_em(Y=pt.split(Y_train, nsub_list), iter=max_iter,
+                                          tol=0.00001, fit_arrangement=True)
+        D.append({'U_nan': mask * U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
 
     return grid, T, U, D
 
 
-def do_simulation_missingData(K=5, width=30, height=30, num_sub=10,
+def do_simulation_dataFusion(K=5, width=30, height=30, num_sub=10, nsub_list=[5, 5],
                               missingRate=[0.01, 0.05, 0.1, 0.2], savePic=True):
     """Run the missing data simulation at given missing rate
     Args:
@@ -243,8 +249,9 @@ def do_simulation_missingData(K=5, width=30, height=30, num_sub=10,
         U_hat_all: the predicted U_hat for each missing rate
     """
     print('Start simulation')
-    grid, T, U, D = _simulate_missingData(K=K, N=20, width=width, height=height, num_sub=num_sub,
-                                          max_iter=50, sigma2=20, missingdata=missingRate)
+    grid, T, U, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, num_sub=num_sub,
+                                         max_iter=200, sigma2=20, missingdata=missingRate,
+                                         nsub_list=nsub_list)
 
     Uerr_all, theta_all, U_nan_all, U_hat_all = [], [], [], []
     # Plot the individual parcellations sampled from prior
@@ -265,11 +272,19 @@ def do_simulation_missingData(K=5, width=30, height=30, num_sub=10,
         U_nan_all.append(U_nan)
         U_hat_all.append(Uhat_fit)
         Uerr_all.append(U_err)
-        idx = matching_params(T.emission.V, theta[:, M.get_param_indices('emission.V')], once=False)
-        diff_V = _compute_diff(T.emission.V, theta[:, M.get_param_indices('emission.V')],
-                               index=idx, compute_single=True)
-        diff_sigma = pt.abs(T.emission.kappa -
-                            theta[:, M.get_param_indices('emission.kappa')].reshape(-1))
+        diff_V, diff_sigma = [], []
+        for n, emT in enumerate(T.emissions):
+            idx = matching_params(emT.V, theta[:, M.get_param_indices('emissions.%d.V' % n)],
+                                  once=False)
+            this_diff_V = _compute_diff(emT.V, theta[:, M.get_param_indices('emissions.%d.V' % n)],
+                                        index=idx, compute_single=True)
+            this_diff_sigma = pt.abs(emT.kappa - theta[:, M.get_param_indices('emissions.%d.kappa'
+                                                                              % n)].reshape(-1))
+            diff_V.append(this_diff_V)
+            diff_sigma.append(this_diff_sigma)
+
+        diff_V = pt.stack(diff_V).sum(dim=0)
+        diff_sigma = pt.stack(diff_sigma).sum(dim=0)
         theta_all.append(diff_V + diff_sigma)
 
     return theta_all, Uerr_all, U, U_nan_all, U_hat_all
@@ -301,10 +316,11 @@ if __name__ == '__main__':
     rate = [0.01, 0.1, 0.2]
     labels = ['r = ' + str(x) for x in rate]
     w, h = 30, 30
-    theta_all, Uerr_all, U, U_nan_all, U_hat_all = do_simulation_missingData(K=K, num_sub=num_sub,
-                                                                             width=w, height=h,
-                                                                             missingRate=rate,
-                                                                             savePic=True)
+    theta_all, Uerr_all, U, U_nan_all, U_hat_all = do_simulation_dataFusion(K=K, num_sub=num_sub,
+                                                                            width=w, height=h,
+                                                                            missingRate=rate,
+                                                                            nsub_list=[3, 7],
+                                                                            savePic=True)
 
     # Plot the true Us, true Us with missing data, and the estimated Us
     _plot_maps(U, cmap='tab20', grid=[1, num_sub], dim=(w, h), row_labels=['True_U'])
@@ -329,7 +345,7 @@ if __name__ == '__main__':
 
     axs[1].bar(labels, pt.stack(Uerr_all).mean(dim=1), yerr=pt.stack(Uerr_all).std(dim=1),
                capsize=10)
-    axs[1].set_ylim([0, 0.3])
+    axs[1].set_ylim([0, 1])
     axs[1].set_ylabel(r'Absolute error between $\mathbf{U}$ and $\hat{\mathbf{U}}$')
 
     fig.suptitle('Simulation results on different missing data percentage.')

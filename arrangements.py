@@ -138,7 +138,7 @@ class PottsModel(ArrangementModel):
         self.fit_theta_w = True # Update smoothing parameter in Mstep
         self.update_order=None
         self.nparams = 10
-        # self.set_param_list(['logpi','theta_w'])
+        self.set_param_list(['logpi', 'theta_w'])
 
     def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
         """

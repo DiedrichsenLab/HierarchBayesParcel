@@ -11,6 +11,9 @@ import torch as pt
 
 
 class FullModel:
+    """The full generative model contains single arrangement model and
+       single emission model for training by given dataset
+    """
     def __init__(self, arrange,emission):
         self.arrange = arrange
         self.emission = emission
@@ -191,3 +194,232 @@ class FullModel:
             return ind
         else:
             raise NameError('Parameter name needs to be arrange.param or emission.param')
+
+
+class FullMultiModel:
+    """The full generative model contains arrangement model and multiple
+       emission models for training across dataset
+    """
+    def __init__(self, arrange, emission):
+        """Constructor
+        Args:
+            arrange: the arrangement model
+            emission: the list of emission models
+        """
+        self.arrange = arrange
+        self.emissions = emission
+        self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
+
+    def sample(self, num_subj=None):
+        """Take in the number of subjects to sample for each emission model
+        Args:
+            num_subj: list of subjects number. i.g [2, 3, 4]
+        Returns:
+            U: the true Us of all subjects concatenated vertically,
+               shape(num_subs, P)
+            Y: data sampled from emission models, shape (num_subs, N, P)
+        """
+        if num_subj is None:
+            # If number of subject not given, then generate 10
+            # subjects data per each emission model
+            num_subj = [10] * len(self.emissions)
+
+        U = self.arrange.sample(sum(num_subj))
+        Y = []
+        for em, n in enumerate(pt.split(U, num_subj)):
+            this_Y = self.emissions[em].sample(n)
+            Y.append(this_Y)
+        return U, pt.cat(Y, dim=0)
+
+    def Estep(self, Y=None, signal=None, separate_ll=False):
+        if Y is not None:
+            for n, em in enumerate(self.emissions):
+                em.initialize(Y[n])
+
+        if signal is not None:  # for GMM with signal strength
+            emloglik = [e.Estep(signal=signal) for e in self.emissions]
+        else:
+            emloglik = [e.Estep() for e in self.emissions]
+
+        emloglik = pt.cat(emloglik, dim=0)  # concatenate all emloglike
+        Uhat, ll_a = self.arrange.Estep(emloglik)
+        ll_e = (Uhat * emloglik).sum()
+        if separate_ll:
+            return Uhat, [ll_e, ll_a.sum()]
+        else:
+            return Uhat, ll_a.sum()+ll_e
+
+    def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False,
+               fit_emission=True, fit_arrangement=True):
+        """ Run the EM-algorithm on a full model
+            this demands that both the Emission and Arrangement model
+            have a full Estep and Mstep and can calculate the likelihood,
+            including the partition function
+        Args:
+            Y (3d-ndarray): numsubj x N x numvoxel array of data
+            iter (int): Maximal number of iterations (def:30)
+            tol (double): Tolerance on overall likelihood (def: 0.01)
+            seperate_ll (bool): Return arrangement and emission LL separetely
+            fit_emission: If True, fit emission model. Otherwise, freeze it
+            fit_arrangement: If True, fit the arrangement model.
+                             Otherwise, freeze it
+        Returns:
+            model (Full Model): fitted model (also updated)
+            ll (ndarray): Log-likelihood of full model as function of iteration
+                If seperate_ll, the first column is ll_A, the second ll_E
+            theta (ndarray): History of the parameter vector
+
+        """
+        # Initialize the tracking
+        ll = np.zeros((iter, 2))
+        theta = np.zeros((iter, self.nparams))
+
+        self.nsub_list = []
+        for n, em in enumerate(self.emissions):
+            em.initialize(Y[n])
+            this_nsub = Y[n].shape[0]
+            self.nsub_list.append(this_nsub)
+
+        for i in range(iter):
+            # Track the parameters
+            theta[i, :] = self.get_params()
+
+            # Get the (approximate) posterior p(U|Y)
+            emloglik = [e.Estep() for e in self.emissions]
+            emloglik = pt.cat(emloglik, dim=0)  # concatenate vertically
+
+            Uhat, ll_A = self.arrange.Estep(emloglik)
+            # Compute the expected complete logliklihood
+            ll_E = pt.sum(Uhat * emloglik, dim=(1, 2))
+            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 1] = pt.sum(ll_E)
+            # Check convergence
+            # ll_decrease_flag = (i > 0) and (ll[i, :].sum() - ll[i-1, :].sum() < 0)
+            # if i == iter-1 or ((i > 0) and (ll[i,:].sum() - ll[i-1,:].sum() < tol)) or ll_decrease_flag:
+            if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
+                break
+
+            # Updates the parameters
+            if fit_emission:
+                Uhat_split = pt.split(Uhat, self.nsub_list)
+                for em, Us in enumerate(Uhat_split):
+                    self.emissions[em].Mstep(Us)
+            if fit_arrangement:
+                self.arrange.Mstep()
+
+        if seperate_ll:
+            return self, ll[0:i+1], theta[0:i+1, :], Uhat
+        else:
+            return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
+
+    def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False, estep='sample'):
+        """ Runs a Stochastic Maximum likelihood algorithm on a full model.
+        The emission model is still assumed to have E-step and Mstep.
+        The arrangement model is has a postive and negative phase estep,
+        and a gradient M-step. The arrangement likelihood is not necessarily
+        FUTURE EXTENSIONS:
+        * Sampling of subjects from training set
+        * initialization of parameters
+        * adaptitive stopping criteria
+        * Adaptive stepsizes
+        * Gradient acceleration methods
+        Args:
+            Y (3d-ndarray): numsubj x N x numvoxel array of data
+            iter (int): Maximal number of iterations
+            stepsize (double): Fixed step size for MStep
+        Returns:
+            model (Full Model): fitted model (also updated)
+            ll (ndarray): Log-likelihood of full model as function of iteration
+                If seperate_ll, the first column is ll_A, the second ll_E
+            theta (ndarray): History of the parameter vector
+        """
+        # Initialize the tracking
+        ll = np.zeros((iter,2))
+        theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
+        self.emission.initialize(Y)
+        for i in range(iter):
+            # Track the parameters
+            theta[i, :] = np.concatenate([self.arrange.get_params(),self.emission.get_params()])
+
+            # Get the (approximate) posterior p(U|Y)
+            emloglik = self.emission.Estep()
+            if estep=='sample':
+                Uhat,ll_A = self.arrange.epos_sample(emloglik,num_chains=self.arrange.epos_numchains)
+                self.arrange.eneg_sample(num_chains=self.arrange.eneg_numchains)
+            elif estep=='ssa':
+                Uhat,ll_A = self.arrange.epos_ssa(emloglik)
+                self.arrange.eneg_ssa()
+
+            # Compute the expected complete logliklihood
+            ll_E = np.sum(Uhat * emloglik,axis=(1,2))
+            ll[i,0]=np.sum(ll_A)
+            ll[i,1]=np.sum(ll_E)
+
+            # Run the Mstep
+            self.emission.Mstep(Uhat)
+            self.arrange.Mstep(stepsize)
+
+        if seperate_ll:
+            return self,ll[:i+1,:], theta[:i+1,:]
+        else:
+            return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
+
+    def ELBO(self, Y):
+        """Evidence lower bound of the data under the full model
+        Args:
+            Y (nd-array): numsubj x N x P array of data
+        Returns:
+            ELBO (nd-array): Evidence lower bound - should be relatively tight
+            Uhat (nd-array): numsubj x K x P array of expectations
+            ll_E (nd-array): emission logliklihood of data (numsubj,)
+            ll_A (nd-array): arrangement logliklihood of data (numsubj,)
+            lq (nd-array): <log q(u)> under q: Entropy
+        """
+        self.emissions.initialize(Y)
+        emloglik = self.emissions.Estep()
+        try:
+            Uhat, ll_A, QQ = self.arrange.Estep(emloglik, return_joint=True)
+            lq = np.sum(np.log(QQ)*QQ, axis=(1, 2))
+        except:
+            # Assume independence:
+            Uhat, ll_A = self.arrange.Estep(emloglik)
+            lq = np.sum(np.log(Uhat)*Uhat, axis=(1, 2))
+            # This is the same as:
+            # Uhat2 = Uhat[0,:,0]*Uhat[0,:,1].reshape(-1,1)
+            # l_test = np.sum(np.log(Uhat2)*Uhat2)
+        ll_E = np.sum(emloglik*Uhat, axis=(1, 2))
+        ELBO = ll_E + ll_A - lq
+        return ELBO, Uhat, ll_E, ll_A, lq
+
+    def get_params(self):
+        """Get the concatenated parameters from arrangemenet + emission model
+        Returns:
+            theta (ndarrap)
+        """
+        emi_params = [i.get_params() for i in self.emissions]
+        return np.concatenate([self.arrange.get_params(), pt.cat(emi_params)])
+
+    def get_param_indices(self, name):
+        """Return the indices for the full model theta vector
+        Args:
+            name (str): Parameter name in the format of 'arrange.logpi'
+                        or 'emissions.<X>.V' where <X> is the index of
+                        emission model. For example 'emissions.0.V' will
+                        return the Vs from self.emissions[0]
+        Returns:
+            indices (np.ndarray): 1-d numpy array of indices into the theta vector
+        """
+        names = name.split(".")
+        if (len(names) == 2) and (names[0] == 'arrange'):
+            ind = vars(self)[names[0]].get_param_indices(names[1])
+            return ind
+        elif (len(names) == 3) and (names[0] == 'emissions'):
+            ems_nparams = np.cumsum([i.nparams for i in self.emissions])
+            nparams_offset = np.insert(ems_nparams, 0, 0) + self.arrange.nparams
+            ind = vars(self)[names[0]][int(names[1])].get_param_indices(names[2])
+            return ind + nparams_offset[int(names[1])]
+        else:
+            raise NameError('Parameter name needs to be arrange.<param> '
+                            'or emissions.<X>.<param>, where <X> is the index '
+                            'of emission model and <param> is the param name. i.g '
+                            'emissions.0.V')

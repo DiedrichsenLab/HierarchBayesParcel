@@ -226,7 +226,7 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
     """
     # Step 1: Create the true model and initialize parameters
 
-    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=False, remove_redundancy=False)
+    arrangeT = ArrangeIndependent(K=k, P=p, spatial_specific=True, remove_redundancy=False)
     if emission == 'GMM':
         emissionT = MixGaussian(K=k, N=dim, P=p, std_V=False)
         emissionT.sigma2 = pt.tensor(dispersion)
@@ -717,8 +717,8 @@ def _test_sampling_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100, sigma2=1.0,
 
 
 def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, beta=1.0,
-                              dispersion=2.0, max_iter=100, tol=0.00001, do_plotting=False,
-                              same_signal=True):
+                              dispersion=2.0, max_iter=100, tol=0.001, do_plotting=False,
+                              same_signal=True, missingdata=0.1):
     """The evaluation and comparison routine between the emission models
     Args:
         data_type: which model used to generate data (GMM, GME, VMF)
@@ -738,7 +738,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P,
                                                         dispersion=dispersion, beta=beta,
                                                         do_plot=False, same_signal=same_signal,
-                                                        missingdata=0.2)
+                                                        missingdata=missingdata)
     model=['GMM', 'GME', 'VMF', 'true']
 
     # Step 2. Fit the competing emission model using the training data
@@ -806,14 +806,14 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
 
 def do_full_comparison_emission(clusters=5, iters=2, N=20, P=500, subjs=10, beta=0.4,
                                 true_models=['GMM', 'GME', 'VMF'], disper=[0.1, 0.1, 18],
-                                same_signal=True):
+                                same_signal=True, missingdata=0.1):
     D = pd.DataFrame()
     for m, e in enumerate(true_models):
         for i in range(iters):
             # beta is to control the signal strength for VMF, sigma2 is for GMM and GME
             T = _full_comparison_emission(data_type=e, num_sub=subjs, P=P, K=clusters,
                                           N=N, beta=beta, dispersion=disper[m],
-                                          same_signal=same_signal)
+                                          same_signal=same_signal, missingdata=missingdata)
             D = pd.concat([D, T])
     return D
 
@@ -926,8 +926,8 @@ def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/
 
 
 if __name__ == '__main__':
-    _simulate_full_VMF(K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=False,
-                       missingdata=0.05)
+    # _simulate_full_VMF(K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=False,
+    #                    missingdata=0.05)
     # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=0.05)
     # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=0.4,
     #                    num_bins=100, std_V=True, type_estep='linspace', missingdata=0.05)
@@ -939,16 +939,16 @@ if __name__ == '__main__':
     #                         type_estep=['linspace', 'import', 'reject'])
     # plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
     #
-    # T = do_full_comparison_emission(clusters=5, iters=10, beta=0.4, true_models=['GMM', 'GME', 'VMF'],
-    #                                 disper=[0.1, 0.1, 18], same_signal=True)
+    T = do_full_comparison_emission(clusters=10, iters=10, beta=0.5, true_models=['GMM', 'GME', 'VMF'],
+                                    disper=[0.5, 0.5, 40], same_signal=True, missingdata=None)
     # T.to_csv('notebooks/emission_modelrecover_2.csv')
     # T = pd.read_csv('notebooks/emission_modelrecover_2.csv')
-    # plot_comparision_emission(T)
-    # plt.show()
+    plot_comparision_emission(T)
+    plt.show()
     # pass
 
-    G, D = train_mdtb_dirty(K=5, train_participants=[2, 3, 4, 6, 8, 9, 10, 12, 14, 15],
-                            test_participants=[29, 30, 31], emission='VMF')
-    nib.save(G, 'test_5.label.gii')
+    # G, D = train_mdtb_dirty(K=5, train_participants=[2, 3, 4, 6, 8, 9, 10, 12, 14, 15],
+    #                         test_participants=[29, 30, 31], emission='VMF')
+    # nib.save(G, 'test_5.label.gii')
 
     print('Done simulation.')

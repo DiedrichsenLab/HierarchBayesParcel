@@ -387,12 +387,17 @@ def matching_U(U_true, U_predict):
     U_predict = pt.argmax(U_predict, dim=1)
     perm = permute(np.unique(U_predict))
     min_err = 1
+    U_match = U_predict
+    pred_err = None
     for idx in perm:
-        this_U_pred = np.choose(U_predict, idx)
-        u_abserr = pt.mean(pt.abs(U_true - this_U_pred).type(pt.float16)).item()
+        this_U_pred = np.choose(U_predict, idx).clone().detach()
+        err = pt.abs(U_true - this_U_pred).double()
+        err[err != 0] = 1
+        u_abserr = pt.mean(err).item()
         if u_abserr < min_err:
             min_err = u_abserr
             U_match = pt.clone(this_U_pred)
+            pred_err = pt.mean(err, dim=1)
 
-    return U_match, min_err
+    return U_match, pred_err
 
