@@ -226,10 +226,10 @@ class FullMultiModel:
 
         U = self.arrange.sample(sum(num_subj))
         Y = []
-        for em, n in enumerate(pt.split(U, num_subj)):
-            this_Y = self.emissions[em].sample(n)
+        for em, Us in enumerate(pt.split(U, num_subj, dim=0)):
+            this_Y = self.emissions[em].sample(Us)
             Y.append(this_Y)
-        return U, pt.cat(Y, dim=0)
+        return U, Y
 
     def Estep(self, Y=None, signal=None, separate_ll=False):
         if Y is not None:
@@ -301,7 +301,7 @@ class FullMultiModel:
 
             # Updates the parameters
             if fit_emission:
-                Uhat_split = pt.split(Uhat, self.nsub_list)
+                Uhat_split = pt.split(Uhat, self.nsub_list, dim=0)
                 for em, Us in enumerate(Uhat_split):
                     self.emissions[em].Mstep(Us)
             if fit_arrangement:

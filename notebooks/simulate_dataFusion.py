@@ -164,7 +164,7 @@ def matching_params(true_param, predicted_params, once=False):
     return index.int()
 
 
-def _simulate_dataFusion(K=5, width=30, height=30, N=40, num_sub=10, max_iter=50, sigma2=1.0,
+def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0,
                           uniform_kappa=True, missingdata=None, nsub_list=None):
     """Simulation function used for testing full model with a GMM emission
     Args:
@@ -189,52 +189,50 @@ def _simulate_dataFusion(K=5, width=30, height=30, N=40, num_sub=10, max_iter=50
     emissionT2.kappa = pt.tensor(sigma2)
 
     # Step 2: Initialize the parameters of the true model
-    arrangeT.random_smooth_pi(grid.Dist, theta_mu=150)
+    arrangeT.random_smooth_pi(grid.Dist, theta_mu=50)
     arrangeT.theta_w = pt.tensor(20)
 
     # Step 4: Generate data by sampling from the above model
-    T = FullMultiModel(arrangeT, [emissionT1, emissionT2])
-    U, Y_train = T.sample(num_subj=nsub_list)
-
-    # Making incomplete data if needed
     D = []
-    if missingdata is not None:
-        for m in missingdata:
-            radius = np.sqrt(m * grid.P/np.pi)
+    T = FullMultiModel(arrangeT, [emissionT1, emissionT2])
+    for ns in nsub_list:
+        U, Y_train = T.sample(num_subj=ns)
+        num_sub = sum(ns)
+        if missingdata is not None:
+            Y_train = pt.cat(Y_train, dim=0)
+            radius = np.sqrt(missingdata * grid.P / np.pi)
             centroid = np.random.choice(grid.P, (num_sub,))
             mask = pt.ones(num_sub, grid.P)
             mask[pt.where(grid.Dist[centroid] < radius)] = pt.nan
             Y_train = mask.unsqueeze(1) * Y_train
+            U_nan = mask * U
+            Y_train = pt.split(Y_train, ns, dim=0)
+        else:
+            U_nan = U
 
-            # Step 6: Generate new models for fitting
-            arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
-                                             remove_redundancy=False)
-            # emissionM = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-            emissionM1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
-            # emissionM2 = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-            emissionM2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
-            M = FullMultiModel(arrangeM, [emissionM1, emissionM2])
-            M, ll, theta, Uhat_fit = M.fit_em(Y=pt.split(Y_train, nsub_list), iter=max_iter,
-                                              tol=0.00001, fit_arrangement=True)
-            D.append({'U_nan': mask*U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
-    else:
-        mask = pt.ones(num_sub, grid.P)
         # Step 6: Generate new models for fitting
         arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
                                          remove_redundancy=False)
         emissionM1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
-        # emissionM2 = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
         emissionM2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+
+        # set params of recovery model to truth
+        arrangeM.logpi = T.arrange.logpi
+        # emissionM1.V = emissionT1.V
+        # emissionM1.kappa = emissionT1.kappa
+        # emissionM2.V = emissionT2.V
+        # emissionM2.kappa = emissionT2.kappa
+
         M = FullMultiModel(arrangeM, [emissionM1, emissionM2])
-        M, ll, theta, Uhat_fit = M.fit_em(Y=pt.split(Y_train, nsub_list), iter=max_iter,
-                                          tol=0.00001, fit_arrangement=True)
-        D.append({'U_nan': mask * U, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
+        M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter,
+                                          tol=0.00001, fit_arrangement=False)
+        D.append({'U': U, 'U_nan': U_nan, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
 
-    return grid, T, U, D
+    return grid, T, D
 
 
-def do_simulation_dataFusion(K=5, width=30, height=30, num_sub=10, nsub_list=[5, 5],
-                              missingRate=[0.01, 0.05, 0.1, 0.2], savePic=True):
+def do_simulation_dataFusion(K=5, width=30, height=30, nsub_list=[[5, 5]],
+                              missingRate=None, savePic=True):
     """Run the missing data simulation at given missing rate
     Args:
         K: the clusters number
@@ -249,13 +247,13 @@ def do_simulation_dataFusion(K=5, width=30, height=30, num_sub=10, nsub_list=[5,
         U_hat_all: the predicted U_hat for each missing rate
     """
     print('Start simulation')
-    grid, T, U, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, num_sub=num_sub,
-                                         max_iter=200, sigma2=20, missingdata=missingRate,
-                                         nsub_list=nsub_list)
+    grid, T, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, max_iter=50,
+                                      sigma2=20, missingdata=missingRate, nsub_list=nsub_list)
 
-    Uerr_all, theta_all, U_nan_all, U_hat_all = [], [], [], []
+    U_all, Uerr_all, theta_all, U_nan_all, U_hat_all = [], [], [], [], []
     # Plot the individual parcellations sampled from prior
-    for m in range(len(missingRate)):
+    for m in range(len(nsub_list)):
+        U = D[m]['U']
         U_nan = D[m]['U_nan']
         theta = D[m]['theta']
         M = D[m]['M']
@@ -265,10 +263,11 @@ def do_simulation_dataFusion(K=5, width=30, height=30, num_sub=10, nsub_list=[5,
         for i in range(len(plots)):
             if savePic:
                 plt.figure(figsize=(10, 4))
-                grid.plot_maps(plots[i], cmap='tab20', vmax=19, grid=[1, int(num_sub)])
-                plt.savefig('missing%d_%d.eps' % (missingRate[m] * 100, i), format='eps')
+                grid.plot_maps(plots[i], cmap='tab20', vmax=19, grid=[1, int(sum(nsub_list[m]))])
+                plt.savefig('missing%s_%d.eps' % (str(m), i), format='eps')
                 plt.clf()
 
+        U_all.append(U)
         U_nan_all.append(U_nan)
         U_hat_all.append(Uhat_fit)
         Uerr_all.append(U_err)
@@ -287,7 +286,7 @@ def do_simulation_dataFusion(K=5, width=30, height=30, num_sub=10, nsub_list=[5,
         diff_sigma = pt.stack(diff_sigma).sum(dim=0)
         theta_all.append(diff_V + diff_sigma)
 
-    return theta_all, Uerr_all, U, U_nan_all, U_hat_all
+    return theta_all, Uerr_all, U_all, U_nan_all, U_hat_all
 
 
 def _plot_maps(U, cmap='tab20', grid=None, offset=1, dim=(30, 30), vmax=19, row_labels=None):
@@ -313,26 +312,21 @@ if __name__ == '__main__':
     # Set up experiment parameters
     K = 5
     num_sub = 10
+    nsub_list = [[3, 7], [2, 8]]
     rate = [0.01, 0.1, 0.2]
-    labels = ['r = ' + str(x) for x in rate]
+    labels = [str(x) for x in nsub_list]
     w, h = 30, 30
-    theta_all, Uerr_all, U, U_nan_all, U_hat_all = do_simulation_dataFusion(K=K, num_sub=num_sub,
-                                                                            width=w, height=h,
-                                                                            missingRate=rate,
-                                                                            nsub_list=[3, 7],
-                                                                            savePic=True)
+    theta_all, Uerr_all, U, U_nan_all, U_hat_all = do_simulation_dataFusion(K=K, width=w, height=h,
+                                                                            nsub_list=nsub_list,
+                                                                            savePic=False)
 
-    # Plot the true Us, true Us with missing data, and the estimated Us
-    _plot_maps(U, cmap='tab20', grid=[1, num_sub], dim=(w, h), row_labels=['True_U'])
-    plt.show()
-
-    U_nan = pt.stack(U_nan_all).flatten(end_dim=1)
-    _plot_maps(U_nan, cmap='tab20', grid=[len(rate), num_sub], dim=(w, h),
-               row_labels=labels)
+    # Plot the true Us and the estimated Us
+    U = pt.stack(U).flatten(end_dim=1)
+    _plot_maps(U, cmap='tab20', grid=[len(nsub_list), num_sub], dim=(w, h), row_labels=labels)
     plt.show()
 
     U_hat = pt.stack(U_hat_all).flatten(end_dim=1)
-    _plot_maps(U_hat, cmap='tab20', grid=[len(rate), num_sub], dim=(w, h),
+    _plot_maps(U_hat, cmap='tab20', grid=[len(nsub_list), num_sub], dim=(w, h),
                row_labels=labels)
     plt.show()
 
