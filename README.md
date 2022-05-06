@@ -197,6 +197,13 @@ $$
 $$
 So in this parameterization in the iid case, $Z=1$ and we don't need the negative step. In general, however, we cannot simply set the above derivative to zero and solve it, as the parameter $\theta_w$ will also have an influences on $\langle u_{ik} \rangle$.
 
+
+
+### Probabilistic multivariate Boltzman machine
+
+
+
+
 ## Emission models
 
 Given the Markov property, the emission models specify the log probability of the observed data as a function of $\mathbf{u}$.  
