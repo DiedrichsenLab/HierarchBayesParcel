@@ -8,6 +8,8 @@ Author: DZHI
 """
 import numpy as np
 import torch as pt
+import emissions as emi
+import arrangements as arr
 
 
 class FullModel:
@@ -231,6 +233,9 @@ class FullMultiModel:
             Y.append(this_Y)
         return U, Y
 
+    def init_params_correction(self, prior=None):
+        pass
+
     def Estep(self, Y=None, signal=None, separate_ll=False):
         if Y is not None:
             for n, em in enumerate(self.emissions):
@@ -311,6 +316,77 @@ class FullMultiModel:
             return self, ll[0:i+1], theta[0:i+1, :], Uhat
         else:
             return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
+
+    def fit_em_ninits(self, Y, n_inits=20, first_iter=20, iter=30, tol=0.01,
+                      seperate_ll=False, fit_emission=True, fit_arrangement=True):
+        max_ll = -pt.inf
+        first_lls = []
+        for i in range(n_inits):
+            # Making the new set of emission models with random initializations
+            this_emissions = []
+            for e in self.emissions:
+                if e.name == 'GMM':
+                    this_emissions.append(emi.MixGaussian(K=e.K, N=e.N, P=e.P, std_V=e.std_V))
+                elif e.name == 'GME':
+                    this_emissions.append(emi.MixGaussianExp(K=e.K, N=e.N, P=e.P, num_signal_bins=100,
+                                                             std_V=False, type_estep='linspace'))
+                elif e.name == 'VMF':
+                    this_emissions.append(emi.MixVMF(K=e.K, N=e.N, P=e.P,
+                                                     uniform_kappa=e.uniform_kappa))
+                else:
+                    raise NameError("The given emission model is not recognized.")
+            tmp = self.emissions
+            self.emissions = this_emissions
+
+            _, this_ll, _, _ = self.fit_em(Y, iter=first_iter, tol=tol, seperate_ll=seperate_ll,
+                                           fit_emission=fit_emission,
+                                           fit_arrangement=fit_arrangement)
+            first_lls.append(this_ll)
+            if this_ll[-1] > max_ll:
+                max_ll = this_ll[-1]
+            else:
+                self.emissions = tmp
+
+        # Initialize the tracking
+        ll = np.zeros((iter, 2))
+        theta = np.zeros((iter, self.nparams))
+
+        self.nsub_list = []
+        for n, em in enumerate(self.emissions):
+            em.initialize(Y[n])
+            this_nsub = Y[n].shape[0]
+            self.nsub_list.append(this_nsub)
+
+        for i in range(iter):
+            # Track the parameters
+            theta[i, :] = self.get_params()
+
+            # Get the (approximate) posterior p(U|Y)
+            emloglik = [e.Estep() for e in self.emissions]
+            emloglik = pt.cat(emloglik, dim=0)  # concatenate vertically
+
+            Uhat, ll_A = self.arrange.Estep(emloglik)
+            # Compute the expected complete logliklihood
+            ll_E = pt.sum(Uhat * emloglik, dim=(1, 2))
+            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 1] = pt.sum(ll_E)
+            # Check convergence
+            # ll_decrease_flag = (i > 0) and (ll[i, :].sum() - ll[i-1, :].sum() < 0)
+            if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
+                break
+
+            # Updates the parameters
+            if fit_emission:
+                Uhat_split = pt.split(Uhat, self.nsub_list, dim=0)
+                for em, Us in enumerate(Uhat_split):
+                    self.emissions[em].Mstep(Us)
+            if fit_arrangement:
+                self.arrange.Mstep()
+
+        if seperate_ll:
+            return self, ll[0:i+1], theta[0:i+1, :], Uhat, first_lls
+        else:
+            return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat, first_lls
 
     def fit_sml(self, Y, iter=60, stepsize= 0.8, seperate_ll=False, estep='sample'):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
