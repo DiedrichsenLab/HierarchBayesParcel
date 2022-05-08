@@ -246,7 +246,7 @@ def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0
     emissionT2.kappa = pt.tensor(sigma2)
 
     # Step 2: Initialize the parameters of the true model
-    arrangeT.random_smooth_pi(grid.Dist, theta_mu=100)
+    arrangeT.random_smooth_pi(grid.Dist, theta_mu=150)
     arrangeT.theta_w = pt.tensor(20)
 
     # Step 4: Generate data by sampling from the above model
@@ -282,8 +282,14 @@ def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0
         # emissionM2.kappa = emissionT2.kappa
 
         M = FullMultiModel(arrangeM, [emissionM1, emissionM2])
-        M, ll, theta, Uhat_fit = M.fit_em_ninits(Y=Y_train, n_inits=100, iter=max_iter,
-                                                 tol=0.001, fit_arrangement=False)
+
+        # Method 1: escape local maxima by inits from prior
+        M.pre_train(Y_train, iter=20)
+        M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.001,
+                                          fit_arrangement=False)
+        # Method 2: escape local maxima by multiple inits
+        # M, ll, theta, Uhat_fit, _ = M.fit_em_ninits(Y=Y_train, n_inits=100, iter=max_iter,
+        #                                             tol=0.001, fit_arrangement=False)
         D.append({'U': U, 'U_nan': U_nan, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
 
     return grid, T, D

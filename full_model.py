@@ -233,10 +233,59 @@ class FullMultiModel:
             Y.append(this_Y)
         return U, Y
 
-    def init_params_correction(self, prior=None):
-        pass
+    def pre_train(self, Y, iter=10, emi_idx=None, prior=None, fit_arrangement=False):
+        """Correcting the init parameters for all emission models by sampling from
+           a prior or learnt from one of the emission models
+        Args:
+            Y: data
+            iter: the number of iterations for fine-tuning the params
+            emi_idx: the index of which emission model params should be used
+            prior: if not None, correcting the inits from prior. shape (K, P)
+            fit_arrangement: if True, fit arrangement model
+        Returns:
+
+        """
+        # Initialize data to all emission models
+        for n, e in enumerate(self.emissions):
+            e.initialize(Y[n])
+
+        # learn prior from the dataset with the highest dimensions?
+        # or with the most subjects?
+        if emi_idx is None:
+            # dims = [e.V.shape[0] for e in self.emissions]  # dims
+            dims = [e.num_subj for e in self.emissions]  # num_subj
+            emi_idx = dims.index(max(dims))
+
+        ground_em = self.emissions[emi_idx]
+        if prior is None:
+            for i in range(iter):
+                # Get the (approximate) posterior p(U|Y)
+                emloglik = ground_em.Estep()
+                Uhat, _ = self.arrange.Estep(emloglik)
+                ground_em.Mstep(Uhat)
+
+                if fit_arrangement:
+                    self.arrange.Mstep()
+
+            Uhat = pt.mean(Uhat, dim=0)
+            for em in self.emissions:
+                if em is not ground_em:
+                    em.Mstep(Uhat.unsqueeze(0).repeat(em.num_subj, 1, 1))
+        else:
+            for em in self.emissions:
+                em.Mstep(prior.unsqueeze(0).repeat(em.num_subj, 1, 1))
 
     def Estep(self, Y=None, signal=None, separate_ll=False):
+        """E step for full model. Run a full process of EM procedure once
+           on both arrangement and emission models.
+        Args:
+            Y: data
+            signal: the ground truth signal strength if applied.
+            separate_ll: if True, return separte ll_A and ll_E
+        Returns:
+            Uhat: the prediction U_hat
+            ll: the log-likelihood for arrangement and emission models
+        """
         if Y is not None:
             for n, em in enumerate(self.emissions):
                 em.initialize(Y[n])
@@ -273,7 +322,6 @@ class FullMultiModel:
             ll (ndarray): Log-likelihood of full model as function of iteration
                 If seperate_ll, the first column is ll_A, the second ll_E
             theta (ndarray): History of the parameter vector
-
         """
         # Initialize the tracking
         ll = np.zeros((iter, 2))
@@ -319,6 +367,31 @@ class FullMultiModel:
 
     def fit_em_ninits(self, Y, n_inits=20, first_iter=20, iter=30, tol=0.01,
                       seperate_ll=False, fit_emission=True, fit_arrangement=True):
+        """Run the EM-algorithm on a full model started with multiple random
+           initialization values and escape from local maxima by selecting the
+           maximum likelihood inits. This demands that both the Emission and
+           Arrangement model have a full Estep and Mstep and can calculate the
+           likelihood, including the partition function
+        Args:
+            Y: data
+            n_inits: the number of random inits
+            first_iter: the first few iterations for the random inits to find
+                        the inits parameters with maximal likelihood
+            iter: the number of iterations for full EM process
+            tol: Tolerance on overall likelihood (def: 0.01)
+            seperate_ll: Return arrangement and emission LL separetely
+            fit_emission: If True, fit emission model. Otherwise, freeze it
+            fit_arrangement: If True, fit the arrangement model.
+                             Otherwise, freeze it
+        Returns:
+            model (Full Model): fitted model (also updated)
+            ll (ndarray): Log-likelihood of full model as function of iteration
+                If seperate_ll, the first column is ll_A, the second ll_E
+            theta (ndarray): History of the parameter vector
+            Uhat: the predicted U (probabilistic)
+            first_lls: the log-likelihoods for the n_inits random parameters
+                       after first_iter runs
+        """
         max_ll = -pt.inf
         first_lls = []
         for i in range(n_inits):
