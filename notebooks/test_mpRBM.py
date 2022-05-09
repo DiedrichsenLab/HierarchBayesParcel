@@ -73,6 +73,7 @@ def make_mrf_data(width=10,K=5,N=200,
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width,height=width)
     arrangeT = ar.PottsModel(grid.W, K=K)
+    arrangeT.name = 'Potts'
     emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
 
     # Step 2: Initialize the parameters of the true model
@@ -98,7 +99,7 @@ def make_mrf_data(width=10,K=5,N=200,
         plt.figure(figsize=(10,4))
         grid.plot_maps(U[0:10],cmap='tab10',vmax=K,grid=[2,5])
 
-    return Ytrain, Ytest, U, MT
+    return Ytrain, Ytest, U, MT , grid
 
 def train_rbm_to_mrf(N=200,n_hidden = 30,n_epoch=20, batch_size=20, sigma2=0.01):
     """Fits and RBM to observed activiy data, given a smooth true arrangement (mrf)
@@ -337,8 +338,6 @@ def test_epos_meanfield(n_hidden = 100,
 
     plt.figure(figsize=(8,8))
     sb.lineplot(data=T,y='uerr',x='iter',hue='model',style='type')
-
-
     pass
 
 def compare_gibbs():

@@ -211,7 +211,7 @@ def logpY(emloglik,Uhat,offset='P'):
     else:
         raise(NameError('offset needs to be P,None, or floatingpoint'))
     py = pt.sum(pyu * Uhat,dim=1)
-    return pt.mean(pt.log(py),dim=(0,1))
+    return pt.mean(pt.log(py),dim=(0,1)).item()
 
 
 def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
@@ -279,7 +279,6 @@ def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
     if type(data) is np.ndarray:
         data=pt.tensor(data,dtype=pt.get_default_dtype())
     if crit=='logpY':
-        U = pt.softmax(data,dim=1)
         emloglik = data
         return logpY(emloglik,Uhat)
     elif crit == 'u_abserr':
