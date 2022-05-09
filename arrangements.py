@@ -256,7 +256,7 @@ class PottsModel(ArrangementModel):
                 else:
                     for k in range(self.K):
                         Uhist[i,k]=pt.mean(U[:,track]==k)
-            # Now loop over chains: This loop can maybe be replaced
+            # Now loop over noes for all chains at the same tim
             for p in np.arange(self.P-1,-1,-1):
                 nb_u = U[:,self.neighbours[p]] # Neighbors to node x
                 nb_u = nb_u.reshape(num_chains,1,-1)
