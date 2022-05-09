@@ -483,9 +483,9 @@ class mpRBM(ArrangementModel):
             wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
             Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
-            if self.Etype=='vis':
+            if self.Etype=='vis': # This is incorrect, but a understandable and information error
                 self.epos_U = pt.softmax(emloglik,dim=1)
-            elif self.Etype=='prob':
+            elif self.Etype=='prob': # This is correct and isthe olny version that should be used.
                 self.epos_U = Uhat
             self.epos_Eh = Eh
         return Uhat, pt.nan
@@ -552,6 +552,33 @@ class mpRBM_CDk(mpRBM):
         self.eneg_Eh = Eh
         self.eneg_U = EU
         return self.eneg_U,self.eneg_Eh
+
+
+class cmpRBM_pCD(mpRBM_pCD):
+    """convolutional multinomial (categorial) restricted Boltzman machine
+    for learning of brain parcellations for probabilistic input
+    Uses persistent Contrastive-Divergence k for learning
+    """
+
+    def __init__(self, K, P, Wc, eneg_iter=3,eneg_numchains=77):
+        Wc
+        super().__init__(K, P,nh)
+        self.eneg_iter = eneg_iter
+        self.eneg_numchains = eneg_numchains
+
+
+    def Eneg(self, U=None):
+        if (self.eneg_U is None):
+            U = pt.empty(self.eneg_numchains,self.K,self.P).uniform_(0,1)
+        else:
+            U = self.eneg_U
+        for i in range(self.eneg_iter):
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
+        return self.eneg_U,self.eneg_Eh
+
 
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):

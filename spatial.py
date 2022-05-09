@@ -50,6 +50,18 @@ class SpatialGrid(SpatialLayout):
         W = (self.Dist==1).float() # Nearest neighbour connectivity
         return W
 
+    def get_neighbour_connectivity(self):
+        W = (self.Dist==1).float() # Nearest neighbour connectivity
+        return W
+
+    def get_edge_connectivity(self):
+        W = (self.Dist==1).float() # Nearest neighbour connectivity
+        a,b = pt.triu(W).nonzero()
+
+        return W
+
+
+
     def plot_maps(self,Y,cmap='tab20',vmin=0,vmax=19,grid=None,offset=1):
         """Plots a set of map samples as an image grid
             Parameters:
