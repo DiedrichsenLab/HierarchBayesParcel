@@ -15,6 +15,19 @@ class SpatialLayout():
         self.P = P
     pass
 
+    def random_smooth_pi(self,K=None, theta_mu=1,centroids=None):
+        """
+            Defines pi (prior over parcels) using a Ising model with K centroids
+            Needs the Distance matrix to define the prior probability
+        """
+        if centroids is None:
+            centroids = np.random.choice(self.P,(K,))
+        d2 = self.Dist[centroids,:]**2
+        pi = pt.exp(-d2/theta_mu)
+        pi = pi / pi.sum(dim=0)
+        logpi = np.log(pi)
+        return logpi
+
 class SpatialChain(SpatialLayout):
     """
         Linear arrangement of Nodes
@@ -54,13 +67,15 @@ class SpatialGrid(SpatialLayout):
         W = (self.Dist==1).float() # Nearest neighbour connectivity
         return W
 
-    def get_edge_connectivity(self):
-        W = (self.Dist==1).float() # Nearest neighbour connectivity
-        a,b = pt.triu(W).nonzero()
-
-        return W
-
-
+    def get_edge_connectivity(self,form='matrix'):
+        Conn = (self.Dist==1).float() # Nearest neighbour connectivity
+        E = pt.triu(Conn).nonzero() # Get the unique edges
+        n_edge = E.shape[0]
+        indx = pt.arange(n_edge)
+        W = pt.zeros(n_edge,Conn.shape[0])
+        W[indx,E[:,0]]=1
+        W[indx,E[:,1]]=1
+        return W 
 
     def plot_maps(self,Y,cmap='tab20',vmin=0,vmax=19,grid=None,offset=1):
         """Plots a set of map samples as an image grid

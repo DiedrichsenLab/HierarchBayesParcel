@@ -560,25 +560,98 @@ class cmpRBM_pCD(mpRBM_pCD):
     Uses persistent Contrastive-Divergence k for learning
     """
 
-    def __init__(self, K, P, Wc, eneg_iter=3,eneg_numchains=77):
-        Wc
-        super().__init__(K, P,nh)
-        self.eneg_iter = eneg_iter
-        self.eneg_numchains = eneg_numchains
+    def __init__(self, K, P, Wc, theta_w=2.0, eneg_iter=3,eneg_numchains=77):
+        self.K = K
+        self.P = P
+        self.Wc  = Wc 
+        self.nh = Wc.shape[0]
+        self.theta_w = theta_w
+        self.W = Wc * self.theta_w
+        self.bh = 0
+        self.bu = pt.randn(K,P)
+        self.eneg_U = None
+        self.alpha = 0.01
+        self.epos_iter = 1
+        self.nparams = 2 + K*P
 
+    def sample_h(self, U):
+        """Sample hidden nodes given an activation state of the outer nodes
+        Args:
+            U (NxKxP tensor): Indicator or probability tensor of outer layer
+        Returns:
+            p_h: (N x nh tensor): probability of the hidden nodes
+            sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
+        """
+        wv = pt.matmul(U,self.W.t())
+        activation = wv + self.bh
+        # p_h = pt.sigmoid(activation)
+        # sample_h = pt.bernoulli(p_h)
+        p_h = pt.softmax(activation,1)
+        sample_h = sample_multinomial(p_h)
+        return p_h, sample_h
 
-    def Eneg(self, U=None):
-        if (self.eneg_U is None):
-            U = pt.empty(self.eneg_numchains,self.K,self.P).uniform_(0,1)
-        else:
-            U = self.eneg_U
-        for i in range(self.eneg_iter):
-            Eh,h = self.sample_h(U)
-            EU,U = self.sample_U(h)
-        self.eneg_Eh = Eh
-        self.eneg_U = EU
-        return self.eneg_U,self.eneg_Eh
+    def sample_U(self, h):
+        """ Returns a sampled U as a unpacked indicator variable
+        Args:
+            h tensor: Hidden states (NxKxnh)
+        Returns:
+            p_u: Probability of each node [N,K,P] array
+            sample_U: One-hot encoding of random sample [N,K,P] array
+        """
+        N = h.shape[0]
+        wh = pt.matmul(h, self.W)
+        p_u = pt.softmax(wh + self.bu,1)
+        r = pt.empty(N,1,self.P).uniform_(0,1)
+        cdf_v = p_u.cumsum(1)
+        sample = (r < cdf_v).float()
+        for k in np.arange(self.K-1,0,-1):
+            sample[:,k,:]-=sample[:,k-1,:]
+        return p_u, sample
 
+    def Estep(self, emloglik,gather_ss=True,iter=None):
+        """ Positive Estep for the multinomial boltzman model
+        Uses mean field approximation to posterior to U and hidden parameters.
+        Parameters:
+            emloglik (pt.tensor):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss (bool):
+                Gather Sufficient statistics for M-step (default = True)
+
+        Returns:
+            Uhat (pt.tensor):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (pt.tensor):
+                Nan - returned for consistency
+        """
+        if type(emloglik) is np.ndarray:
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        if iter is None:
+            iter = self.epos_iter
+        N=emloglik.shape[0]
+        Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
+        for i in range(iter):
+            wv = pt.mm(Uhat.reshape(N,-1), self.W.t())
+            Eh = pt.sigmoid(wv + self.bh)
+            wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
+            Uhat = pt.softmax(wh + self.bu + emloglik,1)
+        if gather_ss:
+            self.epos_U = Uhat
+            self.epos_Eh = Eh
+        return Uhat, pt.nan
+
+    def Mstep(self):
+        """Performs gradient step on the parameters
+
+        Args:
+            alpha (float, optional): [description]. Defaults to 0.8.
+        """
+        N = self.epos_Eh.shape[0]
+        M = self.eneg_Eh.shape[0]
+        epos_U=self.epos_U.reshape(N,-1)
+        eneg_U=self.eneg_U.reshape(M,-1)
+        self.W += self.alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
+        self.bu += self.alpha * (pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0))
+        self.bh += self.alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
 
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):

@@ -9,11 +9,122 @@ import emissions as em
 import full_model as fm
 import spatial as sp
 import evaluation as ev
-from test_mpRBM import train_sml,make_mrf_data
+from test_mpRBM import train_sml
 import pandas as pd
 import seaborn as sb
 import copy
 
+
+def make_mrf_data(width=10,K=5,N=20,num_subj=30,
+            theta_mu=20,theta_w=2,sigma2=0.5,
+            do_plot=True):
+    """Generates (and plots Markov random field data)
+    Args:
+        width (int, optional): [description]. Defaults to 10.
+        K (int, optional): [description]. Defaults to 5.
+        N (int, optional): [description]. Defaults to 200.
+        theta_mu (int, optional): [description]. Defaults to 20.
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.5.
+        do_plot (bool): Make a plot of the first 10 samples?
+    """
+    # Step 1: Create the true model
+    grid = sp.SpatialGrid(width=width,height=width)
+    arrangeT = ar.PottsModel(grid.W, K=K)
+    arrangeT.name = 'Potts'
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
+
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.logpi = grid.random_smooth_pi(theta_mu=theta_mu,K=K)
+    arrangeT.theta_w = pt.tensor(theta_w)
+    emissionT.random_params()
+    emissionT.sigma2=pt.tensor(sigma2)
+    MT = fm.FullModel(arrangeT,emissionT)
+
+
+
+    # Step 3: Plot the prior of the true mode
+    # plt.figure(figsize=(7,4))
+    # grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
+    # cluster = np.argmax(arrangeT.logpi,axis=0)
+    # grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
+
+    # Step 4: Generate data by sampling from the above model
+    U = MT.arrange.sample(num_subj=num_subj,burnin=19) # These are the subjects
+    Ytrain = MT.emission.sample(U) # This is the training data
+    Ytest = MT.emission.sample(U)  # Testing data
+
+    # Plot first 10 samples
+    if do_plot:
+        plt.figure(figsize=(10,4))
+        grid.plot_maps(U[0:10],cmap='tab10',vmax=K,grid=[2,5])
+
+    return Ytrain, Ytest, U, MT , grid
+
+
+def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
+            theta_mu=20,theta_w=2,sigma2=0.5,
+            do_plot=True):
+    """Generates (and plots Markov random field data)
+    Args:
+        width (int, optional): [description]. Defaults to 10.
+        K (int, optional): [description]. Defaults to 5.
+        N (int, optional): [description]. Defaults to 200.
+        theta_mu (int, optional): [description]. Defaults to 20.
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.5.
+        do_plot (bool): Make a plot of the first 10 samples?
+    """
+    # Step 1: Create the true model
+    grid = sp.SpatialGrid(width=width,height=width)
+    W = grid.get_neighbour_connectivity()
+    W = W+pt.eye(W.shape[0]) * theta_w * 2
+    arrangeT = ar.cmpRBM_pCD(K,grid.P,W,theta_w=theta_w)
+    arrangeT.name = 'cmpRDM'
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
+
+    # Step 2: Initialize the parameters of the true model
+    arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu)
+    arrangeT.theta_w = pt.tensor(theta_w)
+    emissionT.random_params()
+    emissionT.sigma2=pt.tensor(sigma2)
+    MT = fm.FullModel(arrangeT,emissionT)
+
+    # grid.plot_maps(pt.softmax(arrangeT.bu,0),cmap='hot',vmax=1,grid=[1,5])
+
+    # Step 3: Plot the prior of the true mode
+    # plt.figure(figsize=(7,4))
+    # grid.plot_maps(exp(arrangeT.logpi),cmap='jet',vmax=1,grid=[2,3])
+    # cluster = np.argmax(arrangeT.logpi,axis=0)
+    # grid.plot_maps(cluster,cmap='tab10',vmax=9,grid=[2,3],offset=6)
+
+    # Step 4: Generate data by sampling from the above model
+    
+    p = pt.ones(K)
+    U = ar.sample_multinomial(pt.softmax(arrangeT.bu,0),shape=(N,K,grid.P))
+    plt.figure(figsize=(10,4))
+    for i in range (10):
+        _,H = arrangeT.sample_h(U)
+        u = ar.compress_mn(U)
+
+        grid.plot_maps(u[0],cmap='tab10',vmax=K,grid=[2,5],offset=i+1)
+        # plt.figure(10,4)
+        # grid.plot_maps(h[0],cmap='tab10',vmax=K,grid=[2,5],offset=i+1)
+        
+        _,U = arrangeT.sample_U(H) 
+    Utrue = ar.compress_mn(U)
+    
+    
+    #This is the training data
+    Ytrain = MT.emission.sample(Utrue.numpy()) 
+    Ytest = MT.emission.sample(Utrue.numpy())  # Testing data
+
+    # Plot first 10 samples
+    if do_plot:
+        plt.figure(figsize=(10,4))
+        grid.plot_maps(U[0:10],cmap='tab10',vmax=K,grid=[2,5])
+
+    return Ytrain, Ytest, U, MT , grid
 
 def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
     D= pd.DataFrame()
@@ -33,13 +144,15 @@ def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
 
 def simulation(): 
     K =5
-    N=500
-    sigma2=0.1
+    N=20
+    num_subj=500
+    sigma2=1
     batch_size=100 
     n_epoch=40
     pt.set_default_dtype(pt.float32)
     
-    Ytrain,Ytest,Utrue,Mtrue,grid = make_mrf_data(10,K,N,
+    Ytrain,Ytest,Utrue,Mtrue,grid = make_mrf_data(10,K,N=N,
+            num_subj=num_subj,
             theta_mu=20,theta_w=2,sigma2=sigma2,
             do_plot=True)
 
@@ -94,10 +207,28 @@ def simulation():
     sb.barplot(data=D,x='model',y='logpy')
     pass
 
+
+def test_cmpRBM():
+    K =5
+    N=1
+    sigma2=0.1
+    batch_size=100 
+    n_epoch=40
+    pt.set_default_dtype(pt.float32)
+
+    Ytrain, Ytest, U, MT , grid = make_cmpRBM_data(10,K,N,
+            theta_mu=20,theta_w=1,sigma2=sigma2,
+            do_plot=True)
+    
+    pass
+
+
+
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     simulation()
-    pass
+    # pass
+    test_cmpRBM()
     # test_sample_multinomial()
     # train_RBM()
