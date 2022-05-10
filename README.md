@@ -199,7 +199,7 @@ So in this parameterization in the iid case, $Z=1$ and we don't need the negativ
 
 
 
-### Probabilistic multivariate restricted Boltzmann machine
+### Probabilistic multinomial restricted Boltzmann machine
 
 As an alternative to a Potts model, we are introducing here a multivariate version of a restricted Boltzmann machine. A restricted Boltzmann machine consists typically out a layer of binary visible and a layer of binary hidden units ($\mathbf{h}$) with $J$ nodes $h_j$. Here, we are replacing the input with the spatial arrangement matrix $\mathbf{U}$, with each column of the matrix $\mathbf{u}_i$ representing a one-hot encoded multinomial random variable, that assigns the brain location $i$ to parcel $k$. 
 
@@ -253,55 +253,54 @@ $$
 \end{align*}
 $$
 
-### Convolutional multivariate probabilistic restricted Boltzmann machine (cmpRBM)
+### Convolutional multinomial probabilistic restricted Boltzmann machine (cmpRBM)
 
-Another approach is to make both the hidden ($\mathbf{h}$) and the intermedicate , we are introducing here a multivariate version of a restricted Boltzmann machine. A restricted Boltzmann machine consists typically out a layer of binary visible and a layer of binary hidden units ($\mathbf{h}$) with $J$ nodes $h_j$. Here, we are replacing the input with the spatial arrangement matrix $\mathbf{U}$, with each column of the matrix $\mathbf{u}_i$ representing a one-hot encoded multinomial random variable, that assigns the brain location $i$ to parcel $k$. 
+Another approach is to make both the hidden ($\mathbf{H}$) and the intermedicate ($\mathbf{U}$) nodes are multinomial version of a restricted Boltzmann machine. So with Q hidden nodes, H is the KxQ matrix with the one-hot  encoded state of the hidden variables, and U is a KxP matrix of the one-hot encoded clustering. $\mathbf{W}$ is the $QxP$ matrix of connectivity that connects the respective nodes. 
 
 The hidden variables is still a vector of binary latent variables
 $$
-p(h_j|\mathbf{U})=\sigma(vec(\mathbf{U})^T\mathbf{W}_{.,j}+\mathbf{b}_j)
+p(\mathbf{h}_j|\mathbf{U})=\rm{softmax}(\mathbf{U}\mathbf{W}_{j,.}^T)
 $$
-Where $\sigma$ is the sigmoid function. 
-
 The probability of a brain location then is given by: 
 $$
-p(\mathbf{u}_i|\mathbf{h})=\rm{softmax}([\mathbf{h}^T\mathbf{W}^T]_i+\boldsymbol{\eta}_i)
+p(\mathbf{u}_i|\mathbf{h})=\rm{softmax}(\mathbf{H}\mathbf{W}_{.,i}+\boldsymbol{\eta}_i).
 $$
 
-Where $[.]_i$ selects the element for $\mathbf{u}_i$ from vectorized version of $\mathbf{U}$. 
-
 #### Positive Estep: Expectation given the data 
-The advantage of a Boltzmann machine is that we can efficiently do inference and sampling in a blocked fashion. In the positive E-step, the expectation can be passed - and we can do one or more iteration between the $\mathbf{h}$ and the $\mathbf{U}$ layer. 
+The advantage of a Boltzmann machine is that we can efficiently do inference and sampling in a blocked fashion. In the positive E-step, the expectation can be passed - and we can do one or more iteration between the $\mathbf{H}$ and the $\mathbf{U}$ layer. 
 
 We intialize the hidden layer with 
 
 $$
-\langle\mathbf{h}\rangle^{(0)}_q=\mathbf{0}
+\langle\mathbf{H}\rangle^{(0)}_q=\mathbf{0}
 $$
 
 An then alternate: 
 
 $$
-\langle\mathbf{u}_i\rangle^{(t)}_q=\rm{softmax}([\mathbf{W} \langle \mathbf{h}\rangle^{(t)}]_i+\boldsymbol{\eta}_i + \log p(\mathbf{y}_i|\mathbf{u}_i))
+\langle\mathbf{u}_i\rangle^{(t)}_q=\rm{softmax}(\langle \mathbf{H}\rangle^{(t)}\mathbf{W}_{.,i} +\boldsymbol{\eta}_i + \log p(\mathbf{y}_i|\mathbf{u}_i))
 $$
 
 
 $$
-\langle h_j\rangle^{(t+1)}_q =\sigma(vec(\langle \mathbf{U} \rangle^{(t)}_q)^T\mathbf{W}_{.,j}+\mathbf{b}_j)
+\langle \mathbf{h}_j\rangle^{(t+1)}_q =\rm{softmax}(\langle \mathbf{U} \rangle^{(t)}_q\mathbf{W}_{j,.}^T)
 $$
 
 #### Negative Estep: Expectation given the model
 
-For the negative e-step, we are using sampling alternating for $\mathbf{h}$ and $\mathbf{U}$, using the main equations. The expectations are then probabilities before the last sampling step. These give us the expectations $\langle . \rangle_p$ that we need for subsequent learning. 
+For the negative e-step, nwe are using sampling alternating for $\mathbf{h}$ and $\mathbf{U}$, using the main equations. The expectations are then probabilities before the last sampling step. These give us the expectations $\langle . \rangle_p$ that we need for subsequent learning. 
 
 #### Gradient step for parameter estimation
 
-Given the expectation of the hidden and latent variable for the positive and negative phase of the expectation. 
+The unnormalized log-probability of the model (negative Energy function) of the model is: 
+$$
+\log\tilde{p}(\mathbf{U},\mathbf{H}|\mathbf{Y})=\sum_i\eta_i^T\mathbf{u}_i+\rm{tr}(\mathbf{H}\mathbf{W}\mathbf{U}^T)
+$$
+Given the expectation of the hidden and latent variable for the positive and negative phase of the expectation, the gradients are: 
 $$
 \begin{align*}
-\nabla_W = \langle \mathbf{h} \rangle_q^T vec(\langle \mathbf{U} \rangle_q)-\langle \mathbf{h} \rangle_p^T vec(\langle \mathbf{U} \rangle_p)\\
+\nabla_W = \langle \mathbf{H} \rangle_q^T \langle \mathbf{U} \rangle_q-\langle \mathbf{H} \rangle_p^T \langle \mathbf{U} \rangle_p\\
 
-\nabla_b =\langle \mathbf{h} \rangle_q - \langle \mathbf{h} \rangle_p\\
 
 \nabla_\eta =\langle \mathbf{U} \rangle_q - \langle \mathbf{U} \rangle_p
 \end{align*}
