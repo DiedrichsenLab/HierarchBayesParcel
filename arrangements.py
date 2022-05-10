@@ -432,11 +432,7 @@ class mpRBM(ArrangementModel):
         N = h.shape[0]
         wh = pt.mm(h, self.W).reshape(N,self.K,self.P)
         p_u = pt.softmax(wh + self.bu,1)
-        r = pt.empty(N,1,self.P).uniform_(0,1)
-        cdf_v = p_u.cumsum(1)
-        sample = (r < cdf_v).float()
-        for k in np.arange(self.K-1,0,-1):
-            sample[:,k,:]-=sample[:,k-1,:]
+        sample = sample_multinomial(p_u,kdim=1)
         return p_u, sample
 
     def sample(self,num_subj,iter=10):
@@ -587,7 +583,7 @@ class cmpRBM_pCD(mpRBM_pCD):
         # p_h = pt.sigmoid(activation)
         # sample_h = pt.bernoulli(p_h)
         p_h = pt.softmax(activation,1)
-        sample_h = sample_multinomial(p_h)
+        sample_h = sample_multinomial(p_h,kdim=1)
         return p_h, sample_h
 
     def sample_U(self, h):
@@ -601,11 +597,7 @@ class cmpRBM_pCD(mpRBM_pCD):
         N = h.shape[0]
         wh = pt.matmul(h, self.W)
         p_u = pt.softmax(wh + self.bu,1)
-        r = pt.empty(N,1,self.P).uniform_(0,1)
-        cdf_v = p_u.cumsum(1)
-        sample = (r < cdf_v).float()
-        for k in np.arange(self.K-1,0,-1):
-            sample[:,k,:]-=sample[:,k-1,:]
+        sample = sample_multinomial(p_u,kdim=1)
         return p_u, sample
 
     def Estep(self, emloglik,gather_ss=True,iter=None):
@@ -630,14 +622,27 @@ class cmpRBM_pCD(mpRBM_pCD):
         N=emloglik.shape[0]
         Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
         for i in range(iter):
-            wv = pt.mm(Uhat.reshape(N,-1), self.W.t())
-            Eh = pt.sigmoid(wv + self.bh)
-            wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
+            wv = pt.matmul(Uhat,self.W.t())
+            Eh = pt.softmax(wv+self.bh,1)
+            wh = pt.matmul(Eh, self.W)
             Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
             self.epos_U = Uhat
             self.epos_Eh = Eh
         return Uhat, pt.nan
+
+    def Eneg(self, U=None):
+        if (self.eneg_U is None):
+            U = pt.empty(self.eneg_numchains,self.K,self.P).uniform_(0,1)
+        else:
+            U = self.eneg_U
+        for i in range(self.eneg_iter):
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
+        return self.eneg_U,self.eneg_Eh
+
 
     def Mstep(self):
         """Performs gradient step on the parameters

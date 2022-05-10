@@ -32,16 +32,16 @@ def make_mrf_data(width=10,K=5,N=20,num_subj=30,
     grid = sp.SpatialGrid(width=width,height=width)
     arrangeT = ar.PottsModel(grid.W, K=K)
     arrangeT.name = 'Potts'
-    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
 
-    # Step 2: Initialize the parameters of the true model
+    # Step 2a: Initialize the parameters of the true arrangement model
     arrangeT.logpi = grid.random_smooth_pi(theta_mu=theta_mu,K=K)
     arrangeT.theta_w = pt.tensor(theta_w)
+
+    # Step 2b: Initialize the parameters of the true emission model
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
     emissionT.random_params()
     emissionT.sigma2=pt.tensor(sigma2)
     MT = fm.FullModel(arrangeT,emissionT)
-
-
 
     # Step 3: Plot the prior of the true mode
     # plt.figure(figsize=(7,4))
@@ -79,13 +79,14 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
     grid = sp.SpatialGrid(width=width,height=width)
     W = grid.get_neighbour_connectivity()
     W = W+pt.eye(W.shape[0]) * theta_w * 2
-    arrangeT = ar.cmpRBM_pCD(K,grid.P,W,theta_w=theta_w)
-    arrangeT.name = 'cmpRDM'
-    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
 
     # Step 2: Initialize the parameters of the true model
+    arrangeT = ar.cmpRBM_pCD(K,grid.P,W,theta_w=theta_w)
+    arrangeT.name = 'cmpRDM'
     arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu)
     arrangeT.theta_w = pt.tensor(theta_w)
+
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
     emissionT.random_params()
     emissionT.sigma2=pt.tensor(sigma2)
     MT = fm.FullModel(arrangeT,emissionT)
@@ -105,13 +106,12 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
     plt.figure(figsize=(10,4))
     for i in range (10):
         _,H = arrangeT.sample_h(U)
+        _,U = arrangeT.sample_U(H) 
         u = ar.compress_mn(U)
-
-        grid.plot_maps(u[0],cmap='tab10',vmax=K,grid=[2,5],offset=i+1)
+        grid.plot_maps(u[8],cmap='tab10',vmax=K,grid=[2,5],offset=i+1)
         # plt.figure(10,4)
         # grid.plot_maps(h[0],cmap='tab10',vmax=K,grid=[2,5],offset=i+1)
         
-        _,U = arrangeT.sample_U(H) 
     Utrue = ar.compress_mn(U)
     
     
@@ -121,8 +121,8 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
 
     # Plot first 10 samples
     if do_plot:
-        plt.figure(figsize=(10,4))
-        grid.plot_maps(U[0:10],cmap='tab10',vmax=K,grid=[2,5])
+        plt.figure(figsize=(13,5))
+        grid.plot_maps(Utrue[0:10],cmap='tab10',vmax=K,grid=[2,5])
 
     return Ytrain, Ytest, U, MT , grid
 
@@ -144,10 +144,10 @@ def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
 
 def simulation(): 
     K =5
-    N=20
+    N = 20
     num_subj=500
-    sigma2=1
-    batch_size=100 
+    sigma2=0.5
+    batch_size=20 
     n_epoch=40
     pt.set_default_dtype(pt.float32)
     
@@ -210,13 +210,15 @@ def simulation():
 
 def test_cmpRBM():
     K =5
-    N=1
+    N=20
+    num_subj=10
     sigma2=0.1
     batch_size=100 
     n_epoch=40
     pt.set_default_dtype(pt.float32)
 
     Ytrain, Ytest, U, MT , grid = make_cmpRBM_data(10,K,N,
+            num_subj=num_subj, 
             theta_mu=20,theta_w=1,sigma2=sigma2,
             do_plot=True)
     
@@ -229,6 +231,6 @@ if __name__ == '__main__':
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     simulation()
     # pass
-    test_cmpRBM()
+    # test_cmpRBM()
     # test_sample_multinomial()
     # train_RBM()
