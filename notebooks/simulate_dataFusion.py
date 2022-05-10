@@ -19,6 +19,33 @@ import spatial as sp
 import evaluation as ev
 
 
+def _compute_adjacency(map, k):
+    """Compute the adjacency matrix and return k clusters label that are neighbours
+    Args:
+        map: the original cluster assignment map
+        k: the number of neighbouring clusters
+    Returns:
+        G: the adjacency matrix
+        labels: the k clusters label that are neighbouring
+    """
+    G = pt.zeros([map.max() + 1] * 2)
+    # left-right pairs
+    G[map[:, :-1], map[:, 1:]] = 1
+    # right-left pairs
+    G[map[:, 1:], map[:, :-1]] = 1
+    # top-bottom pairs
+    G[map[:-1, :], map[1:, :]] = 1
+    # bottom-top pairs
+    G[map[1:, :], map[:-1, :]] = 1
+
+    labels = pt.where(G.sum(0) >= k)[0]
+    base_label = labels[pt.randint(labels.shape[0], ())]
+    tmp = pt.where(G[base_label] == 1)[0]
+    tmp = tmp[tmp != base_label]
+
+    return G, base_label, tmp[:k-1]
+
+
 def _plot_loglike(ax, loglike, true_loglike, color='b'):
     """Plot the log-likelihood curve and the true log-likelihood
     Args:
@@ -237,17 +264,25 @@ def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width, height=height)
     arrangeT = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
-    # emissionT = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-    emissionT1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+    arrangeT.random_smooth_pi(grid.Dist, theta_mu=120)
+    arrangeT.theta_w = pt.tensor(20)
+
+    emissionT1 = em.MixVMF(K=K, N=40, P=grid.P, uniform_kappa=uniform_kappa)
     emissionT1.kappa = pt.tensor(sigma2)
-    # emissionT2 = em.MixGaussian(K=K, N=N, P=grid.P, std_V=False)
-    # emissionT2.sigma2 = pt.tensor(sigma2)
-    emissionT2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+    emissionT2 = em.MixVMF(K=K, N=20, P=grid.P, uniform_kappa=uniform_kappa)
     emissionT2.kappa = pt.tensor(sigma2)
 
-    # Step 2: Initialize the parameters of the true model
-    arrangeT.random_smooth_pi(grid.Dist, theta_mu=150)
-    arrangeT.theta_w = pt.tensor(20)
+    # Making ambiguous boundaries by set the same V_k for two parcels
+    label_map = pt.argmax(arrangeT.logpi, dim=0).reshape(grid.dim)
+    _, base, idx = _compute_adjacency(label_map, 2)
+    print(base, idx)
+    for i in idx:
+        emissionT1.V[:, i] = emissionT1.V[:, base]
+
+    _, base, idx = _compute_adjacency(label_map, 2)
+    print(base, idx)
+    for i in idx:
+        emissionT2.V[:, i] = emissionT2.V[:, base]
 
     # Step 4: Generate data by sampling from the above model
     D = []
@@ -271,25 +306,45 @@ def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0
         # Step 6: Generate new models for fitting
         arrangeM = ar.ArrangeIndependent(K=K, P=grid.P, spatial_specific=True,
                                          remove_redundancy=False)
-        emissionM1 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
-        emissionM2 = em.MixVMF(K=K, N=N, P=grid.P, uniform_kappa=uniform_kappa)
+        emissionM1 = em.MixVMF(K=K, N=40, P=grid.P, uniform_kappa=uniform_kappa)
+        emissionM2 = em.MixVMF(K=K, N=20, P=grid.P, uniform_kappa=uniform_kappa)
 
         # set params of recovery model to truth
         arrangeM.logpi = T.arrange.logpi
-        # emissionM1.V = emissionT1.V
-        # emissionM1.kappa = emissionT1.kappa
-        # emissionM2.V = emissionT2.V
-        # emissionM2.kappa = emissionT2.kappa
-
+        M1 = FullModel(arrangeM, emissionM1)
+        M2 = FullModel(arrangeM, emissionM2)
         M = FullMultiModel(arrangeM, [emissionM1, emissionM2])
 
+        # Train each dataset separately
+        M1, ll, theta, Uhat_fit_1 = M1.fit_em(Y=Y_train[0], iter=max_iter, tol=0.001,
+                                              fit_arrangement=False)
+        M2, ll, theta, Uhat_fit_2 = M2.fit_em(Y=Y_train[1], iter=max_iter, tol=0.001,
+                                              fit_arrangement=False)
         # Method 1: escape local maxima by inits from prior
-        M.pre_train(Y_train, iter=20)
+        M.pre_train(Y_train, iter=10)
         M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.001,
                                           fit_arrangement=False)
         # Method 2: escape local maxima by multiple inits
         # M, ll, theta, Uhat_fit, _ = M.fit_em_ninits(Y=Y_train, n_inits=100, iter=max_iter,
         #                                             tol=0.001, fit_arrangement=False)
+        # plt.figure(figsize=(20, 2))
+        # grid.plot_maps(U, cmap='tab20', vmax=19, grid=[1, 10])
+        #
+        # Uhat_fit_1_match, _ = ev.matching_U(U[0:4], Uhat_fit_1)
+        # plt.figure(figsize=(20, 2))
+        # grid.plot_maps(Uhat_fit_1_match, cmap='tab20', vmax=19, grid=[1, 10])
+        # plt.show()
+        #
+        # Uhat_fit_2_match, _ = ev.matching_U(U[4:10], Uhat_fit_2)
+        # plt.figure(figsize=(20, 2))
+        # grid.plot_maps(Uhat_fit_2_match, cmap='tab20', vmax=19, grid=[1, 10], offset=5)
+        # plt.show()
+        #
+        # Uhat_fit_match, _ = ev.matching_U(U, Uhat_fit)
+        # plt.figure(figsize=(20, 2))
+        # grid.plot_maps(Uhat_fit_match, cmap='tab20', vmax=19, grid=[1, 10])
+        # plt.show()
+
         D.append({'U': U, 'U_nan': U_nan, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
 
     return grid, T, D
@@ -311,7 +366,7 @@ def do_simulation_dataFusion(K=5, width=30, height=30, nsub_list=[[5, 5]],
         U_hat_all: the predicted U_hat for each missing rate
     """
     print('Start simulation')
-    grid, T, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, max_iter=50,
+    grid, T, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, max_iter=200,
                                       sigma2=20, missingdata=missingRate, nsub_list=nsub_list)
 
     # grid, T, D = _check_localMinima(K=K, N=20, width=width, height=height, max_iter=50,
@@ -382,7 +437,7 @@ if __name__ == '__main__':
     # Set up experiment parameters
     K = 5
     num_sub = 10
-    nsub_list = [[3, 7]]
+    nsub_list = [[4, 6]]
     rate = [0.01, 0.1, 0.2]
     labels = [str(x) for x in nsub_list]
     w, h = 30, 30
