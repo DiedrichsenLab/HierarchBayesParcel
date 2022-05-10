@@ -255,7 +255,7 @@ $$
 
 ### Convolutional multivariate probabilistic restricted Boltzmann machine (cmpRBM)
 
-As an alternative to a Potts model, we are introducing here a multivariate version of a restricted Boltzmann machine. A restricted Boltzmann machine consists typically out a layer of binary visible and a layer of binary hidden units ($\mathbf{h}$) with $J$ nodes $h_j$. Here, we are replacing the input with the spatial arrangement matrix $\mathbf{U}$, with each column of the matrix $\mathbf{u}_i$ representing a one-hot encoded multinomial random variable, that assigns the brain location $i$ to parcel $k$. 
+Another approach is to make both the hidden ($\mathbf{h}$) and the intermedicate , we are introducing here a multivariate version of a restricted Boltzmann machine. A restricted Boltzmann machine consists typically out a layer of binary visible and a layer of binary hidden units ($\mathbf{h}$) with $J$ nodes $h_j$. Here, we are replacing the input with the spatial arrangement matrix $\mathbf{U}$, with each column of the matrix $\mathbf{u}_i$ representing a one-hot encoded multinomial random variable, that assigns the brain location $i$ to parcel $k$. 
 
 The hidden variables is still a vector of binary latent variables
 $$
