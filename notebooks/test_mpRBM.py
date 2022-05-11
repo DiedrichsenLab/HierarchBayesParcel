@@ -17,21 +17,44 @@ import time
 
 def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
              n_epoch=20,batch_size=20,verbose=False):
+    """Trains only arrangement model, given a fixed emission 
+    likelhoood. 
+
+    Args:
+        model (ArrangementMode): _description_
+        emlog_train (tensor):emission log likelihood (KxP)
+        emlog_test (tensor): emission log likelihood test (KxP)
+        part (tensor): 1xP partition number for completion test  
+        crit (str): _description_. Defaults to 'logpY'.
+        n_epoch (int): _description_. Defaults to 20.
+        batch_size (int): _description_. Defaults to 20.
+        verbose (bool): _description_. Defaults to False.
+
+    Returns:
+        model: Fitted model 
+        T: Pandas data frame with epoch level performance metrics 
+    """
     N = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
-    uerr_train = np.zeros(n_epoch)
-    uerr_test1 = np.zeros(n_epoch)
-    uerr_test2 = np.zeros(n_epoch)
+    crit_train = np.zeros(n_epoch)
+    crit_marg = np.zeros(n_epoch)
+    crit_test1 = np.zeros(n_epoch)
+    crit_test2 = np.zeros(n_epoch)
     # Intialize negative sampling
     for epoch in range(n_epoch):
         # Get test error
         EU,_ = model.Estep(emlog_train,gather_ss=False)
-        pi = model.marginal_prob(Utrain)
-        uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,pi,crit=crit)
-        uerr_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
-        uerr_test2[epoch]= ev.evaluate_completion_arr(model,emlog_test,part,crit=crit)
+        pi = model.marginal_prob()
+        # Training emission logliklihood: 
+        crit_train[epoch] = ev.evaluate_full_arr(emlog_train,EU,crit=crit)
+        # Marginal log-liklihood (new subjects)
+        crit_marg[epoch] = ev.evaluate_full_arr(emlog_test,pi,crit=crit)
+        # Test logliklihood (known subjects)
+        crit_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
+        # Completition logliklihood (incompletely known subjects)
+        crit_test2[epoch]= ev.evaluate_completion_arr(model,emlog_test,part,crit=crit)
         if (verbose):
-            print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}, Test2: {uerr_test2[epoch]:.4f}')
+            print(f'epoch {epoch:2d} Train: {crit_train[epoch]:.4f}, Test1: {crit_test1[epoch]:.4f}, Test2: {crit_test2[epoch]:.4f}')
 
         # Update the model in batches
         for b in range(0,N-batch_size+1,batch_size):
@@ -44,17 +67,21 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
     T1 = pd.DataFrame({'model':[model.name]*n_epoch,
                         'type':['train']*n_epoch,
                         'iter':np.arange(n_epoch),
-                        'uerr':uerr_train})
+                        'crit':crit_train})
     T2 = pd.DataFrame({'model':[model.name]*n_epoch,
+                        'type':['marg']*n_epoch,
+                        'iter':np.arange(n_epoch),
+                        'crit':crit_marg})
+    T3 = pd.DataFrame({'model':[model.name]*n_epoch,
                         'type':['test']*n_epoch,
                         'iter':np.arange(n_epoch),
-                        'uerr':uerr_test1})
-    T3 = pd.DataFrame({'model':[model.name]*n_epoch,
+                        'crit':crit_test1})
+    T4 = pd.DataFrame({'model':[model.name]*n_epoch,
                         'type':['compl']*n_epoch,
                         'iter':np.arange(n_epoch),
-                        'uerr':uerr_test2})
+                        'crit':crit_test2})
 
-    T = pd.concat([T1,T2,T3],ignore_index=True)
+    T = pd.concat([T1,T2,T3,T4],ignore_index=True)
     return model,T
 
 

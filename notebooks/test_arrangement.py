@@ -125,7 +125,7 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
         plt.figure(figsize=(13,5))
         grid.plot_maps(Utrue[0:10],cmap='tab10',vmax=K,grid=[2,5])
 
-    return Ytrain, Ytest, U, MT , grid
+    return Ytrain, Ytest, Utrue, MT , grid
 
 def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
     D= pd.DataFrame()
@@ -141,6 +141,17 @@ def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
 
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
+
+def plot_Uhat_maps(models,emloglik,grid):
+    plt.figure(figsize=(10,7))
+    n_models = len(models)
+    K = emloglik.shape[1]
+    for i,m in enumerate(models):
+        if m is None:
+            Uh=pt.softmax(emloglik,dim=1)
+        else:
+            Uh,_ = m.Estep(emloglik)
+        grid.plot_maps(Uh[0],cmap='jet',vmax=1,grid=(n_models,K),offset=i*K+1)
 
 
 def simulation_1():
@@ -171,7 +182,7 @@ def simulation_1():
     indepAr.name='idenp'
 
     # blank restricted bolzman machine
-    n_hidden = 30 # 30 hidden nodes
+    n_hidden = 100 # hidden nodes
     rbm = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=200)
     rbm.name=f'RBM_{n_hidden}'
 
@@ -180,10 +191,10 @@ def simulation_1():
     Mpotts.epos_numchains=100
     Mpotts.epos_iter =5
 
-    # Train those two models
+    # Train the independent arrangement model 
     indepAr,T = train_sml(indepAr,
             emloglik_train,emloglik_test,
-            part=part,n_epoch=n_epoch,batch_size=N)
+            part=part,n_epoch=n_epoch,batch_size=num_subj)
 
     rbm.alpha = 0.001
     rbm.bu=indepAr.logpi.detach().clone()
@@ -196,7 +207,7 @@ def simulation_1():
     T = pd.concat([T,T1],ignore_index=True)
 
     plt.figure(figsize=(8,8))
-    sb.lineplot(data=T[T.iter>3],y='uerr',x='iter',hue='model',style='type')
+    sb.lineplot(data=T[T.iter>0],y='crit',x='iter',hue='model',style='type')
 
     # Get the final error and the true pott models
     D = eval_arrange([indepAr,rbm,Mpotts],emloglik_train,emloglik_test,Utrue)
@@ -206,6 +217,8 @@ def simulation_1():
     sb.barplot(data=D,x='model',y='uerr')
     plt.subplot(1,2,2)
     sb.barplot(data=D,x='model',y='logpy')
+
+    plot_Uh_maps([None,])
     pass
 
 def simulation_2():
@@ -239,24 +252,29 @@ def simulation_2():
     n_hidden = 100 # 30 hidden nodes
     rbm1 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=200)
     rbm1.name=f'RBM_{n_hidden}'
+    rbm1.W = pt.randn(n_hidden,P*K)*0.1
+    rbm1.alpha = 0.001
 
     # Convolutional Boltzmann:
     n_hidden = P # hidden nodes
     rbm2 = ar.cmpRBM_pCD(K,P,nh=n_hidden,eneg_iter=3,eneg_numchains=200)
     rbm2.name=f'cRBM_{n_hidden}'
+    rbm2.W = pt.randn(n_hidden,P)*0.1
+    rbm2.alpha = 0.001
 
     # Covolutional
     Wc = Mtrue.arrange.Wc
     rbm3 = ar.cmpRBM_pCD(K,P,Wc=Wc,theta=0.1, eneg_iter=3,eneg_numchains=200)
     rbm3.name=f'cRBM_Wc'
+    rbm3.alpha = 0.0001
 
     # Get the true pott models
-    Mpotts = copy.deepcopy(Mtrue.arrange)
-    Mpotts.epos_numchains=100
-    Mpotts.epos_iter =5
+    # Mpotts = copy.deepcopy(Mtrue.arrange)
+    # Mpotts.epos_numchains=100
+    # Mpotts.epos_iter =5
 
     # Make list of candidate models
-    Models = [indepAr,rbm1,rbm2,rbm3,Mpotts]
+    Models = [indepAr,rbm1,rbm2,rbm3,Mtrue.arrange]
 
     # Train those two models
     indepAr,T = train_sml(indepAr,
@@ -264,7 +282,6 @@ def simulation_2():
             part=part,n_epoch=n_epoch,batch_size=N)
 
     for m in Models[1:4]:
-        m.alpha = 0.001
         m.bu=indepAr.logpi.detach().clone()
 
         m, T1 = train_sml(m,
@@ -274,7 +291,8 @@ def simulation_2():
         T = pd.concat([T,T1],ignore_index=True)
 
     plt.figure(figsize=(8,8))
-    sb.lineplot(data=T[T.iter>3],y='logpy',x='iter',hue='model',style='type')
+    sb.lineplot(data=T[(T.iter>0) & (T.type!='train')]
+            ,y='crit',x='iter',hue='model',style='type')
 
     # Get the final error and the true pott models
     D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
@@ -308,7 +326,7 @@ def test_cmpRBM():
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
-    simulation_2()
+    simulation_1()
     # pass
     # test_cmpRBM()
     # test_sample_multinomial()

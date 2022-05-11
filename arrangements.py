@@ -107,7 +107,7 @@ class ArrangeIndependent(ArrangementModel):
                 U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
         return U
 
-    def marginal_prob(self,U=None):
+    def marginal_prob(self):
         """Returns marginal probabilty for every node under the model
         Returns: p[] marginal probability under the model
         """
@@ -486,9 +486,10 @@ class mpRBM(ArrangementModel):
             self.epos_Eh = Eh
         return Uhat, pt.nan
 
-    def marginal_prob(self,U=None):
-        if U is not None:
-            U,Eh=self.Eneg(U)
+    def marginal_prob(self):
+        # If not given, then initialize: 
+        if self.eneg_U is None:
+            U,Eh=self.Eneg()
         pi  = pt.mean(self.eneg_U,dim=0)
         return pi
 
