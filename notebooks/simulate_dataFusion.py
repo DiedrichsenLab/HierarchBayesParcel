@@ -249,7 +249,7 @@ def _check_localMinima(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0,
 
 
 def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0,
-                          uniform_kappa=True, missingdata=None, nsub_list=None):
+                          uniform_kappa=True, missingdata=None, nsub_list=None, plot=True):
     """Simulation function used for testing full model with a GMM emission
     Args:
         K: the number of clusters
@@ -317,33 +317,50 @@ def _simulate_dataFusion(K=5, width=30, height=30, N=40, max_iter=50, sigma2=1.0
 
         # Train each dataset separately
         M1, ll, theta, Uhat_fit_1 = M1.fit_em(Y=Y_train[0], iter=max_iter, tol=0.001,
-                                              fit_arrangement=False)
+                                              fit_arrangement=True)
         M2, ll, theta, Uhat_fit_2 = M2.fit_em(Y=Y_train[1], iter=max_iter, tol=0.001,
-                                              fit_arrangement=False)
+                                              fit_arrangement=True)
         # Method 1: escape local maxima by inits from prior
         M.pre_train(Y_train, iter=10)
         M, ll, theta, Uhat_fit = M.fit_em(Y=Y_train, iter=max_iter, tol=0.001,
-                                          fit_arrangement=False)
+                                          fit_arrangement=True)
         # Method 2: escape local maxima by multiple inits
         # M, ll, theta, Uhat_fit, _ = M.fit_em_ninits(Y=Y_train, n_inits=100, iter=max_iter,
         #                                             tol=0.001, fit_arrangement=False)
-        # plt.figure(figsize=(20, 2))
-        # grid.plot_maps(U, cmap='tab20', vmax=19, grid=[1, 10])
-        #
-        # Uhat_fit_1_match, _ = ev.matching_U(U[0:4], Uhat_fit_1)
-        # plt.figure(figsize=(20, 2))
-        # grid.plot_maps(Uhat_fit_1_match, cmap='tab20', vmax=19, grid=[1, 10])
-        # plt.show()
-        #
-        # Uhat_fit_2_match, _ = ev.matching_U(U[4:10], Uhat_fit_2)
-        # plt.figure(figsize=(20, 2))
-        # grid.plot_maps(Uhat_fit_2_match, cmap='tab20', vmax=19, grid=[1, 10], offset=5)
-        # plt.show()
-        #
-        # Uhat_fit_match, _ = ev.matching_U(U, Uhat_fit)
-        # plt.figure(figsize=(20, 2))
-        # grid.plot_maps(Uhat_fit_match, cmap='tab20', vmax=19, grid=[1, 10])
-        # plt.show()
+
+        if plot:
+            plt.figure(figsize=(20, 2))
+            grid.plot_maps(U, cmap='tab20', vmax=19, grid=[1, 10])
+            plt.savefig('true_U.eps', format='eps')
+            plt.show()
+            plt.clf()
+
+            Uhat_fit_1_match, err1 = ev.matching_U(U[0:4], Uhat_fit_1)
+            plt.figure(figsize=(20, 2))
+            grid.plot_maps(Uhat_fit_1_match, cmap='tab20', vmax=19, grid=[1, 10])
+            plt.savefig('dataset1.eps', format='eps')
+            plt.show()
+            plt.clf()
+
+            Uhat_fit_2_match, err2 = ev.matching_U(U[4:10], Uhat_fit_2)
+            plt.figure(figsize=(20, 2))
+            grid.plot_maps(Uhat_fit_2_match, cmap='tab20', vmax=19, grid=[1, 10], offset=5)
+            plt.savefig('dataset2.eps', format='eps')
+            plt.show()
+            plt.clf()
+
+            Uhat_fit_match, err = ev.matching_U(U, Uhat_fit)
+            plt.figure(figsize=(20, 2))
+            grid.plot_maps(Uhat_fit_match, cmap='tab20', vmax=19, grid=[1, 10])
+            plt.savefig('fusion.eps', format='eps')
+            plt.show()
+            plt.clf()
+
+            print(err1.mean(), err2.mean(), err.mean())
+            plt.bar(['dataset1', 'dataset2', 'fusion'], [err1.mean(), err2.mean(), err.mean()],
+                    yerr=[err1.std(), err2.std(), err.std()], capsize=10)
+            plt.ylabel(r'Absolute error between $\mathbf{U}$ and $\hat{\mathbf{U}}$')
+            plt.show()
 
         D.append({'U': U, 'U_nan': U_nan, 'Uhat_fit': Uhat_fit, 'M': M, 'theta': theta})
 
@@ -366,8 +383,8 @@ def do_simulation_dataFusion(K=5, width=30, height=30, nsub_list=[[5, 5]],
         U_hat_all: the predicted U_hat for each missing rate
     """
     print('Start simulation')
-    grid, T, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, max_iter=200,
-                                      sigma2=20, missingdata=missingRate, nsub_list=nsub_list)
+    grid, T, D = _simulate_dataFusion(K=K, N=20, width=width, height=height, max_iter=200,sigma2=20,
+                                      missingdata=missingRate, nsub_list=nsub_list, plot=True)
 
     # grid, T, D = _check_localMinima(K=K, N=20, width=width, height=height, max_iter=50,
     #                                 num_simulation=20, sigma2=20, nsub_list=nsub_list)
