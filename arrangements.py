@@ -551,23 +551,47 @@ class mpRBM_CDk(mpRBM):
 
 
 class cmpRBM_pCD(mpRBM_pCD):
-    """convolutional multinomial (categorial) restricted Boltzman machine
-    for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning
-    """
 
-    def __init__(self, K, P, Wc, theta_w=2.0, eneg_iter=3,eneg_numchains=77):
+    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,eneg_numchains=77):
+        """convolutional multinomial (categorial) restricted Boltzman machine
+        for learning of brain parcellations for probabilistic input
+        Uses persistent Contrastive-Divergence k for learning
+
+        Args:
+            K (int): number of classes
+            P (int): number of brain locations
+            nh (int): number of hidden multinomial nodes
+            Wc (tensor): 2d/3d-tensor for connecticity weights
+            theta (tensor): 1d vector of parameters
+            eneg_iter (int): HOw many iterations for each negative step. Defaults to 3.
+            eneg_numchains (int): How many chains. Defaults to 77.
+        """
         self.K = K
         self.P = P
-        self.Wc  = Wc 
-        self.nh = Wc.shape[0]
-        self.theta_w = theta_w
-        self.W = Wc * self.theta_w
+        self.Wc  = Wc
+        if Wc is None:
+            if nh is None:
+                raise(NameError('Provide Connectivty kernel (Wc) matrix or number of hidden nodes (nh)'))
+            self.nh = nh
+            self.W = pt.randn(nh,P)
+        else:
+            if Wc.ndim==2:
+                self.Wc= Wc.view(Wc.shape[0],Wc.shape[1],1)
+            self.nh = Wc.shape[0]
+            if theta is None:
+                self.theta = pt.randn((self.Wc.shape[2],))
+            else:
+                self.theta = pt.tensor(theta)
+                if self.theta.ndim ==0:
+                    self.theta = self.theta.view(1)
+            self.W = (self.Wc * self.theta).sum(dim=2)
         self.bh = 0
         self.bu = pt.randn(K,P)
         self.eneg_U = None
         self.alpha = 0.01
         self.epos_iter = 1
+        self.eneg_iter = 2
+        self.eneg_numchains = 77
         self.nparams = 2 + K*P
 
     def sample_h(self, U):
@@ -652,12 +676,18 @@ class cmpRBM_pCD(mpRBM_pCD):
         """
         N = self.epos_Eh.shape[0]
         M = self.eneg_Eh.shape[0]
-        epos_U=self.epos_U.reshape(N,-1)
-        eneg_U=self.eneg_U.reshape(M,-1)
-        self.W += self.alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
-        self.bu += self.alpha * (pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0))
-        self.bh += self.alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
-
+        gradW = pt.matmul(pt.transpose(self.epos_Eh,1,2),self.epos_U).sum(dim=0)
+        gradW += - N / M * pt.matmul(pt.transpose(self.eneg_Eh,1,2),self.eneg_U).sum(dim=0)
+        # If we are dealing with component Wc:
+        if self.Wc is not None:
+            gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
+            self.theta += self.alpha * pt.sum(gradW*self.Wc,dim=(0,1))
+            self.W = (self.Wc * self.theta).sum(dim=2)
+        else:
+            self.W += self.alpha * gradW
+        # Update the bias term
+        gradBU = pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0)
+        self.bu += self.alpha * gradBU
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution
