@@ -82,7 +82,8 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
     # Step 2: Initialize the parameters of the true model
     arrangeT = ar.cmpRBM_pCD(K,grid.P,Wc=W,theta=theta_w)
     arrangeT.name = 'cmpRDM'
-    arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu)
+    arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu,
+            centroids=[0,9,55,90,99])
 
     emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
     emissionT.random_params()
@@ -297,12 +298,12 @@ def simulation_1():
 def simulation_2():
     K =5
     N = 20
-    num_subj=500
+    num_subj=60
     sigma2=0.5
     batch_size=20
-    n_epoch=30
+    n_epoch=50
 
-    num_sim = 1
+    num_sim = 10
     pt.set_default_dtype(pt.float32)
     TT=pd.DataFrame()
     DD=pd.DataFrame()
@@ -340,7 +341,7 @@ def simulation_2():
         rbm1 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=200)
         rbm1.name=f'RBM_{n_hidden}'
         rbm1.W = pt.randn(n_hidden,P*K)*0.1
-        rbm1.alpha = 0.001
+        rbm1.alpha = 0.01
         rbm1.bu = indepAr.logpi.detach().clone()
 
         # Convolutional Boltzmann:
@@ -348,10 +349,10 @@ def simulation_2():
         rbm2 = ar.cmpRBM_pCD(K,P,nh=n_hidden,eneg_iter=3,eneg_numchains=200)
         rbm2.name=f'cRBM_{n_hidden}'
         rbm2.W = pt.randn(n_hidden,P)*0.1
-        # rbm2.W = Mtrue.arrange.W.detach().clone()
+        rbm2.W = Mtrue.arrange.W.detach().clone()
         rbm2.bu= indepAr.logpi.detach().clone()
-        # Mtrue.arrange.bu.detach().clone()
-        rbm2.alpha = 0.001
+        # rbm2.bu=  Mtrue.arrange.bu.detach().clone()
+        rbm2.alpha = 0.01
 
         # Covolutional
         Wc = Mtrue.arrange.Wc
@@ -359,7 +360,7 @@ def simulation_2():
         rbm3.bu= indepAr.logpi.detach().clone()
         # rbm3.bu=Mtrue.arrange.bu.detach().clone()
         rbm3.name=f'cRBM_Wc'
-        rbm3.alpha = 0.0001
+        rbm3.alpha = 0.01
 
         # Get the true pott models
         # Mpotts = copy.deepcopy(Mtrue.arrange)
@@ -367,11 +368,11 @@ def simulation_2():
         # Mpotts.epos_iter =5
 
         # Make list of candidate models
-        Models = [indepAr,rbm1,rbm2,rbm3,Mtrue.arrange]
+        Models = [indepAr,rbm2,rbm3,Mtrue.arrange]
 
 
         TH = [theta1]
-        for m in Models[1:4]:
+        for m in Models[1:3]:
             
             m, T1,theta_hist = train_sml(m,
                 emloglik_train,emloglik_test,
@@ -384,7 +385,7 @@ def simulation_2():
 
         DD = pd.concat([DD,D],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
-        HH[s,:]= TH[3][500,:]
+        HH[s,:]= TH[2][500,:]
     fig = plt.figure(figsize=(8,8))
     gs = fig.add_gridspec(3, 1)
     ax1 = fig.add_subplot(gs[0:2, 0])

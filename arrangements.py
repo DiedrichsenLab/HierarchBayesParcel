@@ -685,13 +685,14 @@ class cmpRBM_pCD(mpRBM_pCD):
         # If we are dealing with component Wc:
         if self.Wc is not None:
             gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
-            self.theta += self.alpha * pt.sum(gradW*self.Wc,dim=(0,1))
+            # self.theta += self.alpha/100 * pt.sum(gradW*self.Wc,dim=(0,1))
             self.W = (self.Wc * self.theta).sum(dim=2)
         else:
-            self.W += self.alpha * gradW
+            pass
+            # self.W += self.alpha/5 * gradW
         # Update the bias term
         gradBU = pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0)
-        self.bu += self.alpha * gradBU
+        self.bu += self.alpha * 2 * gradBU
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution
