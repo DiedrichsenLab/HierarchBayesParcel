@@ -339,7 +339,7 @@ def _simulate_full_GMM(X, K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,m
     _plt_single_param_diff(axs[2], np.log(theta_true[ind]),
                            np.log(theta[:, ind]), name='log sigma2')
 
-    fig.suptitle('GMM fitting results')
+    fig.suptitle('GMM fitting results, run = %d' % int(emissionT.X.shape[0]/emissionT.X.shape[1]))
     plt.tight_layout()
     plt.show()
     print('Done simulation GMM.')
@@ -527,7 +527,21 @@ def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
     # Step 5: Estimate the parameter thetas to fit the new model using EM
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
 
-    # Plotfitting results
+    # Multiple random initializations to check local maxima
+    max_ll = -pt.inf
+    for i in range(100):
+        this_emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
+        this_M = FullModel(arrangeM, this_emissionM)
+        # Step 5: Estimate the parameter thetas to fit the new model using EM
+        this_M, this_ll, this_theta, _ = this_M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
+        if this_ll[-1] > max_ll:
+            M = this_M
+            max_ll = this_ll[-1]
+            ll = this_ll
+            theta = this_theta
+            emissionM = this_emissionM
+
+    # Plot fitting results
     fig, axs = plt.subplots(1, 3, figsize=(12, 4))
     _plot_loglike(axs[0], ll, loglike_true, color='b')
 
@@ -546,7 +560,7 @@ def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
         idx = matching_params(theta_true[ind].reshape(1, K), theta[:, ind], once=False)
         _plot_diff(axs[2], theta_true[ind].reshape(1, K), theta[:, ind], index=idx, name='kappa')
 
-    fig.suptitle('VMF fitting results')
+    fig.suptitle('VMF fitting results, run = %d' % int(emissionT.X.shape[0]/emissionT.X.shape[1]))
     plt.tight_layout()
     plt.show()
     print('Done simulation VMF.')
@@ -926,10 +940,10 @@ def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/
 
 
 if __name__ == '__main__':
-    X = pt.eye(20).repeat(20, 1)
-    # _simulate_full_VMF(X=None, K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
-    #                    missingdata=None)
-    _simulate_full_GMM(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=None)
+    X = pt.eye(30).repeat(5, 1)
+    _simulate_full_VMF(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
+                       missingdata=None)
+    # _simulate_full_GMM(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=None)
     # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=0.4,
     #                    num_bins=100, std_V=True, type_estep='linspace', missingdata=0.05)
     # _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=3.0,

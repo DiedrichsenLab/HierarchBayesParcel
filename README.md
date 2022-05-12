@@ -476,7 +476,7 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    $$
    \begin{align*}
    
-   \mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\mathbf{y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
+   \mathbf{v}_{k}^{(t)} &=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
    
    \end{align*}
    $$

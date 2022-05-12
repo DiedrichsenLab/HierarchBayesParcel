@@ -130,7 +130,7 @@ class MixGaussian(EmissionModel):
             sub = range(n_subj)
 
         LL = pt.empty((n_subj, self.K, self.P))
-        uVVu = pt.sum(self.V**2, dim=0)  # This is u.T V.T V u for each u
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
         YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2*YV + uVVu.reshape((self.K, 1))
         LL = - 0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2)) \
@@ -163,7 +163,7 @@ class MixGaussian(EmissionModel):
         YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         # JD: Again, you should be able to avoid looping over subjects here entirely.
         ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + \
-               pt.sum(self.V ** 2, dim=0).view((self.K, 1))
+               pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
         self.sigma2 = pt.nansum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # rss is calculated using V at (t-1) iteration
@@ -621,7 +621,7 @@ class MixVMF(EmissionModel):
         Returns: None. Store the data in emission model itself.
         """
         super().initialize(data, X=X)
-        self.Y = self.Y / pt.sqrt(pt.sum(data ** 2, dim=1, keepdim=True))
+        self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
         self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
@@ -728,11 +728,11 @@ class MixVMF(EmissionModel):
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
         U_hat[nan_voxIdx] = 0
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
-        YU = pt.matmul(self.regressX, YU)
         UU = pt.sum(U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
+        XYU = pt.matmul(self.regressX, YU)
+        self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
