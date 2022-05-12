@@ -288,7 +288,7 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
     return Y_train, Y_test, signal, U, MT
 
 
-def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,missingdata=None):
+def _simulate_full_GMM(X, K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,missingdata=None):
     """Simulation function used for testing full model with a GMM emission
     Args:
         K: the number of clusters
@@ -302,7 +302,7 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,miss
     """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixGaussian(K=K, N=N, P=P, std_V=False)
+    emissionT = MixGaussian(K=K, N=N, P=P, X=X, std_V=False)
     emissionT.sigma2 = pt.tensor(sigma2)
 
     # Step 2: Generate data by sampling from the above model
@@ -322,7 +322,7 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,miss
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixGaussian(K=K, N=N, P=P, std_V=False)
+    emissionM = MixGaussian(K=K, N=N, P=P, X=X, std_V=False)
     M = FullModel(arrangeM, emissionM)
     M, ll, theta, Uhat_fit = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
 
@@ -330,7 +330,7 @@ def _simulate_full_GMM(K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,miss
     fig, axs = plt.subplots(1, 3, figsize=(12, 4))
     _plot_loglike(axs[0], ll, loglike_true, color='b')
 
-    true_V = theta_true[M.get_param_indices('emission.V')].reshape(N, K)
+    true_V = theta_true[M.get_param_indices('emission.V')].reshape(emissionM.M, K)
     predicted_V = theta[:, M.get_param_indices('emission.V')]
     idx = matching_params(true_V, predicted_V, once=False)
     _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
@@ -486,7 +486,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
     print('Done simulation GME.')
 
 
-def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,
+def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
                        uniform_kappa=True, missingdata=None):
     """Simulation function used for testing full model with a VMF emission
     Args:
@@ -502,7 +502,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,
     """
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixVMF(K=K, N=N, P=P, uniform_kappa=uniform_kappa)
+    emissionT = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
 
     # Step 2: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
@@ -521,7 +521,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,
 
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixVMF(K=K, N=N, P=P, uniform_kappa=uniform_kappa)
+    emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
     M = FullModel(arrangeM, emissionM)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
@@ -532,7 +532,7 @@ def _simulate_full_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,
     _plot_loglike(axs[0], ll, loglike_true, color='b')
 
     ind = M.get_param_indices('emission.V')
-    true_V = theta_true[ind].reshape(N, K)
+    true_V = theta_true[ind].reshape(emissionM.M, K)
     predicted_V = theta[:, ind]
     idx = matching_params(true_V, predicted_V, once=False)
     _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
@@ -926,9 +926,10 @@ def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/
 
 
 if __name__ == '__main__':
-    # _simulate_full_VMF(K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=False,
-    #                    missingdata=0.05)
-    # _simulate_full_GMM(K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=0.05)
+    X = pt.eye(20).repeat(20, 1)
+    # _simulate_full_VMF(X=None, K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
+    #                    missingdata=None)
+    _simulate_full_GMM(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=None)
     # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=0.4,
     #                    num_bins=100, std_V=True, type_estep='linspace', missingdata=0.05)
     # _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=3.0,
