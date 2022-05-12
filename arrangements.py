@@ -405,7 +405,8 @@ class mpRBM(ArrangementModel):
         self.eneg_U = None
         self.Etype = 'prob'
         self.alpha = 0.01
-        self.epos_iter = 1
+        self.epos_iter = 5
+        self.set_param_list(['W','bh','bu'])
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -570,11 +571,14 @@ class cmpRBM_pCD(mpRBM_pCD):
         self.K = K
         self.P = P
         self.Wc  = Wc
+        self.bu = pt.randn(K,P)
         if Wc is None:
             if nh is None:
                 raise(NameError('Provide Connectivty kernel (Wc) matrix or number of hidden nodes (nh)'))
             self.nh = nh
             self.W = pt.randn(nh,P)
+            self.theta = None
+            self.set_param_list(['bu','W'])
         else:
             if Wc.ndim==2:
                 self.Wc= Wc.view(Wc.shape[0],Wc.shape[1],1)
@@ -586,14 +590,13 @@ class cmpRBM_pCD(mpRBM_pCD):
                 if self.theta.ndim ==0:
                     self.theta = self.theta.view(1)
             self.W = (self.Wc * self.theta).sum(dim=2)
-        self.bh = 0
-        self.bu = pt.randn(K,P)
+            self.set_param_list(['bu','theta'])
         self.eneg_U = None
         self.alpha = 0.01
-        self.epos_iter = 1
-        self.eneg_iter = 2
+        self.epos_iter = 5
+        self.eneg_iter = 3
         self.eneg_numchains = 77
-        self.nparams = 2 + K*P
+
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -604,10 +607,10 @@ class cmpRBM_pCD(mpRBM_pCD):
             sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
         """
         wv = pt.matmul(U,self.W.t())
-        activation = wv + self.bh
+        # activation = wv + self.b
         # p_h = pt.sigmoid(activation)
         # sample_h = pt.bernoulli(p_h)
-        p_h = pt.softmax(activation,1)
+        p_h = pt.softmax(wv,1)
         sample_h = sample_multinomial(p_h,kdim=1)
         return p_h, sample_h
 
@@ -648,7 +651,7 @@ class cmpRBM_pCD(mpRBM_pCD):
         Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
         for i in range(iter):
             wv = pt.matmul(Uhat,self.W.t())
-            Eh = pt.softmax(wv+self.bh,1)
+            Eh = pt.softmax(wv,1)
             wh = pt.matmul(Eh, self.W)
             Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
