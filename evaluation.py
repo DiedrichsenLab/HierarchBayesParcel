@@ -197,19 +197,12 @@ def permute(nums):
     return res
 
 
-def logpY(emloglik,Uhat,offset='P'):
+def logpY(emloglik,Uhat):
     """Averaged log of p(Y|U)
     For save computation (to prevent underflow or overflow)
     p(y|u) either gets a constant
     """
-    if offset is None:
-        pyu = pt.exp(emloglik)
-    elif offset=='P':
-        pyu = pt.softmax(emloglik,dim=1)
-    elif type(offset) is float:
-        pyu = pt.exp(emloglik-offset)
-    else:
-        raise(NameError('offset needs to be P,None, or floatingpoint'))
+    pyu = pt.softmax(emloglik,dim=1)
     py = pt.sum(pyu * Uhat,dim=1)
     return pt.mean(pt.log(py),dim=(0,1)).item()
 
@@ -266,7 +259,7 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
     return pt.sum(U_hat * sse)/(n_sub * P)
 
 
-def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
+def evaluate_full_arr(data,Uhat,crit='logpY'):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
     Args:
