@@ -4,7 +4,7 @@ import torch as pt
 import matplotlib.pyplot as plt
 from scipy import stats, special
 from torch import log, exp, sqrt
-from sample_vmf import rand_von_mises_fisher, rand_von_Mises
+from sample_vmf import rand_von_mises_fisher
 from model import Model
 from depreciated.AIS_test import rejection_sampling
 
@@ -634,13 +634,15 @@ class MixVMF(EmissionModel):
         V = pt.randn(self.M, self.K)
         self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
 
-        # TODO: VMF doesn't work porperly for small kappa (let's say smaller than 8),
-        # so right now the kappa is sampled from 0 to 50
+        # VMF doesn't work properly for small kappa (let's say smaller than 8),
+        # This is because the data will be very spread on the p-1 sphere, making the
+        # model recovery difficult. Also, a small kappa cannot reflect to the real data
+        # as the real parcels are likely to have concentrated within-parcel data.
 
         if self.uniform_kappa:
-            self.kappa = pt.distributions.uniform.Uniform(8, 50).sample()
+            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample()
         else:
-            self.kappa = pt.distributions.uniform.Uniform(8, 50).sample((self.K, ))
+            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -688,15 +690,7 @@ class MixVMF(EmissionModel):
         if type(self.kappa) is np.ndarray:
             self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
-        # # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
-        # for i in sub:
-        #     YV = pt.mm(self.Y[i, :, :].T, self.V)
-        #     # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
-        #     logCnK = (self.N / 2 - 1) * pt.log(self.kappa) - (self.N / 2) * log(pt.as_tensor(2*np.pi)) - \
-        #              self._log_bessel_function(self.N / 2 - 1, self.kappa)
-        #     # the log likelihood for emission model (VMF in this case)
-        #     LL[i, :, :] = (logCnK + self.kappa * YV).T
-
+        # Calculate log-likelihood
         YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
@@ -718,13 +712,7 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # YU = pt.zeros((self.N, self.K))
-        # UU = pt.zeros((self.K, self.P))
-        #
-        # for i in range(self.num_subj):
-        #     YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
-        #     UU = UU + U_hat[i, :, :]
-
+        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
         U_hat[nan_voxIdx] = 0
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
@@ -734,7 +722,8 @@ class MixVMF(EmissionModel):
         XYU = pt.matmul(self.regressX, YU)
         self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
 
-        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
+        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
+        # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
             r_bar = pt.sqrt(pt.sum(YU ** 2, dim=0)) / pt.sum(UU, dim=1)
             # r_bar[r_bar > 0.95] = 0.95
@@ -766,6 +755,8 @@ class MixVMF(EmissionModel):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
                 # JD: Ideally re-write this routine to native Pytorch...
+                # So here the mean direction for sampling is the new V which
+                # calculated by X * V, shape of (N, k)
                 new_V = pt.matmul(self.X, self.V)
                 new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
                 if self.uniform_kappa:

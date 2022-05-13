@@ -487,7 +487,7 @@ def _simulate_full_GME(K=5, P=1000, N=20, num_sub=10, max_iter=100,
 
 
 def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
-                       uniform_kappa=True, missingdata=None):
+                       uniform_kappa=True, missingdata=None, n_inits=None):
     """Simulation function used for testing full model with a VMF emission
     Args:
         K: the number of clusters
@@ -527,19 +527,21 @@ def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
     # Step 5: Estimate the parameter thetas to fit the new model using EM
     M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
 
-    # Multiple random initializations to check local maxima
-    max_ll = -pt.inf
-    for i in range(100):
-        this_emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
-        this_M = FullModel(arrangeM, this_emissionM)
-        # Step 5: Estimate the parameter thetas to fit the new model using EM
-        this_M, this_ll, this_theta, _ = this_M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
-        if this_ll[-1] > max_ll:
-            M = this_M
-            max_ll = this_ll[-1]
-            ll = this_ll
-            theta = this_theta
-            emissionM = this_emissionM
+    # Multiple random initializations to check local maxima if required
+    if n_inits is not None:
+        max_ll = -pt.inf
+        for i in range(n_inits):
+            this_emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
+            this_M = FullModel(arrangeM, this_emissionM)
+            # Step 5: Estimate the parameter thetas to fit the new model using EM
+            this_M, this_ll, this_theta, _ = this_M.fit_em(Y=Y, iter=max_iter, tol=0.00001,
+                                                           fit_arrangement=False)
+            if this_ll[-1] > max_ll:
+                M = this_M
+                max_ll = this_ll[-1]
+                ll = this_ll
+                theta = this_theta
+                emissionM = this_emissionM
 
     # Plot fitting results
     fig, axs = plt.subplots(1, 3, figsize=(12, 4))
@@ -552,9 +554,10 @@ def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
     _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
 
     ind = M.get_param_indices('emission.kappa')
-    if uniform_kappa:
+    if uniform_kappa or emissionT.uniform_kappa:
         # Plot if kappa is uniformed
-        _plt_single_param_diff(axs[2], theta_true[ind], theta[:, ind], name='kappa')
+        _plt_single_param_diff(axs[2], theta_true[T.get_param_indices('emission.kappa')],
+                               theta[:, ind], name='kappa')
     else:
         # Plot if kappa is not uniformed
         idx = matching_params(theta_true[ind].reshape(1, K), theta[:, ind], once=False)
@@ -940,10 +943,11 @@ def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/
 
 
 if __name__ == '__main__':
-    X = pt.eye(30).repeat(5, 1)
-    _simulate_full_VMF(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
-                       missingdata=None)
-    # _simulate_full_GMM(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2, missingdata=None)
+    X = pt.eye(46).repeat(10, 1)  # simulate task design matrix X
+    _simulate_full_VMF(X=X, K=10, P=2000, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
+                       missingdata=None, n_inits=None)
+    # _simulate_full_GMM(X=X, K=5, P=500, N=20, num_sub=10, max_iter=100, sigma2=0.2,
+    #                    missingdata=None)
     # _simulate_full_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=0.4,
     #                    num_bins=100, std_V=True, type_estep='linspace', missingdata=0.05)
     # _test_sampling_GME(K=5, P=200, N=20, num_sub=10, max_iter=100, sigma2=3.0,
@@ -954,12 +958,13 @@ if __name__ == '__main__':
     #                         type_estep=['linspace', 'import', 'reject'])
     # plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
     #
-    T = do_full_comparison_emission(clusters=10, iters=10, beta=0.5, true_models=['GMM', 'GME', 'VMF'],
-                                    disper=[0.5, 0.5, 40], same_signal=True, missingdata=None)
+    # T = do_full_comparison_emission(clusters=10, iters=10, beta=0.5,
+    #                                 true_models=['GMM', 'GME', 'VMF'],
+    #                                 disper=[0.5, 0.5, 40], same_signal=True, missingdata=None)
+    # plot_comparision_emission(T)
+    # plt.show()
     # T.to_csv('notebooks/emission_modelrecover_2.csv')
     # T = pd.read_csv('notebooks/emission_modelrecover_2.csv')
-    plot_comparision_emission(T)
-    plt.show()
     # pass
 
     # G, D = train_mdtb_dirty(K=5, train_participants=[2, 3, 4, 6, 8, 9, 10, 12, 14, 15],
