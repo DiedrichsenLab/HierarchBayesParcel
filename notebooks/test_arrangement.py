@@ -192,9 +192,6 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
     return model,T,theta_hist
 
 
-
-
-
 def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
     D= pd.DataFrame()
     Utrue_mn = ar.expand_mn(Utrue,models[0].K)
