@@ -15,48 +15,6 @@ import pandas as pd
 import seaborn as sb
 import time
 
-def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
-             n_epoch=20,batch_size=20,verbose=False):
-    N = emlog_train.shape[0]
-    Utrain=pt.softmax(emlog_train,dim=1)
-    uerr_train = np.zeros(n_epoch)
-    uerr_test1 = np.zeros(n_epoch)
-    uerr_test2 = np.zeros(n_epoch)
-    # Intialize negative sampling
-    for epoch in range(n_epoch):
-        # Get test error
-        EU,_ = model.Estep(emlog_train,gather_ss=False)
-        pi = model.marginal_prob(Utrain)
-        uerr_train[epoch] = ev.evaluate_full_arr(emlog_train,pi,crit=crit)
-        uerr_test1[epoch]= ev.evaluate_full_arr(emlog_test,EU,crit=crit)
-        uerr_test2[epoch]= ev.evaluate_completion_arr(model,emlog_test,part,crit=crit)
-        if (verbose):
-            print(f'epoch {epoch:2d} Train: {uerr_train[epoch]:.4f}, Test1: {uerr_test1[epoch]:.4f}, Test2: {uerr_test2[epoch]:.4f}')
-
-        # Update the model in batches
-        for b in range(0,N-batch_size+1,batch_size):
-            ind = range(b,b+batch_size)
-            model.Estep(emlog_train[ind,:,:])
-            model.Eneg(Utrain[ind,:,:])
-            model.Mstep()
-
-    # Make a data frame for the results
-    T1 = pd.DataFrame({'model':[model.name]*n_epoch,
-                        'type':['train']*n_epoch,
-                        'iter':np.arange(n_epoch),
-                        'uerr':uerr_train})
-    T2 = pd.DataFrame({'model':[model.name]*n_epoch,
-                        'type':['test']*n_epoch,
-                        'iter':np.arange(n_epoch),
-                        'uerr':uerr_test1})
-    T3 = pd.DataFrame({'model':[model.name]*n_epoch,
-                        'type':['compl']*n_epoch,
-                        'iter':np.arange(n_epoch),
-                        'uerr':uerr_test2})
-
-    T = pd.concat([T1,T2,T3],ignore_index=True)
-    return model,T
-
 
 def train_rbm_to_mrf(N=200,n_hidden = 30,n_epoch=20, batch_size=20, sigma2=0.01):
     """Fits and RBM to observed activiy data, given a smooth true arrangement (mrf)

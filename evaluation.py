@@ -197,19 +197,12 @@ def permute(nums):
     return res
 
 
-def logpY(emloglik,Uhat,offset='P'):
+def logpY(emloglik,Uhat):
     """Averaged log of p(Y|U)
     For save computation (to prevent underflow or overflow)
     p(y|u) either gets a constant
     """
-    if offset is None:
-        pyu = pt.exp(emloglik)
-    elif offset=='P':
-        pyu = pt.softmax(emloglik,dim=1)
-    elif type(offset) is float:
-        pyu = pt.exp(emloglik-offset)
-    else:
-        raise(NameError('offset needs to be P,None, or floatingpoint'))
+    pyu = pt.softmax(emloglik,dim=1)
     py = pt.sum(pyu * Uhat,dim=1)
     return pt.mean(pt.log(py),dim=(0,1)).item()
 
@@ -266,7 +259,7 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
     return pt.sum(U_hat * sse)/(n_sub * P)
 
 
-def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
+def evaluate_full_arr(data,Uhat,crit='logpY'):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
     Args:
@@ -286,48 +279,35 @@ def evaluate_full_arr(data,Uhat,crit='logpY',offset='P'):
         return u_abserr(U,Uhat)
 
 
-def evaluate_completion_arr(arM,data,part,crit='logpY',offset='P'):
+def evaluate_completion_arr(arM,emloglik,part,crit='logpY',Utrue=None):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
     Args:
-        arM (ArrangementModel): [description]
-        data (tensor): Emission log-liklihood or U-estimates (depends on crit)
+        arM (ArrangementModel): arrangement model 
+        emloglik (tensor): Emission log-liklihood 
         part (Partitions): P tensor with partition indices
-        crit (str): 'logpy','u_abserr'
+        crit (str): 'logpY','u_abserr'
+        Utrue (tensor): For u_abserr you need to provide the true U's 
     Returns:
-        evaluation citerion: [description]
+        mean evaluation citerion 
     """
-    if type(data) is np.ndarray:
-        data=pt.tensor(data,dtype=pt.get_default_dtype())
-    if crit=='logpY':
-        U = pt.softmax(data,dim=1)
-        emloglik = data
-        if offset is None:
-            pyu = pt.exp(emloglik)
-        elif offset=='P':
-            pyu = pt.softmax(emloglik,dim=1)
-        elif type(offset) is float:
-            pyu = pt.exp(emloglik-offset)
-        else:
-            raise(NameError('offset needs to be P,None, or floatingpoint'))
-    elif crit == 'u_abserr':
-        U = data
-    else:
-        raise(NameError('unknown criterion'))
-    N = U.shape[0]
+    if type(emloglik) is np.ndarray:
+        emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+    pyu = pt.softmax(emloglik,dim=1)
+    num_subj = emloglik.shape[0]
     num_part = part.max()+1
-    loss = pt.zeros(arM.P)
+    critM = pt.zeros(arM.P)
     for k in range(num_part):
         ind = part==k
-        U0 = pt.clone(U)
-        U0[:,:,ind] = 1./arM.K # Agnostic input
-        Uhat,_ = arM.Estep(U0,gather_ss=False)
-        if crit=='abserr':
-            loss[ind] = pt.mean(pt.abs(U[:,:,ind] - Uhat[:,:,ind]),dim=(0,1))
+        emll = pt.clone(emloglik)
+        emll[:,:,ind] = 0 # Agnostic input
+        Uhat,_ = arM.Estep(emll,gather_ss=False)
+        if crit=='u_abserr':
+            critM[ind] = pt.mean(pt.abs(Utrue[:,:,ind] - Uhat[:,:,ind]),dim=(0,1))
         elif crit=='logpY':
             py = pt.sum(pyu[:,:,ind] * Uhat[:,:,ind],dim=1)
-            loss[ind] = pt.mean(pt.log(py),dim=0)
-    return pt.mean(loss) # average across vertices
+            critM[ind] = pt.mean(pt.log(py),dim=0)
+    return pt.mean(critM).item()  # average across vertices
 
 
 def evaluate_U(U_true, U_predict, crit='u_prederr'):

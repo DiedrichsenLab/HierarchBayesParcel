@@ -107,7 +107,7 @@ class ArrangeIndependent(ArrangementModel):
                 U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
         return U
 
-    def marginal_prob(self,U=None):
+    def marginal_prob(self):
         """Returns marginal probabilty for every node under the model
         Returns: p[] marginal probability under the model
         """
@@ -405,7 +405,8 @@ class mpRBM(ArrangementModel):
         self.eneg_U = None
         self.Etype = 'prob'
         self.alpha = 0.01
-        self.epos_iter = 1
+        self.epos_iter = 5
+        self.set_param_list(['W','bh','bu'])
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -432,11 +433,7 @@ class mpRBM(ArrangementModel):
         N = h.shape[0]
         wh = pt.mm(h, self.W).reshape(N,self.K,self.P)
         p_u = pt.softmax(wh + self.bu,1)
-        r = pt.empty(N,1,self.P).uniform_(0,1)
-        cdf_v = p_u.cumsum(1)
-        sample = (r < cdf_v).float()
-        for k in np.arange(self.K-1,0,-1):
-            sample[:,k,:]-=sample[:,k-1,:]
+        sample = sample_multinomial(p_u,kdim=1)
         return p_u, sample
 
     def sample(self,num_subj,iter=10):
@@ -490,9 +487,10 @@ class mpRBM(ArrangementModel):
             self.epos_Eh = Eh
         return Uhat, pt.nan
 
-    def marginal_prob(self,U=None):
-        if U is not None:
-            U,Eh=self.Eneg(U)
+    def marginal_prob(self):
+        # If not given, then initialize: 
+        if self.eneg_U is None:
+            U,Eh=self.Eneg()
         pi  = pt.mean(self.eneg_U,dim=0)
         return pi
 
@@ -555,24 +553,50 @@ class mpRBM_CDk(mpRBM):
 
 
 class cmpRBM_pCD(mpRBM_pCD):
-    """convolutional multinomial (categorial) restricted Boltzman machine
-    for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning
-    """
 
-    def __init__(self, K, P, Wc, theta_w=2.0, eneg_iter=3,eneg_numchains=77):
+    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,eneg_numchains=77):
+        """convolutional multinomial (categorial) restricted Boltzman machine
+        for learning of brain parcellations for probabilistic input
+        Uses persistent Contrastive-Divergence k for learning
+
+        Args:
+            K (int): number of classes
+            P (int): number of brain locations
+            nh (int): number of hidden multinomial nodes
+            Wc (tensor): 2d/3d-tensor for connecticity weights
+            theta (tensor): 1d vector of parameters
+            eneg_iter (int): HOw many iterations for each negative step. Defaults to 3.
+            eneg_numchains (int): How many chains. Defaults to 77.
+        """
         self.K = K
         self.P = P
-        self.Wc  = Wc 
-        self.nh = Wc.shape[0]
-        self.theta_w = theta_w
-        self.W = Wc * self.theta_w
-        self.bh = 0
+        self.Wc  = Wc
         self.bu = pt.randn(K,P)
+        if Wc is None:
+            if nh is None:
+                raise(NameError('Provide Connectivty kernel (Wc) matrix or number of hidden nodes (nh)'))
+            self.nh = nh
+            self.W = pt.randn(nh,P)
+            self.theta = None
+            self.set_param_list(['bu','W'])
+        else:
+            if Wc.ndim==2:
+                self.Wc= Wc.view(Wc.shape[0],Wc.shape[1],1)
+            self.nh = Wc.shape[0]
+            if theta is None:
+                self.theta = pt.randn((self.Wc.shape[2],))
+            else:
+                self.theta = pt.tensor(theta)
+                if self.theta.ndim ==0:
+                    self.theta = self.theta.view(1)
+            self.W = (self.Wc * self.theta).sum(dim=2)
+            self.set_param_list(['bu','theta'])
         self.eneg_U = None
         self.alpha = 0.01
-        self.epos_iter = 1
-        self.nparams = 2 + K*P
+        self.epos_iter = 5
+        self.eneg_iter = 3
+        self.eneg_numchains = 77
+
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -583,11 +607,11 @@ class cmpRBM_pCD(mpRBM_pCD):
             sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
         """
         wv = pt.matmul(U,self.W.t())
-        activation = wv + self.bh
+        # activation = wv + self.b
         # p_h = pt.sigmoid(activation)
         # sample_h = pt.bernoulli(p_h)
-        p_h = pt.softmax(activation,1)
-        sample_h = sample_multinomial(p_h)
+        p_h = pt.softmax(wv,1)
+        sample_h = sample_multinomial(p_h,kdim=1)
         return p_h, sample_h
 
     def sample_U(self, h):
@@ -601,11 +625,7 @@ class cmpRBM_pCD(mpRBM_pCD):
         N = h.shape[0]
         wh = pt.matmul(h, self.W)
         p_u = pt.softmax(wh + self.bu,1)
-        r = pt.empty(N,1,self.P).uniform_(0,1)
-        cdf_v = p_u.cumsum(1)
-        sample = (r < cdf_v).float()
-        for k in np.arange(self.K-1,0,-1):
-            sample[:,k,:]-=sample[:,k-1,:]
+        sample = sample_multinomial(p_u,kdim=1)
         return p_u, sample
 
     def Estep(self, emloglik,gather_ss=True,iter=None):
@@ -630,14 +650,27 @@ class cmpRBM_pCD(mpRBM_pCD):
         N=emloglik.shape[0]
         Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
         for i in range(iter):
-            wv = pt.mm(Uhat.reshape(N,-1), self.W.t())
-            Eh = pt.sigmoid(wv + self.bh)
-            wh = pt.mm(Eh, self.W).reshape(N,self.K,self.P)
+            wv = pt.matmul(Uhat,self.W.t())
+            Eh = pt.softmax(wv,1)
+            wh = pt.matmul(Eh, self.W)
             Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
             self.epos_U = Uhat
             self.epos_Eh = Eh
         return Uhat, pt.nan
+
+    def Eneg(self, U=None):
+        if (self.eneg_U is None):
+            U = pt.empty(self.eneg_numchains,self.K,self.P).uniform_(0,1)
+        else:
+            U = self.eneg_U
+        for i in range(self.eneg_iter):
+            Eh,h = self.sample_h(U)
+            EU,U = self.sample_U(h)
+        self.eneg_Eh = Eh
+        self.eneg_U = EU
+        return self.eneg_U,self.eneg_Eh
+
 
     def Mstep(self):
         """Performs gradient step on the parameters
@@ -647,12 +680,19 @@ class cmpRBM_pCD(mpRBM_pCD):
         """
         N = self.epos_Eh.shape[0]
         M = self.eneg_Eh.shape[0]
-        epos_U=self.epos_U.reshape(N,-1)
-        eneg_U=self.eneg_U.reshape(M,-1)
-        self.W += self.alpha * (pt.mm(self.epos_Eh.t(),epos_U) - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
-        self.bu += self.alpha * (pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0))
-        self.bh += self.alpha * (pt.sum(self.epos_Eh,0) - N / M * pt.sum(self.eneg_Eh, 0))
-
+        gradW = pt.matmul(pt.transpose(self.epos_Eh,1,2),self.epos_U).sum(dim=0)
+        gradW += - N / M * pt.matmul(pt.transpose(self.eneg_Eh,1,2),self.eneg_U).sum(dim=0)
+        # If we are dealing with component Wc:
+        if self.Wc is not None:
+            gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
+            # self.theta += self.alpha/100 * pt.sum(gradW*self.Wc,dim=(0,1))
+            self.W = (self.Wc * self.theta).sum(dim=2)
+        else:
+            pass
+            # self.W += self.alpha/5 * gradW
+        # Update the bias term
+        gradBU = pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0)
+        self.bu += self.alpha * 2 * gradBU
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution
