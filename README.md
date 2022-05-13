@@ -126,10 +126,10 @@ $$
 We can approximate the gradient of the parameters using a contrastive divergence-type algorithm. We view the arrangement log likelihood as a sum of the unnormalized part ($\tilde{\mathcal{L}}_A$) and the log partition function. For each parameter $\theta$ we then follow the gradient 
 $$
 \begin{align*}
-\grad_\theta \mathcal{L}_A&=\grad_\theta \tilde{\mathcal{L}}_A-\grad_\theta \log Z\\
-&=\grad_\theta \tilde{\mathcal{L}}_A-\mathrm{E}_p [\grad_\theta \tilde{\mathcal{L}}_A]\\
-&=\grad_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_q -
-\grad_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_p 
+\nabla_\theta \mathcal{L}_A&=\nabla_\theta \tilde{\mathcal{L}}_A-\nabla_\theta \log Z\\
+&=\nabla_\theta \tilde{\mathcal{L}}_A-\mathrm{E}_p [\nabla_\theta \tilde{\mathcal{L}}_A]\\
+&=\nabla_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_q -
+\nabla_\theta \langle \log \tilde{p}(\mathbf{U}|\theta)\rangle_p 
 \end{align*}
 $$
 Thus, we can use the gradient of the unnormalized expected log-likelihood (given a distribution $q(\mathbf{U}) = p(\mathbf{U}|\mathbf{Y};\theta)$, minus the  gradient of the unnormalized expected log-likelihood in respect to the expectation under the model parameters, without seeing the data, $q(\mathbf{U}) = p(\mathbf{U}|\mathbf{Y};\theta)$. This motivates the use of sampling / approximate inference for both of these steps. See Deep Learning (18.1).
@@ -199,7 +199,7 @@ So in this parameterization in the iid case, $Z=1$ and we don't need the negativ
 
 
 
-### Probabilistic multivariate restricted Boltzmann machine
+### Probabilistic multinomial restricted Boltzmann machine
 
 As an alternative to a Potts model, we are introducing here a multivariate version of a restricted Boltzmann machine. A restricted Boltzmann machine consists typically out a layer of binary visible and a layer of binary hidden units ($\mathbf{h}$) with $J$ nodes $h_j$. Here, we are replacing the input with the spatial arrangement matrix $\mathbf{U}$, with each column of the matrix $\mathbf{u}_i$ representing a one-hot encoded multinomial random variable, that assigns the brain location $i$ to parcel $k$. 
 
@@ -216,7 +216,7 @@ $$
 
 Where $[.]_i$ selects the element for $\mathbf{u}_i$ from vectorized version of $\mathbf{U}$. 
 
-### Positive Estep: Expectation given the data 
+#### Positive Estep: Expectation given the data 
 The advantage of a Boltzmann machine is that we can efficiently do inference and sampling in a blocked fashion. In the positive E-step, the expectation can be passed - and we can do one or more iteration between the $\mathbf{h}$ and the $\mathbf{U}$ layer. 
 
 We intialize the hidden layer with 
@@ -236,11 +236,11 @@ $$
 \langle h_j\rangle^{(t+1)}_q =\sigma(vec(\langle \mathbf{U} \rangle^{(t)}_q)^T\mathbf{W}_{.,j}+\mathbf{b}_j)
 $$
 
-### Negative Estep: Expectation given the model
+#### Negative Estep: Expectation given the model
 
 For the negative e-step, we are using sampling alternating for $\mathbf{h}$ and $\mathbf{U}$, using the main equations. The expectations are then probabilities before the last sampling step. These give us the expectations $\langle . \rangle_p$ that we need for subsequent learning. 
 
-### Gradient step for parameter estimation
+#### Gradient step for parameter estimation
 
 Given the expectation of the hidden and latent variable for the positive and negative phase of the expectation. 
 $$
@@ -253,7 +253,59 @@ $$
 \end{align*}
 $$
 
-## Convolutional multivariate probabilistic restricted Boltzmann machine (cmpRBM)
+### Convolutional multinomial probabilistic restricted Boltzmann machine (cmpRBM)
+
+Another approach is to make both the hidden ($\mathbf{H}$) and the intermedicate ($\mathbf{U}$) nodes are multinomial version of a restricted Boltzmann machine. So with Q hidden nodes, H is the KxQ matrix with the one-hot  encoded state of the hidden variables, and U is a KxP matrix of the one-hot encoded clustering. $\mathbf{W}$ is the $QxP$ matrix of connectivity that connects the respective nodes. 
+
+The hidden variables is still a vector of binary latent variables
+$$
+p(\mathbf{h}_j|\mathbf{U})=\rm{softmax}(\mathbf{U}\mathbf{W}_{j,.}^T)
+$$
+The probability of a brain location then is given by: 
+$$
+p(\mathbf{u}_i|\mathbf{h})=\rm{softmax}(\mathbf{H}\mathbf{W}_{.,i}+\boldsymbol{\eta}_i).
+$$
+
+#### Positive Estep: Expectation given the data 
+The advantage of a Boltzmann machine is that we can efficiently do inference and sampling in a blocked fashion. In the positive E-step, the expectation can be passed - and we can do one or more iteration between the $\mathbf{H}$ and the $\mathbf{U}$ layer. 
+
+We intialize the hidden layer with 
+
+$$
+\langle\mathbf{H}\rangle^{(0)}_q=\mathbf{0}
+$$
+
+An then alternate: 
+
+$$
+\langle\mathbf{u}_i\rangle^{(t)}_q=\rm{softmax}(\langle \mathbf{H}\rangle^{(t)}\mathbf{W}_{.,i} +\boldsymbol{\eta}_i + \log p(\mathbf{y}_i|\mathbf{u}_i))
+$$
+
+
+$$
+\langle \mathbf{h}_j\rangle^{(t+1)}_q =\rm{softmax}(\langle \mathbf{U} \rangle^{(t)}_q\mathbf{W}_{j,.}^T)
+$$
+
+#### Negative Estep: Expectation given the model
+
+For the negative e-step, nwe are using sampling alternating for $\mathbf{h}$ and $\mathbf{U}$, using the main equations. The expectations are then probabilities before the last sampling step. These give us the expectations $\langle . \rangle_p$ that we need for subsequent learning. 
+
+#### Gradient step for parameter estimation
+
+The unnormalized log-probability of the model (negative Energy function) of the model is: 
+$$
+\log\tilde{p}(\mathbf{U},\mathbf{H}|\mathbf{Y})=\sum_i\eta_i^T\mathbf{u}_i+\rm{tr}(\mathbf{H}\mathbf{W}\mathbf{U}^T)
+$$
+Given the expectation of the hidden and latent variable for the positive and negative phase of the expectation, the gradients are: 
+$$
+\begin{align*}
+\nabla_W = \langle \mathbf{H} \rangle_q^T \langle \mathbf{U} \rangle_q-\langle \mathbf{H} \rangle_p^T \langle \mathbf{U} \rangle_p\\
+
+
+\nabla_\eta =\langle \mathbf{U} \rangle_q - \langle \mathbf{U} \rangle_p
+\end{align*}
+$$
+
 
 
 
