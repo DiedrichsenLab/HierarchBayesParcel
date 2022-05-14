@@ -67,11 +67,6 @@ class ArrangeIndependent(ArrangementModel):
         ll_A = pt.sum(Uhat * pt.log(pi))
         return Uhat, ll_A
 
-    def Eneg(self,emloglik):
-        """ Negative phase of e-step: do nothing
-        """
-        return np.nan, np.nan
-
     def Mstep(self):
         """ M-step for the spatial arrangement model
             Update the pi for arrangement model
@@ -552,12 +547,12 @@ class mpRBM_CDk(mpRBM):
         return self.eneg_U,self.eneg_Eh
 
 
-class cmpRBM_pCD(mpRBM_pCD):
+class cmpRBM(mpRBM):
 
-    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,eneg_numchains=77):
+    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,epos_iter=5,eneg_numchains=77):
         """convolutional multinomial (categorial) restricted Boltzman machine
         for learning of brain parcellations for probabilistic input
-        Uses persistent Contrastive-Divergence k for learning
+        Uses variational stochastic maximum likelihood for learning
 
         Args:
             K (int): number of classes
@@ -591,11 +586,13 @@ class cmpRBM_pCD(mpRBM_pCD):
                     self.theta = self.theta.view(1)
             self.W = (self.Wc * self.theta).sum(dim=2)
             self.set_param_list(['bu','theta'])
-        self.eneg_U = None
+        self.gibbs_U = None # samples from the hidden layer for negative phase
         self.alpha = 0.01
-        self.epos_iter = 5
-        self.eneg_iter = 3
-        self.eneg_numchains = 77
+        self.epos_iter = epos_iter
+        self.eneg_iter = eneg_iter
+        self.eneg_numchains = eneg_numchains
+        self.fit_bu = True
+        self.fit_W = True
 
 
     def sample_h(self, U):
@@ -614,7 +611,7 @@ class cmpRBM_pCD(mpRBM_pCD):
         sample_h = sample_multinomial(p_h,kdim=1)
         return p_h, sample_h
 
-    def sample_U(self, h):
+    def sample_U(self, h, emloglik = None):
         """ Returns a sampled U as a unpacked indicator variable
         Args:
             h tensor: Hidden states (NxKxnh)
@@ -623,10 +620,21 @@ class cmpRBM_pCD(mpRBM_pCD):
             sample_U: One-hot encoding of random sample [N,K,P] array
         """
         N = h.shape[0]
-        wh = pt.matmul(h, self.W)
-        p_u = pt.softmax(wh + self.bu,1)
+        act = pt.matmul(h, self.W) + self.bu
+        if emloglik is not None:
+            act += emloglik
+        p_u = pt.softmax(act ,1)
         sample = sample_multinomial(p_u,kdim=1)
         return p_u, sample
+
+    def marginal_prob(self):
+        # If not given, then initialize: 
+        if self.gibbs_U is None:
+            return pt.softmax(self.bu,0)
+        else:
+            pi  = pt.mean(self.gibbs_U,dim=0)
+        return pi
+
 
     def Estep(self, emloglik,gather_ss=True,iter=None):
         """ Positive Estep for the multinomial boltzman model
@@ -651,26 +659,41 @@ class cmpRBM_pCD(mpRBM_pCD):
         Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
         for i in range(iter):
             wv = pt.matmul(Uhat,self.W.t())
-            Eh = pt.softmax(wv,1)
-            wh = pt.matmul(Eh, self.W)
+            Hhat = pt.softmax(wv,1)
+            wh = pt.matmul(Hhat, self.W)
             Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
-            self.epos_U = Uhat
-            self.epos_Eh = Eh
+            self.epos_Uhat = Uhat
+            self.epos_Hhat = Hhat
         return Uhat, pt.nan
 
-    def Eneg(self, U=None):
-        if (self.eneg_U is None):
-            U = pt.empty(self.eneg_numchains,self.K,self.P).uniform_(0,1)
-        else:
-            U = self.eneg_U
-        for i in range(self.eneg_iter):
-            Eh,h = self.sample_h(U)
-            EU,U = self.sample_U(h)
-        self.eneg_Eh = Eh
-        self.eneg_U = EU
-        return self.eneg_U,self.eneg_Eh
+    def Eneg(self, iter=None, use_chains=None, emission_model=None):
+        # If no iterations specified - use standard
+        if iter is None:
+            iter = self.eneg_iter
+        # If no markov chain are initialized, start them off
+        if (self.gibbs_U is None):
+            p = pt.softmax(self.bu,0)
+            self.gibbs_U = sample_multinomial(p,
+                    shape=(self.eneg_numchains,self.K,self.P),
+                    kdim=0,
+                    compress=False)
+        # Grab the current chains 
+        if use_chains is None:
+            use_chains = pt.arange(self.eneg_numchains)
 
+        U = self.gibbs_U[use_chains]
+        U0 = U.detach().clone()
+        for i in range(iter):
+            Y = emission_model.sample(compress_mn(U))
+            emloglik = emission_model.Estep(Y)
+            _,H = self.sample_h(U)
+            _,U = self.sample_U(H,emloglik)
+        self.eneg_H = H
+        self.eneg_U = U
+        # Persistent: Keep the new gibbs samples around
+        self.gibbs_U[use_chains]=U 
+        return self.eneg_U,self.eneg_H
 
     def Mstep(self):
         """Performs gradient step on the parameters
@@ -678,21 +701,25 @@ class cmpRBM_pCD(mpRBM_pCD):
         Args:
             alpha (float, optional): [description]. Defaults to 0.8.
         """
-        N = self.epos_Eh.shape[0]
-        M = self.eneg_Eh.shape[0]
-        gradW = pt.matmul(pt.transpose(self.epos_Eh,1,2),self.epos_U).sum(dim=0)
-        gradW += - N / M * pt.matmul(pt.transpose(self.eneg_Eh,1,2),self.eneg_U).sum(dim=0)
-        # If we are dealing with component Wc:
-        if self.Wc is not None:
-            gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
-            # self.theta += self.alpha/100 * pt.sum(gradW*self.Wc,dim=(0,1))
-            self.W = (self.Wc * self.theta).sum(dim=2)
-        else:
-            pass
-            # self.W += self.alpha/5 * gradW
+        N = self.epos_Hhat.shape[0]
+        M = self.eneg_H.shape[0]
+        # Update the connectivity 
+        if self.fit_W:
+            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),self.epos_Uhat).sum(dim=0)/N
+            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),self.eneg_U).sum(dim=0)/M
+            # If we are dealing with component Wc:
+            if self.Wc is not None:
+                gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
+                self.theta += self.alpha * pt.sum(gradW*self.Wc,dim=(0,1))
+                self.W = (self.Wc * self.theta).sum(dim=2)
+            else:
+                self.W += self.alpha * gradW
+        
         # Update the bias term
-        gradBU = pt.sum(self.epos_U,0) - N / M * pt.sum(self.eneg_U,0)
-        self.bu += self.alpha * 2 * gradBU
+        if self.fit_bu: 
+            gradBU =   1 / N * pt.sum(self.epos_Uhat,0) 
+            gradBU -=  1 / M * pt.sum(self.eneg_U,0)
+            self.bu += self.alpha * 2 * gradBU
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution

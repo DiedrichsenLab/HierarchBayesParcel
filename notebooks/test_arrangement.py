@@ -127,8 +127,48 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
 
     return Ytrain, Ytest, Utrue, MT , grid
 
+def make_cmpRBM_chain(P=5,K=3,N=10,num_subj=20,
+            theta_w=1.0,sigma2=0.5,logpi=2):
+    """Generates (and plots Markov random field data)
+    Args:
+        width (int, optional): [description]. Defaults to 10.
+        K (int, optional): [description]. Defaults to 5.
+        N (int, optional): [description]. Defaults to 200.
+        theta_mu (int, optional): [description]. Defaults to 20.
+        theta_w (int, optional): [description]. Defaults to 2.
+        sigma2 (float, optional): [description]. Defaults to 0.5.
+        do_plot (int): 1: Plot of the first 10 samples 2: + sample path
+    """
+    # Step 1: Create the true model
+    grid = sp.SpatialChain(P=5)
+    W = grid.get_neighbour_connectivity()
+    W += pt.eye(W.shape[0])
+
+    # Step 2: Initialize the parameters of the true model: Only ends are fixed 
+    arrangeT = ar.cmpRBM(K,grid.P,Wc=W,theta=theta_w)
+    arrangeT.name = 'cmpRDM'
+    arrangeT.bu = pt.zeros((K,P))
+    arrangeT.bu[0,0]=logpi
+    arrangeT.bu[-1,-1]=logpi
+
+
+    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
+    emissionT.random_params()
+    emissionT.sigma2=pt.tensor(sigma2)
+    MT = fm.FullModel(arrangeT,emissionT)
+
+
+    # Step 4: Generate data by sampling from the above model
+    Utrue = MT.arrange.sample(num_subj,50)
+    Ytrain = MT.emission.sample(Utrue)
+    Ytest = MT.emission.sample(Utrue)  # Testing data
+
+    return Ytrain, Ytest, Utrue, MT , grid
+
+
+
 def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
-             n_epoch=20,batch_size=20,verbose=False):
+             n_epoch=20,batch_size=20,verbose=False,emission_model=None):
     """Trains only arrangement model, given a fixed emission 
     likelhoood. 
 
@@ -147,7 +187,7 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
         T: Pandas data frame with epoch level performance metrics
         thetaH: History of fitted thetas 
     """
-    N = emlog_train.shape[0]
+    num_subj = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
     crit_types = ['train','marg','test','compl'] # different evaluation types 
     CR = np.zeros((len(crit_types),n_epoch))
@@ -172,10 +212,12 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
             print(f'epoch {epoch:2d} Test: {crit[2,epoch]:.4f}')
 
         # Update the model in batches 
-        for b in range(0,N-batch_size+1,batch_size):
+        for b in range(0,num_subj-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
             model.Estep(emlog_train[ind,:,:])
-            model.Eneg(Utrain[ind,:,:])
+            if hasattr(model,'Eneg'):
+                model.Eneg(use_chains=ind,
+                           emission_model=emission_model)
             model.Mstep()
 
         # Record the parameters
@@ -203,9 +245,24 @@ def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
                'type':['test'],
                'uerr':uerr_test1,
                'logpy':logpy_test1}
-
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
+
+def eval_arrange_compl(models,emloglik,part,Utrue):
+    D= pd.DataFrame()
+    Utrue_mn = ar.expand_mn(Utrue,models[0].K)
+    for m in models:
+        logpy_compl = ev.evaluate_completion_arr(m,emloglik,part,crit='logpY')
+        uerr_compl = ev.evaluate_completion_arr(m,emloglik,part,
+                                    crit='u_abserr',Utrue=Utrue_mn)
+        dict ={'model':[m.name],
+               'type':['compl'],
+               'uerr':uerr_compl,
+               'logpy':logpy_compl}
+        D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
+    return D
+
+
 
 def plot_Uhat_maps(models,emloglik,grid):
     plt.figure(figsize=(10,7))
@@ -284,9 +341,9 @@ def simulation_1():
     D = eval_arrange([indepAr,rbm,Mpotts],emloglik_train,emloglik_test,Utrue)
 
     plt.figure(figsize=(8,3))
-    plt.subplot(1,2,1)
+    plt.subplot(2,2,1)
     sb.barplot(data=D,x='model',y='uerr')
-    plt.subplot(1,2,2)
+    plt.subplot(2,2,2)
     sb.barplot(data=D,x='model',y='logpy')
 
     plot_Uhat_maps([None,indepAr,rbm,Mpotts],emloglik_test[0:1],grid)
@@ -331,7 +388,7 @@ def simulation_2():
         # Train the independent model as baseline 
         indepAr,T,theta1 = train_sml(indepAr,
                 emloglik_train,emloglik_test,
-                part=part,n_epoch=n_epoch,batch_size=N)
+                part=part,n_epoch=n_epoch,batch_size=num_subj)
 
         # blank restricted bolzman machine
         n_hidden = 100 # 30 hidden nodes
@@ -379,8 +436,9 @@ def simulation_2():
         
         # Evaluate overall 
         D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
+        D1 = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
 
-        DD = pd.concat([DD,D],ignore_index=True)
+        DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
         HH[s,:]= TH[2][500,:]
     fig = plt.figure(figsize=(8,8))
@@ -394,9 +452,9 @@ def simulation_2():
     # Get the final error and the true pott models
     plt.figure(figsize=(8,3))
     plt.subplot(1,2,1)
-    sb.barplot(data=DD,x='model',y='uerr')
+    sb.barplot(data=DD[DD.type=='test'],x='model',y='uerr')
     plt.subplot(1,2,2)
-    sb.barplot(data=DD,x='model',y='logpy')
+    sb.barplot(data=DD[DD.type=='test'],x='model',y='logpy')
 
     # OPtional: Plot the last maps 
     # plot_Uhat_maps([None,indepAr,rbm3,Mtrue.arrange],emloglik_test[0:1],grid)
@@ -406,6 +464,162 @@ def simulation_2():
                  pt.softmax(rbm3.bu,0),
                  pt.softmax(Mtrue.arrange.bu,0)],grid)
     pass
+
+def simulation_chain():
+    K = 3
+    N = 20
+    P = 5
+    num_subj=200
+    sigma2=0.7
+    batch_size=200
+    n_epoch=15
+    logpi = 3
+    num_sim = 20
+    theta = 1.3
+    pt.set_default_dtype(pt.float32)
+    TT=pd.DataFrame()
+    DD=pd.DataFrame()
+    HH = np.zeros((num_sim,n_epoch))
+    BU = pt.zeros((num_sim,K,P))
+    for s in range(num_sim):
+        
+        # Make the data
+        Ytrain,Ytest,Utrue,Mtrue,grid = make_cmpRBM_chain(P,K,N=N,
+            num_subj=num_subj,theta_w=theta,sigma2=sigma2,logpi=logpi)
+        emloglik_train = Mtrue.emission.Estep(Y=Ytrain)
+        emloglik_test = Mtrue.emission.Estep(Y=Ytest)
+
+        P = Mtrue.emission.P
+
+        # Generate partitions for region-completion testing
+        part = pt.arange(0,5)
+
+        # Independent spatial arrangement model
+        indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
+        indepAr.name='idenp'
+        indepAr,T,theta1 = train_sml(indepAr,
+                emloglik_train,emloglik_test,
+                part=part,n_epoch=n_epoch,batch_size=num_subj)
+
+        # 
+        rbm = Mtrue.arrange
+        rbm.name = 'true'
+
+        # Convolutional Boltzmann:
+        n_hidden = P # hidden nodes
+        rbm2 = ar.cmpRBM(K,P,nh=n_hidden,
+                    eneg_iter=3,
+                    eneg_numchains=num_subj)
+        rbm2.name=f'cRBM_{n_hidden}'
+        rbm2.W = pt.randn(n_hidden,P)*0.1
+        # rbm2.W = rbm.W.detach().clone()
+        # rbm2.bu= rbm.bu.detach().clone()
+        # rbm2.bu=  Mtrue.arrange.bu.detach().clone()
+        rbm2.bu = indepAr.logpi.detach().clone()
+        rbm2.alpha = 1
+
+        # Covolutional
+        Wc = Mtrue.arrange.Wc
+        rbm3 = ar.cmpRBM(K,P,Wc=Wc,
+                            theta=theta, 
+                            eneg_iter=3,
+                            eneg_numchains=num_subj)
+        rbm3.bu = pt.zeros((K,P))
+        # rbm3.bu = indepAr.logpi.detach().clone()
+        rbm3.bu = rbm.bu.detach().clone()
+        rbm3.name=f'cRBM_Wc'
+        rbm3.fit_W = False
+        rbm3.fit_bu = True
+        rbm3.alpha = 1
+
+        # Make list of candidate models
+        Models = [indepAr,rbm3,rbm]
+
+        TH = [theta1]
+        for m in Models[1:2]:
+            
+            m, T1,theta_hist = train_sml(m,emloglik_train,emloglik_test,part,
+                batch_size=batch_size,
+                n_epoch=n_epoch,
+                emission_model=Mtrue.emission)
+            TH.append(theta_hist)
+            T = pd.concat([T,T1],ignore_index=True)
+        
+        # Evaluate overall 
+        D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
+        D1 = eval_arrange_compl(Models,emloglik_test,part=part,Utrue=Utrue)
+
+        true_test = ev.logpY(emloglik_test,ar.expand_mn(Utrue,K))
+        D.logpy -= true_test
+        D1.logpy -= true_test
+        T.loc[T.type=='test','crit'] -= true_test
+        T.loc[T.type=='compl','crit'] -= true_test
+
+        DD = pd.concat([DD,D,D1],ignore_index=True)
+        TT = pd.concat([TT,T],ignore_index=True)
+        HH[s,:]= TH[1][rbm3.get_param_indices('theta'),:]
+        BU[s] = rbm3.bu.detach().clone()
+
+    # Plot all the expectations over the 5 nodes 
+    plt.figure()
+    plt.subplot(3,2,1)
+    plt.plot(pt.softmax(rbm.bu,0).t())
+    plt.ylim([0,1])
+    plt.title('Bias term')
+
+    plt.subplot(3,2,2)
+    U = ar.expand_mn(Utrue,3)
+    plt.plot(U.mean(dim=0).t())
+    plt.ylim([0,1])
+    plt.title('True maps')
+
+    plt.subplot(3,2,3)
+    plt.plot(pt.softmax(emloglik_test,1).mean(dim=0).t())
+    plt.ylim([0,1])
+    plt.title('Evidence')
+
+    plt.subplot(3,2,4)
+    plt.plot(pt.softmax(indepAr.logpi,0).t())
+    plt.ylim([0,1])
+    plt.title('Independent Arrange')
+
+    plt.subplot(3,2,5)
+    plt.plot(pt.mean(pt.softmax(BU,1),0).t())
+    plt.ylim([0,1])
+    plt.title('RBM3')
+
+
+    fig = plt.figure(figsize=(8,8))
+    plt.subplot(3,1,1)
+    sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='test')]
+            ,y='crit',x='iter',hue='model')
+    plt.ylabel('Test logpy')
+    plt.subplot(3,1,2)    
+    sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='compl')]
+            ,y='crit',x='iter',hue='model')
+    plt.ylabel('Compl logpy')
+    plt.subplot(3,1,3)
+    plt.plot(HH.T)
+    plt.ylabel('Theta')
+
+    # Get the final error and the true pott models
+    plt.figure(figsize=(8,7))
+    plt.subplot(2,2,1)
+    sb.barplot(data=DD[DD.type=='test'],x='model',y='uerr')
+    plt.title('uerr test')
+    plt.subplot(2,2,2)
+    sb.boxplot(data=DD[DD.type=='test'],x='model',y='logpy')
+    plt.title('logpy test')
+    plt.subplot(2,2,3)
+    sb.barplot(data=DD[DD.type=='compl'],x='model',y='uerr')
+    plt.title('uerr compl')
+    plt.subplot(2,2,4)
+    sb.boxplot(data=DD[DD.type=='compl'],x='model',y='logpy')
+    plt.title('logpy compl')
+
+    pass
+
+
 
 def test_cmpRBM_Estep():
     K =5
@@ -446,7 +660,8 @@ def test_cmpRBM_Estep():
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
-    simulation_2()
+    # simulation_2()
+    simulation_chain()
     # pass
     # test_cmpRBM_Estep()
     # test_sample_multinomial()
