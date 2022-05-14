@@ -4,24 +4,43 @@ import torch as pt
 import matplotlib.pyplot as plt
 from scipy import stats, special
 from torch import log, exp, sqrt
-from sample_vmf import rand_von_mises_fisher, rand_von_Mises
+from sample_vmf import rand_von_mises_fisher
 from model import Model
-from depreciated.AIS_test import annealed_importance_sampling, rejection_sampling, importance_sampling
+from depreciated.AIS_test import rejection_sampling
 
 PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
 log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
 
 
 class EmissionModel(Model):
-    def __init__(self, K=4, N=10, P=20, data=None):
+    def __init__(self, K=4, N=10, P=20, data=None, X=None):
+        """Abstract constructor of emission models
+        Args:
+            K: the number of clusters
+            N: the number of observations if given
+            P: the number of brain locations
+            data: the data, shape (num_subj, N, P)
+            X: the design matrix of observations,
+               shape of (N, M) tensor
+        """
         self.K = K  # Number of states
-        self.N = N
         self.P = P
         self.nparams = 0
+        if X is not None:
+            if type(X) is np.ndarray:
+                X = pt.tensor(X, dtype=pt.get_default_dtype())
+            self.X = X
+            self.N = X.shape[0]
+            self.M = X.shape[1]
+        else:
+            self.N = N
+            self.M = N
+            self.X = pt.eye(self.N)
+
         if data is not None:
             self.initialize(data)
 
-    def initialize(self, data):
+    def initialize(self, data, X=None):
         """Stores the data in emission model itself
         """
         if type(data) is np.ndarray:
@@ -31,6 +50,14 @@ class EmissionModel(Model):
         else:
             raise ValueError("The input data must be a numpy.array or torch.tensor.")
 
+        if X is not None:
+            if type(X) is np.ndarray:
+                X = pt.tensor(X, dtype=pt.get_default_dtype())
+            assert X.shape == self.X.shape, "Input X mut have same shape of self.X"
+            self.X = X
+
+        assert self.X.shape[0] == data.shape[1], "data must has same number of observations in X"
+        self.regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
         self.Y = data  # This is assumed to be (num_sub,P,N)
         self.num_subj = data.shape[0]
 
@@ -60,8 +87,8 @@ class MixGaussian(EmissionModel):
     """
     Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None, std_V=True):
-        super().__init__(K, N, P, data)
+    def __init__(self, K=4, N=10, P=20, data=None, X=None, params=None, std_V=True):
+        super().__init__(K, N, P, data, X)
         self.std_V = std_V
         self.random_params()
         self.set_param_list(['V', 'sigma2'])
@@ -69,12 +96,12 @@ class MixGaussian(EmissionModel):
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data):
+    def initialize(self, data, X=None):
         """Stores the data in emission model itself
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        super().initialize(data)
+        super().initialize(data, X=X)
         self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
@@ -84,7 +111,7 @@ class MixGaussian(EmissionModel):
             Therefore, there are total k+1 parameters in this mixture model
             set the initial random parameters for gaussian mixture
         """
-        self.V = pt.randn(self.N, self.K)/np.sqrt(self.N)
+        self.V = pt.randn(self.M, self.K)/np.sqrt(self.M)
         if self.std_V:  # standardise V to unit length
             # Not clear why this should be constraint for GMM, but ok
             self.V = self.V / pt.sqrt(pt.sum(self.V**2, dim=0))
@@ -103,14 +130,18 @@ class MixGaussian(EmissionModel):
             sub = range(n_subj)
 
         LL = pt.empty((n_subj, self.K, self.P))
-        uVVu = pt.sum(self.V**2, dim=0)  # This is u.T V.T V u for each u
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2*YV + uVVu.reshape((self.K, 1))
+        LL = - 0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2)) \
+             - 0.5 / self.sigma2 * self.rss
 
-        for i in sub:
-            YV = pt.mm(self.Y[i, :, :].T, self.V)
-            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
-            # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2))\
-                          - 0.5 / self.sigma2 * self.rss[i, :, :]
+        # for i in sub:
+        #     YV = pt.mm(self.Y[i, :, :].T, self.V)
+        #     self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
+        #     # the log likelihood for emission model (GMM in this case)
+        #     LL[i, :, :] = -0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2))\
+        #                   - 0.5 / self.sigma2 * self.rss[i, :, :]
 
         return pt.nan_to_num(LL)
 
@@ -124,14 +155,15 @@ class MixGaussian(EmissionModel):
 
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
         U_hat[nan_voxIdx] = 0
-        self.V = pt.sum(YU, dim=0) / U_hat.sum(dim=(0, 2))
+        self.V = pt.matmul(self.regressX, pt.sum(YU, dim=0)/U_hat.sum(dim=(0, 2)))
         if self.std_V:
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating sigma2 (rss is calculated using updated V)
-        YV = pt.matmul(self.V.T, self.Y)
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         # JD: Again, you should be able to avoid looping over subjects here entirely.
-        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + pt.sum(self.V ** 2, dim=0).view((self.K, 1))
+        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + \
+               pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
         self.sigma2 = pt.nansum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # rss is calculated using V at (t-1) iteration
@@ -140,7 +172,7 @@ class MixGaussian(EmissionModel):
 
     def sample(self, U):
         """ Generate random data given this emission model
-        :param U: The prior arrangement U from arragnment model
+        :param U: The prior arrangement U from arrangement model
         :return: sampled data Y
         """
         if type(U) is np.ndarray:
@@ -151,11 +183,10 @@ class MixGaussian(EmissionModel):
             raise ValueError('The given U must be numpy ndarray or torch Tensor!')
 
         num_subj = U.shape[0]
-        Y = pt.empty((num_subj, self.N, self.P))
+        Y = pt.normal(0, pt.sqrt(self.sigma2), (num_subj, self.N, self.P))
         for s in range(num_subj):
-            Y[s, :, :] = self.V[:, U[s, :].long()]
-            # And add noise of variance 1
-            Y[s, :, :] = Y[s, :, :] + pt.normal(0, pt.sqrt(self.sigma2), (self.N, self.P))
+            # And the V_k given by the U, then X*V_k*U = (n_sub, N, P)
+            Y[s, :, :] = Y[s, :, :] + pt.matmul(self.X, self.V[:, U[s, :].long()])
         return Y
 
 
@@ -176,12 +207,12 @@ class MixGaussianExp(EmissionModel):
         self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
         self.type_estep = type_estep  # Added for a period until we have the best technique
 
-    def initialize(self, data):
+    def initialize(self, data, X=None):
         """Stores the data in emission model itself
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        super().initialize(data)
+        super().initialize(data, X=X)
         self.YY = self.Y ** 2
         self.maxlength = pt.max(pt.sqrt(pt.sum(self.YY, dim=1)).nan_to_num())
         self.s = pt.empty((self.num_subj, self.K, self.P))
@@ -572,16 +603,16 @@ class MixGaussianExp(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, params=None, uniform_kappa=True):
+    def __init__(self, K=4, N=10, P=20, data=None, X=None, params=None, uniform_kappa=True):
         self.uniform_kappa = uniform_kappa
-        super().__init__(K, N, P, data)
+        super().__init__(K, N, P, data, X)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
         self.name = 'VMF'
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data):
+    def initialize(self, data, X=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
         and allocates memory for the sufficient stats that does. For the VMF, it length-standardizes the
         data to length one.
@@ -589,8 +620,8 @@ class MixVMF(EmissionModel):
             data: the input data array.
         Returns: None. Store the data in emission model itself.
         """
-        super().initialize(data)
-        self.Y = self.Y / pt.sqrt(pt.sum(data ** 2, dim=1, keepdim=True))
+        super().initialize(data, X=X)
+        self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
         self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
@@ -600,16 +631,18 @@ class MixVMF(EmissionModel):
         Returns: None, just passes the random parameters to the model
         """
         # standardise V to unit length
-        V = pt.randn(self.N, self.K)
+        V = pt.randn(self.M, self.K)
         self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
 
-        # TODO: VMF doesn't work porperly for small kappa (let's say smaller than 8),
-        # so right now the kappa is sampled from 0 to 50
+        # VMF doesn't work properly for small kappa (let's say smaller than 8),
+        # This is because the data will be very spread on the p-1 sphere, making the
+        # model recovery difficult. Also, a small kappa cannot reflect to the real data
+        # as the real parcels are likely to have concentrated within-parcel data.
 
         if self.uniform_kappa:
-            self.kappa = pt.distributions.uniform.Uniform(8, 50).sample()
+            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample()
         else:
-            self.kappa = pt.distributions.uniform.Uniform(8, 50).sample((self.K, ))
+            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -657,16 +690,8 @@ class MixVMF(EmissionModel):
         if type(self.kappa) is np.ndarray:
             self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
-        # # log likelihood is sum_i sum_k(u_i(k))*log C_n(kappa_k) + sum_i sum_k (u_i(k))kappa*V_k.T*Y_i
-        # for i in sub:
-        #     YV = pt.mm(self.Y[i, :, :].T, self.V)
-        #     # CnK[i, :] = self.kappa**(self.N/2-1) / ((2*np.pi)**(self.N/2) * self._bessel_function(self.N/2 - 1, self.kappa))
-        #     logCnK = (self.N / 2 - 1) * pt.log(self.kappa) - (self.N / 2) * log(pt.as_tensor(2*np.pi)) - \
-        #              self._log_bessel_function(self.N / 2 - 1, self.kappa)
-        #     # the log likelihood for emission model (VMF in this case)
-        #     LL[i, :, :] = (logCnK + self.kappa * YV).T
-
-        YV = pt.matmul(self.V.T, self.Y)
+        # Calculate log-likelihood
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
         if self.uniform_kappa:
@@ -687,22 +712,18 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # YU = pt.zeros((self.N, self.K))
-        # UU = pt.zeros((self.K, self.P))
-        #
-        # for i in range(self.num_subj):
-        #     YU = YU + pt.mm(self.Y[i, :, :], U_hat[i, :, :].T)
-        #     UU = UU + U_hat[i, :, :]
-
+        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
         U_hat[nan_voxIdx] = 0
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
         UU = pt.sum(U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
+        XYU = pt.matmul(self.regressX, YU)
+        self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
 
-        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2), where r_bar = ||V_k||/N*Uhat
+        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
+        # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
             r_bar = pt.sqrt(pt.sum(YU ** 2, dim=0)) / pt.sum(UU, dim=1)
             # r_bar[r_bar > 0.95] = 0.95
@@ -734,10 +755,18 @@ class MixVMF(EmissionModel):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
                 # JD: Ideally re-write this routine to native Pytorch...
+                # So here the mean direction for sampling is the new V which
+                # calculated by X * V, shape of (N, k)
+                new_V = pt.matmul(self.X, self.V)
+                new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
                 if self.uniform_kappa:
-                    Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]], self.kappa), dtype=pt.get_default_dtype())
+                    Y[s, :, p] = pt.tensor(
+                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa),
+                        dtype=pt.get_default_dtype())
                 else:
-                    Y[s, :, p] = pt.tensor(rand_von_mises_fisher(self.V[:, U[s, p]], self.kappa[U[s, p]]), dtype=pt.get_default_dtype())
+                    Y[s, :, p] = pt.tensor(
+                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
+                        dtype=pt.get_default_dtype())
         return Y
 
 
@@ -754,12 +783,12 @@ class MixGaussianGamma(EmissionModel):
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data):
+    def initialize(self, data, X=None):
         """Stores the data in emission model itself
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        super().initialize(data)
+        super().initialize(data,X=X)
         self.YY = self.Y ** 2
         self.s = pt.empty((self.num_subj, self.K, self.P))
         self.s2 = pt.empty((self.num_subj, self.K, self.P))

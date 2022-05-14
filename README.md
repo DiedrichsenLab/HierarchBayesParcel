@@ -329,33 +329,33 @@ In the E-step the emission model simply passes $p(\mathbf{y}_i|\mathbf{u}_i;\the
 
 Under the Gaussian mixture model, we model the emissions as a Gaussian with a parcel-specific mean ($\mathbf{v}_k$), and with equal isotropic variance across parcels and observations: 
 $$
-p(\mathbf{y_i}|u^{(k)};\theta_E) = \frac{1}{(2\pi)^{N/2}(\sigma^{2})^{N/2}}\rm{exp}\{-\frac{1}{2\sigma^{2}}(y_{i}-\mathbf{v}_k)^T(y_{i}-\mathbf{v}_k)\}
+p(\mathbf{y_i}|u^{(k)};\theta_E) = \frac{1}{(2\pi)^{N/2}(\sigma^{2})^{N/2}}\rm{exp}\{-\frac{1}{2\sigma^{2}}(y_{i}-\mathbf{X}\mathbf{v}_k)^T(y_{i}-\mathbf{X}\mathbf{v}_k)\}
 $$
 The expected emission log-likelihood therefore is: 
 $$
 \begin{align*}
-\mathcal{L}_E=\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})]\\
-=-\frac{PN}{2}\log(2\pi)-\frac{PN}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[(\mathbf{y}_{i}-\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{v}_{k})]
+\mathcal{L}_E=\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k})]\\
+=-\frac{PN}{2}\log(2\pi)-\frac{PN}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k})^T(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k})]
 \end{align*}
 $$
 Now, with the above expected emission log likelihood by hand, we can update the parameters $\theta_E = \{\mathbf{v}_1,...,\mathbf{v}_K,\sigma^2\}$ in the $\Mu$ step. 
 
 1. Updating $\mathbf{v}_k$, we take derivative of *expected emission log likelihood* with respect to $\mathbf{v}_{k}$ and set it to 0:
    $$
-   \frac{\partial \mathcal{L}_E}{\partial \mathbf{v}_{k}} =\frac{1}{\sigma^{2}}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}(\mathbf{y}_{i}-\mathbf{v}_{k}) = 0
+   \frac{\partial \mathcal{L}_E}{\partial \mathbf{v}_{k}} =\frac{1}{\sigma^{2}}\sum_{i}\langle u_{i}^{(k)}\rangle_{q}(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k}) = 0
    $$
    Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
    $$
-   \mathbf{v}_{k}^{(t)} = \frac{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}}
+   \mathbf{v}_{k}^{(t)} = (\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\frac{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}\rangle_{q}^{(t)}}
    $$
 
 2. Updating $\sigma^{2}$, we take derivative of *expected emission log likelihood* $\mathcal{L}(q, \theta)$ with respect to $\sigma^{2}$  and set it to  0: 
    $$
-   \frac{\partial \mathcal{L}_E}{\partial \sigma^{2}} =-\frac{PN}{2\sigma^{2}}+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[\frac{1}{2\sigma^{4}}(\mathbf{y}_{i}-\mathbf{v}_{k}^{(t)})^T(\mathbf{y}_{i}-\mathbf{v}_{k}^{(t)})] = 0
+   \frac{\partial \mathcal{L}_E}{\partial \sigma^{2}} =-\frac{PN}{2\sigma^{2}}+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}[\frac{1}{2\sigma^{4}}(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k}^{(t)})^T(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k}^{(t)})] = 0
    $$
    Thus, we get the updated $\sigma^{2}$ for parcel $k$ in the current $\Mu$ step as,
    $$
-   {\sigma^{2}}^{(t)} = \frac{1}{PN}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}^{(t)}(\mathbf{y}_{i}-\mathbf{v}_{k}^{(t)})^T(\mathbf{y}_{i}-\mathbf{v}_{k}^{(t)})
+   {\sigma^{2}}^{(t)} = \frac{1}{PN}\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle_{q}^{(t)}(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k}^{(t)})^T(\mathbf{y}_{i}-\mathbf{X}\mathbf{v}_{k}^{(t)})
    $$
    where $P$ is the total number of voxels $i$.
 
@@ -513,13 +513,13 @@ Note that $\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}
 
 For a $N$-dimensional data $\mathbf{y} \in $ the probability density function of von Mises-Fisher distribution is defined as following, 
 $$
-V_N(\mathbf{y}|\mathbf{v}_k,\kappa) = C_N(\kappa)exp(\kappa\mathbf{v}_k^{T}\mathbf{y})
+V_N(\mathbf{y}|\mathbf{v}_k,\kappa) = C_N(\kappa)exp(\kappa(\mathbf{X}\mathbf{v}_k)^{T}\mathbf{y})
 $$
 where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels), $\kappa$ indicates the concentration parameter ($\kappa\geqslant0$), which is joint over all parcels. $C_N(\kappa) = \frac{\kappa^{N/2-1}}{(2\pi)^{N/2}I_{N/2-1}(\kappa)}$ is the normalization constant where $I_r(.)$ refers to the modified Bessel function of the $r$ order. Thus, the *expected emission log-likelihood* of a mixture of $K$-classes von-Mises fisher distributions is defined as:
 $$
 \begin{align*}
 \mathcal{L}_E &=\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q\\
-&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa{\mu^{(k)}}^{T}\mathbf{y}_i
+&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa{(\mathbf{X}\mathbf{v}_{k})}^{T}\mathbf{y}_i
 \end{align*}
 $$
 Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
@@ -528,7 +528,7 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    $$
    \begin{align*}
    
-   \mathbf{v}_{k}^{(t)} &=\frac{\bar{\mathbf{y}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \bar{\mathbf{y}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\bar{\mathbf{y}}_{k}||
+   \mathbf{v}_{k}^{(t)} &=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
    
    \end{align*}
    $$
