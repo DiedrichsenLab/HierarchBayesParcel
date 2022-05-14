@@ -4,9 +4,9 @@ import torch as pt
 import matplotlib.pyplot as plt
 from scipy import stats, special
 from torch import log, exp, sqrt
-from sample_vmf import rand_von_mises_fisher
-from model import Model
-from depreciated.AIS_test import rejection_sampling
+from generativeMRF.sample_vmf import rand_von_mises_fisher
+from generativeMRF.model import Model
+from generativeMRF.depreciated.AIS_test import rejection_sampling
 
 PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
 log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))

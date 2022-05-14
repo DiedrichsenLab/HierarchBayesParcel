@@ -6,7 +6,7 @@ import nibabel as nb
 from nilearn import plotting
 from decimal import Decimal
 from torch import exp,log,sqrt
-from model import Model
+from generativeMRF.model import Model
 import torch as pt
 
 import sys

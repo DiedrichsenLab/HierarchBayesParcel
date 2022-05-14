@@ -8,8 +8,8 @@ Author: DZHI
 """
 import numpy as np
 import torch as pt
-import emissions as emi
-import arrangements as arr
+import generativeMRF.emissions as emi
+import generativeMRF.arrangements as arr
 
 
 class FullModel:
