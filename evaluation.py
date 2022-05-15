@@ -6,8 +6,6 @@ Second are more complex functions that use different criteria
 """
 import torch as pt
 import numpy as np
-from full_model import FullModel
-from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
 from sklearn import metrics
 import matplotlib.pyplot as plt
 

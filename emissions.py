@@ -154,8 +154,9 @@ class MixGaussian(EmissionModel):
         YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
 
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
-        U_hat[nan_voxIdx] = 0
-        self.V = pt.matmul(self.regressX, pt.sum(YU, dim=0)/U_hat.sum(dim=(0, 2)))
+        this_U_hat = pt.clone(U_hat)
+        this_U_hat[nan_voxIdx] = 0
+        self.V = pt.matmul(self.regressX, pt.sum(YU, dim=0)/this_U_hat.sum(dim=(0, 2)))
         if self.std_V:
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
@@ -164,7 +165,7 @@ class MixGaussian(EmissionModel):
         # JD: Again, you should be able to avoid looping over subjects here entirely.
         ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + \
                pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
-        self.sigma2 = pt.nansum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
+        self.sigma2 = pt.nansum(this_U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # rss is calculated using V at (t-1) iteration
         # ERSS = pt.sum(U_hat * self.rss)
@@ -714,9 +715,10 @@ class MixVMF(EmissionModel):
 
         # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
-        U_hat[nan_voxIdx] = 0
-        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
-        UU = pt.sum(U_hat, dim=0)
+        this_U_hat = pt.clone(U_hat)
+        this_U_hat[nan_voxIdx] = 0
+        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
+        UU = pt.sum(this_U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
         XYU = pt.matmul(self.regressX, YU)
