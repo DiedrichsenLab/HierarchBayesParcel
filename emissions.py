@@ -87,8 +87,8 @@ class MultiNomial(EmissionModel):
     """
     Multinomial emission model with coupling strength theta_s
     """
-    def __init__(self, K=4, N=10, P=20, params=None):
-        super().__init__(K, N, P)
+    def __init__(self, K=4, P=20, params=None):
+        super().__init__(K, 1, P)
         self.w = pt.tensor(1.0)
         self.set_param_list(['w'])
         self.name = 'MN'
@@ -112,7 +112,7 @@ class MultiNomial(EmissionModel):
             self.initialize(Y)
         n_subj = self.Y.shape[0]
 
-        LL = self.Y * self.w
+        LL = self.Y * self.w - log(self.K-1+exp(self.w))
         return(LL)
 
     def Mstep(self, U_hat):
@@ -129,7 +129,8 @@ class MultiNomial(EmissionModel):
         :sampled data Y (compressed form)
         """
         Ue = ar.expand_mn(U,self.K)
-        Y = ar.sample_multinomial(Ue*self.w, compress=True)
+        p = pt.softmax(Ue*self.w,1)
+        Y = ar.sample_multinomial(p, kdim=1, compress=True)
         return Y
 
 class MixGaussian(EmissionModel):

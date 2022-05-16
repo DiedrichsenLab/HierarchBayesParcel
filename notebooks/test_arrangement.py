@@ -62,7 +62,7 @@ def make_mrf_data(width=10,K=5,N=20,num_subj=30,
 
 
 def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
-            theta_mu=20,theta_w=1.0,sigma2=0.5,
+            theta_mu=20,theta_w=1.0,emission_model=None,
             do_plot=1):
     """Generates (and plots Markov random field data)
     Args:
@@ -85,10 +85,7 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
     arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu,
             centroids=[0,9,55,90,99])
 
-    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
-    emissionT.random_params()
-    emissionT.sigma2=pt.tensor(sigma2)
-    MT = fm.FullModel(arrangeT,emissionT)
+    MT = fm.FullModel(arrangeT,emission_model)
 
     # grid.plot_maps(pt.softmax(arrangeT.bu,0),cmap='hot',vmax=1,grid=[1,5])
 
@@ -127,8 +124,8 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
 
     return Ytrain, Ytest, Utrue, MT , grid
 
-def make_cmpRBM_chain(P=5,K=3,N=10,num_subj=20,
-            theta_w=1.0,sigma2=0.5,logpi=2):
+def make_cmpRBM_chain(P=5,K=3,num_subj=20,
+            theta_w=1.0,emission_model=None,logpi=2):
     """Generates (and plots Markov random field data)
     Args:
         width (int, optional): [description]. Defaults to 10.
@@ -152,12 +149,7 @@ def make_cmpRBM_chain(P=5,K=3,N=10,num_subj=20,
     arrangeT.bu[-1,-1]=logpi
 
 
-    emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
-    emissionT.random_params()
-    emissionT.sigma2=pt.tensor(sigma2)
-    MT = fm.FullModel(arrangeT,emissionT)
-
-
+    MT = fm.FullModel(arrangeT,emission_model)
     # Step 4: Generate data by sampling from the above model
     Utrue = MT.arrange.sample(num_subj,50)
     Ytrain = MT.emission.sample(Utrue)
@@ -467,29 +459,45 @@ def simulation_2():
 
 def simulation_chain():
     K = 3
-    N = 20
     P = 5
-    num_subj=200
-    sigma2=0.7
-    batch_size=200
-    n_epoch=15
-    logpi = 3
+    num_subj=100
+    batch_size=100
+    n_epoch=20
+    logpi = 2.5
     num_sim = 20
     theta = 1.3
+    # Multinomial 
+    w = 1.6
+    # MixGaussian 
+    sigma2 = 0.5
+    N = 10 
+
+    eneg_iter = 20
+
     pt.set_default_dtype(pt.float32)
     TT=pd.DataFrame()
     DD=pd.DataFrame()
     HH = np.zeros((num_sim,n_epoch))
-    BU = pt.zeros((num_sim,K,P))
+
+    # REcorded bias parameter 
+    RecBu = pt.zeros((num_sim,K,P))
+    RecLp = pt.zeros((num_sim,K,P))
+    RecUtrue = pt.zeros((num_sim,K,P))
+    RecEmLog = pt.zeros((num_sim,K,P))
+
+    # Make a new emission model for the simulation
+    emissionM = em.MultiNomial(K=K, P=P)
+    emissionM.w = pt.tensor(w)
+    # emissionM = em.MixGaussian(K,N,P)
+    # emissionM.sigma2 = pt.tensor(sigma2)
+
     for s in range(num_sim):
 
         # Make the data
-        Ytrain,Ytest,Utrue,Mtrue,grid = make_cmpRBM_chain(P,K,N=N,
-            num_subj=num_subj,theta_w=theta,sigma2=sigma2,logpi=logpi)
+        Ytrain,Ytest,Utrue,Mtrue,grid = make_cmpRBM_chain(P,K,
+            num_subj=num_subj,theta_w=theta,emission_model=emissionM,logpi=logpi)
         emloglik_train = Mtrue.emission.Estep(Y=Ytrain)
         emloglik_test = Mtrue.emission.Estep(Y=Ytest)
-
-        P = Mtrue.emission.P
 
         # Generate partitions for region-completion testing
         part = pt.arange(0,5)
@@ -501,32 +509,18 @@ def simulation_chain():
                 emloglik_train,emloglik_test,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
 
-        #
+        # Gte the true arrangement model 
         rbm = Mtrue.arrange
         rbm.name = 'true'
 
-        # Convolutional Boltzmann:
-        n_hidden = P # hidden nodes
-        rbm2 = ar.cmpRBM(K,P,nh=n_hidden,
-                    eneg_iter=3,
-                    eneg_numchains=num_subj)
-        rbm2.name=f'cRBM_{n_hidden}'
-        rbm2.W = pt.randn(n_hidden,P)*0.1
-        # rbm2.W = rbm.W.detach().clone()
-        # rbm2.bu= rbm.bu.detach().clone()
-        # rbm2.bu=  Mtrue.arrange.bu.detach().clone()
-        rbm2.bu = indepAr.logpi.detach().clone()
-        rbm2.alpha = 1
-
         # Covolutional
-        Wc = Mtrue.arrange.Wc
-        rbm3 = ar.cmpRBM(K,P,Wc=Wc,
+        rbm3 = ar.cmpRBM(K,P,Wc=rbm.Wc,
                             theta=theta,
-                            eneg_iter=3,
+                            eneg_iter=eneg_iter,
                             eneg_numchains=num_subj)
         rbm3.bu = pt.zeros((K,P))
         # rbm3.bu = indepAr.logpi.detach().clone()
-        rbm3.bu = rbm.bu.detach().clone()
+        # rbm3.bu = rbm.bu.detach().clone()
         rbm3.name=f'cRBM_Wc'
         rbm3.fit_W = False
         rbm3.fit_bu = True
@@ -558,7 +552,12 @@ def simulation_chain():
         DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
         HH[s,:]= TH[1][rbm3.get_param_indices('theta'),:]
-        BU[s] = rbm3.bu.detach().clone()
+        
+        #record the different fitting runs into structure 
+        RecBu[s] = pt.softmax(rbm3.bu,0)
+        RecLp[s] = pt.softmax(indepAr.logpi,0)
+        RecUtrue[s] = ar.expand_mn(Utrue,K).mean(dim=0)
+        RecEmLog[s] = pt.softmax(emloglik_train,1).mean(dim=0)
 
     # Plot all the expectations over the 5 nodes
     plt.figure()
@@ -569,22 +568,22 @@ def simulation_chain():
 
     plt.subplot(3,2,2)
     U = ar.expand_mn(Utrue,3)
-    plt.plot(U.mean(dim=0).t())
+    plt.plot(pt.mean(RecUtrue,0).t())
     plt.ylim([0,1])
     plt.title('True maps')
 
     plt.subplot(3,2,3)
-    plt.plot(pt.softmax(emloglik_test,1).mean(dim=0).t())
+    plt.plot(pt.mean(RecEmLog,0).t())
     plt.ylim([0,1])
     plt.title('Evidence')
 
     plt.subplot(3,2,4)
-    plt.plot(pt.softmax(indepAr.logpi,0).t())
+    plt.plot(pt.mean(RecLp,0).t())
     plt.ylim([0,1])
     plt.title('Independent Arrange')
 
     plt.subplot(3,2,5)
-    plt.plot(pt.mean(pt.softmax(BU,1),0).t())
+    plt.plot(pt.mean(RecBu,0).t())
     plt.ylim([0,1])
     plt.title('RBM3')
 

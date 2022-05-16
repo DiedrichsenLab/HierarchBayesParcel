@@ -15,8 +15,12 @@ import seaborn as sb
 import time
 from test_arrangement import eval_arrange, eval_arrange_compl, train_sml
 
-class mRBM(ar.ArrangementModel):
+"""_summary_
+This script check with a fully observed multinomial RDM. 
+"""
 
+
+class mRBM(ar.ArrangementModel):
     def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,eneg_numchains=77):
         """convolutional multinomial (categorial) restricted Boltzman machine
         for learning of brain parcellations for probabilistic input
