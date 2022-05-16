@@ -57,7 +57,7 @@ class EmissionModel(Model):
             self.X = X
 
         assert self.X.shape[0] == data.shape[1], "data must has same number of observations in X"
-        self.regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
+
         self.Y = data  # This is assumed to be (num_sub,P,N)
         self.num_subj = data.shape[0]
 
@@ -150,13 +150,14 @@ class MixGaussian(EmissionModel):
             In this emission model, the parameters need to be updated
             are V and sigma2.
         """
+        regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
         YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
 
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
         this_U_hat = pt.clone(U_hat)
         this_U_hat[nan_voxIdx] = 0
-        self.V = pt.matmul(self.regressX, pt.sum(YU, dim=0)/this_U_hat.sum(dim=(0, 2)))
+        self.V = pt.matmul(regressX, pt.sum(YU, dim=0)/this_U_hat.sum(dim=(0, 2)))
         if self.std_V:
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
@@ -719,9 +720,10 @@ class MixVMF(EmissionModel):
         this_U_hat[nan_voxIdx] = 0
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat, dim=0)
+        regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        XYU = pt.matmul(self.regressX, YU)
+        XYU = pt.matmul(regressX, YU)
         self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
