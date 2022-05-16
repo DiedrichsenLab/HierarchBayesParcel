@@ -89,8 +89,8 @@ class MultiNomial(EmissionModel):
     """
     def __init__(self, K=4, N=10, P=20, params=None):
         super().__init__(K, N, P)
-        self.theta = pt.tensor(1.0)
-        self.set_param_list(['theta_s'])
+        self.w = pt.tensor(1.0)
+        self.set_param_list(['w'])
         self.name = 'MN'
         if params is not None:
             self.set_params(params)
@@ -112,7 +112,7 @@ class MultiNomial(EmissionModel):
             self.initialize(Y)
         n_subj = self.Y.shape[0]
 
-        LL = self.Y * self.theta
+        LL = self.Y * self.w
         return(LL)
 
     def Mstep(self, U_hat):
@@ -120,9 +120,8 @@ class MultiNomial(EmissionModel):
             In this emission model, the parameters need to be updated
             are V and sigma2.
         """
-        self.theta = pt.sum(self.Y * self.U_hat, dim=1)
-
-
+        mean_uy = pt.mean(pt.sum(self.Y * self.U_hat, dim=1)) # this is E(yTu)
+        self.w = log(1-self.K+(self.K-1)/(1-mean_uy)) 
 
     def sample(self, U):
         """ Generate random data given this emission model
@@ -130,7 +129,7 @@ class MultiNomial(EmissionModel):
         :sampled data Y (compressed form)
         """
         Ue = ar.expand_mn(U,self.K)
-        Y = ar.sample_multinomial(Ue*self.theta, compress=True)
+        Y = ar.sample_multinomial(Ue*self.w, compress=True)
         return Y
 
 class MixGaussian(EmissionModel):

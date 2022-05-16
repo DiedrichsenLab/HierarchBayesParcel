@@ -327,6 +327,6 @@ def simulation_chain_obs():
 if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
-    simulation_chain()
+    simulation_chain_obs()
     # test_sample_multinomial()
     # train_RBM()
