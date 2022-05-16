@@ -1,2 +1,2 @@
 
-__all__ = ['model','spatial','arrangements','emissions','evalutation','full_model']
+__all__ = ['model','spatial','arrangements','emissions','evaluation','full_model']

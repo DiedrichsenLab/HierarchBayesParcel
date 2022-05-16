@@ -6,8 +6,6 @@ Second are more complex functions that use different criteria
 """
 import torch as pt
 import numpy as np
-from full_model import FullModel
-from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
 from sklearn import metrics
 import matplotlib.pyplot as plt
 
@@ -115,7 +113,7 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
         cos_distance = pt.sum(cos_distance * U_max, dim=1)
 
-    return pt.nanmean(cos_distance).item()
+    return pt.nanmean(cos_distance, dim=1)
 
 
 def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
@@ -145,7 +143,7 @@ def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
         U_pred = pt.zeros_like(U_pred).scatter_(1, idx, 1.)
         squared_error = pt.sum(dist * U_pred, dim=1)
 
-    return pt.sqrt(pt.mean(squared_error))
+    return pt.sqrt(pt.nanmean(squared_error))
 
 
 def permutations(res, nums, l, h):
