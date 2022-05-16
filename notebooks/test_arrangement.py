@@ -144,7 +144,7 @@ def make_cmpRBM_chain(P=5,K=3,N=10,num_subj=20,
     W = grid.get_neighbour_connectivity()
     W += pt.eye(W.shape[0])
 
-    # Step 2: Initialize the parameters of the true model: Only ends are fixed 
+    # Step 2: Initialize the parameters of the true model: Only ends are fixed
     arrangeT = ar.cmpRBM(K,grid.P,Wc=W,theta=theta_w)
     arrangeT.name = 'cmpRDM'
     arrangeT.bu = pt.zeros((K,P))
@@ -169,34 +169,34 @@ def make_cmpRBM_chain(P=5,K=3,N=10,num_subj=20,
 
 def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
              n_epoch=20,batch_size=20,verbose=False,emission_model=None):
-    """Trains only arrangement model, given a fixed emission 
-    likelhoood. 
+    """Trains only arrangement model, given a fixed emission
+    likelhoood.
 
     Args:
         model (ArrangementMode): _description_
         emlog_train (tensor):emission log likelihood (KxP)
         emlog_test (tensor): emission log likelihood test (KxP)
-        part (tensor): 1xP partition number for completion test  
+        part (tensor): 1xP partition number for completion test
         crit (str): _description_. Defaults to 'logpY'.
         n_epoch (int): _description_. Defaults to 20.
         batch_size (int): _description_. Defaults to 20.
         verbose (bool): _description_. Defaults to False.
 
     Returns:
-        model: Fitted model 
+        model: Fitted model
         T: Pandas data frame with epoch level performance metrics
-        thetaH: History of fitted thetas 
+        thetaH: History of fitted thetas
     """
     num_subj = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
-    crit_types = ['train','marg','test','compl'] # different evaluation types 
+    crit_types = ['train','marg','test','compl'] # different evaluation types
     CR = np.zeros((len(crit_types),n_epoch))
     theta_hist = np.zeros((model.nparams,n_epoch))
     # Intialize negative sampling
     for epoch in range(n_epoch):
         # Get test error
         EU,_ = model.Estep(emlog_train,gather_ss=False)
-        
+
         for i, ct in enumerate(crit_types):
             # Training emission logliklihood:
             if ct=='train':
@@ -206,12 +206,12 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
                 CR[i,epoch] = ev.evaluate_full_arr(emlog_test,pi,crit=crit)
             elif ct=='test':
                 CR[i,epoch] = ev.evaluate_full_arr(emlog_test,EU,crit=crit)
-            elif ct=='compl': 
-                CR[i,epoch] = ev.evaluate_completion_arr(model,emlog_test,part,crit=crit) 
+            elif ct=='compl':
+                CR[i,epoch] = ev.evaluate_completion_arr(model,emlog_test,part,crit=crit)
         if (verbose):
             print(f'epoch {epoch:2d} Test: {crit[2,epoch]:.4f}')
 
-        # Update the model in batches 
+        # Update the model in batches
         for b in range(0,num_subj-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
             model.Estep(emlog_train[ind,:,:])
@@ -225,7 +225,7 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
 
     # Make a data frame for the results
     T=pd.DataFrame()
-    for i, ct in enumerate(crit_types): 
+    for i, ct in enumerate(crit_types):
         T1 = pd.DataFrame({'model':[model.name]*n_epoch,
                         'type':[ct]*n_epoch,
                         'iter':np.arange(n_epoch),
@@ -319,7 +319,7 @@ def simulation_1():
     Mpotts.epos_numchains=100
     Mpotts.epos_iter =5
 
-    # Train the independent arrangement model 
+    # Train the independent arrangement model
     indepAr,T = train_sml(indepAr,
             emloglik_train,emloglik_test,
             part=part,n_epoch=n_epoch,batch_size=num_subj)
@@ -385,7 +385,7 @@ def simulation_2():
         indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
         indepAr.name='idenp'
 
-        # Train the independent model as baseline 
+        # Train the independent model as baseline
         indepAr,T,theta1 = train_sml(indepAr,
                 emloglik_train,emloglik_test,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
@@ -427,14 +427,14 @@ def simulation_2():
 
         TH = [theta1]
         for m in Models[1:3]:
-            
+
             m, T1,theta_hist = train_sml(m,
                 emloglik_train,emloglik_test,
                 part,batch_size=batch_size,n_epoch=n_epoch)
             TH.append(theta_hist)
             T = pd.concat([T,T1],ignore_index=True)
-        
-        # Evaluate overall 
+
+        # Evaluate overall
         D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
         D1 = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
 
@@ -456,9 +456,9 @@ def simulation_2():
     plt.subplot(1,2,2)
     sb.barplot(data=DD[DD.type=='test'],x='model',y='logpy')
 
-    # OPtional: Plot the last maps 
+    # OPtional: Plot the last maps
     # plot_Uhat_maps([None,indepAr,rbm3,Mtrue.arrange],emloglik_test[0:1],grid)
-    # Optimal: plot the pmaps 
+    # Optimal: plot the pmaps
     plot_P_maps([pt.softmax(indepAr.logpi,0),
                  pt.softmax(rbm2.bu,0),
                  pt.softmax(rbm3.bu,0),
@@ -482,7 +482,7 @@ def simulation_chain():
     HH = np.zeros((num_sim,n_epoch))
     BU = pt.zeros((num_sim,K,P))
     for s in range(num_sim):
-        
+
         # Make the data
         Ytrain,Ytest,Utrue,Mtrue,grid = make_cmpRBM_chain(P,K,N=N,
             num_subj=num_subj,theta_w=theta,sigma2=sigma2,logpi=logpi)
@@ -501,7 +501,7 @@ def simulation_chain():
                 emloglik_train,emloglik_test,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
 
-        # 
+        #
         rbm = Mtrue.arrange
         rbm.name = 'true'
 
@@ -521,7 +521,7 @@ def simulation_chain():
         # Covolutional
         Wc = Mtrue.arrange.Wc
         rbm3 = ar.cmpRBM(K,P,Wc=Wc,
-                            theta=theta, 
+                            theta=theta,
                             eneg_iter=3,
                             eneg_numchains=num_subj)
         rbm3.bu = pt.zeros((K,P))
@@ -537,15 +537,15 @@ def simulation_chain():
 
         TH = [theta1]
         for m in Models[1:2]:
-            
+
             m, T1,theta_hist = train_sml(m,emloglik_train,emloglik_test,part,
                 batch_size=batch_size,
                 n_epoch=n_epoch,
                 emission_model=Mtrue.emission)
             TH.append(theta_hist)
             T = pd.concat([T,T1],ignore_index=True)
-        
-        # Evaluate overall 
+
+        # Evaluate overall
         D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
         D1 = eval_arrange_compl(Models,emloglik_test,part=part,Utrue=Utrue)
 
@@ -560,7 +560,7 @@ def simulation_chain():
         HH[s,:]= TH[1][rbm3.get_param_indices('theta'),:]
         BU[s] = rbm3.bu.detach().clone()
 
-    # Plot all the expectations over the 5 nodes 
+    # Plot all the expectations over the 5 nodes
     plt.figure()
     plt.subplot(3,2,1)
     plt.plot(pt.softmax(rbm.bu,0).t())
@@ -594,7 +594,7 @@ def simulation_chain():
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='test')]
             ,y='crit',x='iter',hue='model')
     plt.ylabel('Test logpy')
-    plt.subplot(3,1,2)    
+    plt.subplot(3,1,2)
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='compl')]
             ,y='crit',x='iter',hue='model')
     plt.ylabel('Compl logpy')
