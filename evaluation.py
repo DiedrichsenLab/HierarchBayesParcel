@@ -198,11 +198,10 @@ def permute(nums):
 
 
 def logpY(emloglik,Uhat):
-    """Averaged log of p(Y|U)
-    For save computation (to prevent underflow or overflow)
-    p(y|u) either gets a constant
+    """Averaged log of <p(Y|U)>q
+    Not sure anymore that this criterion makes a lot of
     """
-    pyu = pt.softmax(emloglik,dim=1)
+    pyu = pt.exp(emloglik)
     py = pt.sum(pyu * Uhat,dim=1)
     return pt.mean(pt.log(py),dim=(0,1)).item()
 
