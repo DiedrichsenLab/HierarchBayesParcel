@@ -74,16 +74,17 @@ def make_cmpRBM_data(width=10,K=5,N=10,num_subj=20,
         sigma2 (float, optional): [description]. Defaults to 0.5.
         do_plot (int): 1: Plot of the first 10 samples 2: + sample path
     """
+    P = width*width
     # Step 1: Create the true model
     grid = sp.SpatialGrid(width=width,height=width)
     W = grid.get_neighbour_connectivity()
     W += pt.eye(W.shape[0])
 
     # Step 2: Initialize the parameters of the true model
-    arrangeT = ar.cmpRBM_pCD(K,grid.P,Wc=W,theta=theta_w)
+    arrangeT = ar.cmpRBM(K,grid.P,Wc=W,theta=theta_w)
     arrangeT.name = 'cmpRDM'
     arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu,
-            centroids=[0,9,55,90,99])
+            centroids=[0,width-1,int(P/2+width/2),P-width,P-1])
 
     MT = fm.FullModel(arrangeT,emission_model)
 
@@ -285,6 +286,44 @@ def plot_P_maps(pmaps,grid):
     for i,m in enumerate(pmaps):
         grid.plot_maps(m,cmap='jet',vmax=1,grid=(n_models,K),offset=i*K+1)
 
+def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
+    # Get the expectation
+    n_models = len(models)+2 
+    K = emloglik.shape[1]
+    P = emloglik.shape[2]
+    
+    Uh = [] 
+    plt.figure(figsize=(10,7))
+    Uh.append(ar.expand_mn(Utrue[0:1],K))
+    Uh.append(pt.softmax(emloglik[0:1],dim=1))
+    for i,m in enumerate(models):
+        A,_=m.Estep(emloglik[0:1])
+        Uh.append(A)
+
+    if style=='prob':
+        for i,uh in enumerate(Uh): 
+            grid.plot_maps(uh[0],cmap='jet',vmax=1,
+                    grid=(n_models,K),
+                    offset = K*i+1)
+    elif style=='argmax': 
+        ArgM = pt.zeros(n_models,P)
+        for i,uh in enumerate(Uh): 
+            ArgM[i,:] = pt.argmax(uh[0],dim=0)
+        grid.plot_maps(ArgM,cmap='tab10',vmax=K,
+                    grid=(1,n_models))
+    elif style=='mixed': 
+        ArgM = pt.zeros(n_models,P)
+        Prob = pt.zeros(n_models,P)
+
+        for i,uh in enumerate(Uh): 
+            ArgM[i,:] = pt.argmax(uh[0],dim=0)
+            Prob[i,:] = uh[0][2,:]
+        grid.plot_maps(ArgM,cmap='tab10',vmax=K,
+                    grid=(2,n_models))
+        grid.plot_maps(Prob,cmap='jet',vmax=1,
+                    grid=(2,n_models),
+                    offset = n_models+1)
+
 def plot_evaluation(D,criteria=['uerr','cos_err','Ecos_err']
                       ,types=['test','compl']): 
     # Get the final error and the true pott models
@@ -365,22 +404,48 @@ def simulation_1():
     pass
 
 def simulation_2():
-    K =5
-    N = 20
-    num_subj=60
-    sigma2=0.5
-    batch_size=20
-    n_epoch=50
+    K = 5
+    width = 30
+    P = width * width
+    theta_mu = P / 2
+    num_subj=30
+    batch_size=30
+    n_epoch=80
+    theta = 1.3
+    # Multinomial 
+    w = 2.0
+    # MixGaussian 
+    sigma2 = 0.4
+    N = 10
 
-    num_sim = 10
+    eneg_iter = 10
+    epos_iter = 10
+    num_sim = 1
+    
+    
     pt.set_default_dtype(pt.float32)
     TT=pd.DataFrame()
     DD=pd.DataFrame()
     HH = np.zeros((num_sim,n_epoch))
+    # REcorded bias parameter 
+    RecBu = pt.zeros((num_sim,K,P))
+    RecLp = pt.zeros((num_sim,K,P))
+    RecUtrue = pt.zeros((num_sim,K,P))
+    RecEmLog = pt.zeros((num_sim,K,P))
+
+    # Make a new emission model for the simulation
+    # emissionM = em.MultiNomial(K=K, P=P)
+    # emissionM.w = pt.tensor(w)
+    emissionM = em.MixGaussian(K,N,P)
+    emissionM.sigma2 = pt.tensor(sigma2)
+
+
     for s in range(num_sim):
-        Ytrain,Ytest,Utrue,Mtrue,grid = make_cmpRBM_data(10,K,N=N,
+        Ytrain,Ytest,Utrue,Mtrue,grid = make_cmpRBM_data(width,K,N=N,
             num_subj=num_subj,
-            theta_mu=20,theta_w=1.0,sigma2=sigma2,
+            theta_mu=theta_mu,
+            theta_w=theta,
+            emission_model=emissionM,
             do_plot=0)
         # Ytrain,Ytest,Utrue,Mtrue,grid = make_mrf_data(10,K,N=N,
         #         num_subj=num_subj,
@@ -401,35 +466,41 @@ def simulation_2():
         indepAr.name='idenp'
 
         # Train the independent model as baseline
-        indepAr,T,theta1 = train_sml(indepAr,
-                emloglik_train,emloglik_test,
+        indepAr,T,theta1 = train_sml(indepAr,Mtrue.emission,Ytrain,Ytest,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
 
-        # blank restricted bolzman machine
-        n_hidden = 100 # 30 hidden nodes
-        rbm1 = ar.mpRBM_pCD(K,P,n_hidden,eneg_iter=3,eneg_numchains=200)
-        rbm1.name=f'RBM_{n_hidden}'
-        rbm1.W = pt.randn(n_hidden,P*K)*0.1
-        rbm1.alpha = 0.01
-        rbm1.bu = indepAr.logpi.detach().clone()
+        # Gte the true arrangement model 
+        rbm = Mtrue.arrange
+        rbm.name = 'true'
 
         # Convolutional Boltzmann:
         n_hidden = P # hidden nodes
-        rbm2 = ar.cmpRBM_pCD(K,P,nh=n_hidden,eneg_iter=3,eneg_numchains=200)
+        rbm2 = ar.cmpRBM(K,P,nh=n_hidden,
+                            eneg_iter=eneg_iter,
+                            epos_iter=epos_iter,
+                            eneg_numchains=num_subj)
         rbm2.name=f'cRBM_{n_hidden}'
         rbm2.W = pt.randn(n_hidden,P)*0.1
-        rbm2.W = Mtrue.arrange.W.detach().clone()
+        # rbm2.W = Mtrue.arrange.W.detach().clone()
         rbm2.bu= indepAr.logpi.detach().clone()
         # rbm2.bu=  Mtrue.arrange.bu.detach().clone()
-        rbm2.alpha = 0.01
+        rbm2.alpha = 1
+        rbm2.fit_W = True
+        rbm2.fit_bu = True
 
         # Covolutional
-        Wc = Mtrue.arrange.Wc
-        rbm3 = ar.cmpRBM_pCD(K,P,Wc=Wc,theta=1.0, eneg_iter=3,eneg_numchains=200)
-        rbm3.bu= indepAr.logpi.detach().clone()
-        # rbm3.bu=Mtrue.arrange.bu.detach().clone()
+        rbm3 = ar.cmpRBM(K,P,Wc=rbm.Wc,
+                            theta=theta,
+                            eneg_iter=eneg_iter,
+                            epos_iter=epos_iter,
+                            eneg_numchains=num_subj)
+        rbm3.bu = pt.zeros((K,P))
+        rbm3.bu = indepAr.logpi.detach().clone()
+        # rbm3.bu = rbm.bu.detach().clone()
         rbm3.name=f'cRBM_Wc'
-        rbm3.alpha = 0.01
+        rbm3.fit_W = False
+        rbm3.fit_bu = True
+        rbm3.alpha = 1
 
         # Get the true pott models
         # Mpotts = copy.deepcopy(Mtrue.arrange)
@@ -437,47 +508,60 @@ def simulation_2():
         # Mpotts.epos_iter =5
 
         # Make list of candidate models
-        Models = [indepAr,rbm2,rbm3,Mtrue.arrange]
+        Models = [indepAr,rbm3,rbm]
 
 
         TH = [theta1]
-        for m in Models[1:3]:
+        for m in Models[1:2]:
 
-            m, T1,theta_hist = train_sml(m,
-                emloglik_train,emloglik_test,
-                part,batch_size=batch_size,n_epoch=n_epoch)
+            m, T1,theta_hist = train_sml(m,Mtrue.emission,Ytrain,Ytest,part,
+                batch_size=batch_size,
+                n_epoch=n_epoch)
             TH.append(theta_hist)
             T = pd.concat([T,T1],ignore_index=True)
 
         # Evaluate overall
-        D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
-        D1 = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
+        D = eval_arrange(Models,Mtrue.emission,Ytrain,Ytest,Utrue=Utrue)
+        D1 = eval_arrange_compl(Models,Mtrue.emission,Ytest,part=part,Utrue=Utrue)
 
         DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
-        HH[s,:]= TH[2][500,:]
+        HH[s,:]= TH[1][rbm3.get_param_indices('theta'),:]
+        
+        #record the different fitting runs into structure 
+        RecBu[s] = pt.softmax(rbm3.bu,0)
+        RecLp[s] = pt.softmax(indepAr.logpi,0)
+        RecUtrue[s] = ar.expand_mn(Utrue,K).mean(dim=0)
+        RecEmLog[s] = pt.softmax(emloglik_train,1).mean(dim=0)
+
     fig = plt.figure(figsize=(8,8))
-    gs = fig.add_gridspec(3, 1)
-    ax1 = fig.add_subplot(gs[0:2, 0])
-    sb.lineplot(data=TT[(TT.iter>0) & (TT.type!='train')]
-            ,y='crit',x='iter',hue='model',style='type')
-    ax2 = fig.add_subplot(gs[2, 0])
-    ax2.plot(HH.T)
+    plt.subplot(3,1,1)
+    sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='test')]
+            ,y='crit',x='iter',hue='model')
+    plt.ylabel('Test coserr')
+    plt.subplot(3,1,2)
+    sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='compl')]
+            ,y='crit',x='iter',hue='model')
+    plt.ylabel('Compl coserr')
+    plt.subplot(3,1,3)
+    plt.plot(HH.T)
+    plt.ylabel('Theta')
 
     # Get the final error and the true pott models
-    plt.figure(figsize=(8,3))
-    plt.subplot(1,2,1)
-    sb.barplot(data=DD[DD.type=='test'],x='model',y='uerr')
-    plt.subplot(1,2,2)
-    sb.barplot(data=DD[DD.type=='test'],x='model',y='logpy')
+    plot_evaluation(DD)
 
-    # OPtional: Plot the last maps
+    # OPtional: Plot the last maps of prior estimates
     # plot_Uhat_maps([None,indepAr,rbm3,Mtrue.arrange],emloglik_test[0:1],grid)
     # Optimal: plot the pmaps
-    plot_P_maps([pt.softmax(indepAr.logpi,0),
-                 pt.softmax(rbm2.bu,0),
-                 pt.softmax(rbm3.bu,0),
-                 pt.softmax(Mtrue.arrange.bu,0)],grid)
+    plot_P_maps([RecEmLog.mean(dim=0),
+                RecLp.mean(dim=0),
+                RecBu.mean(dim=0),
+                pt.softmax(rbm.bu,0)],grid)
+
+    plot_individual_Uhat(Models,Utrue[0:1],emloglik_train[0:1],
+                    grid,style='mixed')
+    # plot_individual_Uhat(Models,Utrue[0:1],emloglik_train[0:1],
+    #                grid,style='argmax')
     pass
 
 def simulation_chain():
@@ -490,12 +574,13 @@ def simulation_chain():
     num_sim = 10
     theta = 1.3
     # Multinomial 
-    w = 2.5
+    w = 3.0
     # MixGaussian 
     sigma2 = 0.5
     N = 10 
 
-    eneg_iter = 20
+    eneg_iter = 2
+    epos_iter = 6
 
     pt.set_default_dtype(pt.float32)
     TT=pd.DataFrame()
@@ -537,8 +622,9 @@ def simulation_chain():
 
         # Covolutional
         rbm3 = ar.cmpRBM(K,P,Wc=rbm.Wc,
-                            theta=theta,
+                            theta=0.3,
                             eneg_iter=eneg_iter,
+                            epos_iter=epos_iter,
                             eneg_numchains=num_subj)
         rbm3.bu = pt.zeros((K,P))
         rbm3.bu = indepAr.logpi.detach().clone()
@@ -661,7 +747,8 @@ if __name__ == '__main__':
     # compare_gibbs()
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     # simulation_2()
-    simulation_chain()
+    # simulation_chain()
+    simulation_2() 
     # pass
     # test_cmpRBM_Estep()
     # test_sample_multinomial()

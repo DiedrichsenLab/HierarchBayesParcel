@@ -549,7 +549,7 @@ class mpRBM_CDk(mpRBM):
 
 class cmpRBM(mpRBM):
 
-    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,epos_iter=5,eneg_numchains=77):
+    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=10,epos_iter=10,eneg_numchains=77):
         """convolutional multinomial (categorial) restricted Boltzman machine
         for learning of brain parcellations for probabilistic input
         Uses variational stochastic maximum likelihood for learning
