@@ -159,7 +159,7 @@ def make_cmpRBM_chain(P=5,K=3,num_subj=20,
 
 
 
-def train_sml(arM,emM,Ytrain,Ytest,part,crit='cos_err',
+def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
              n_epoch=20,batch_size=20,verbose=False):
     """Trains only arrangement model, given a fixed emission
     likelhoood.
@@ -238,11 +238,14 @@ def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
         uerr_test1= ev.u_abserr(Utrue_mn,EU)
         cos_err= ev.coserr(Ytest,emM.V,EU,adjusted=False,
                  soft_assign=False).mean(dim=0).item()
+        Ecos_err= ev.coserr(Ytest,emM.V,EU,adjusted=False,
+                 soft_assign=True).mean(dim=0).item()
 
         dict ={'model':[m.name],
                'type':['test'],
                'uerr':uerr_test1,
-               'cos_err':cos_err}
+               'cos_err':cos_err,
+               'Ecos_err':Ecos_err}
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
 
@@ -251,12 +254,14 @@ def eval_arrange_compl(models,emM,Y,part,Utrue):
     Utrue_mn = ar.expand_mn(Utrue,models[0].K)
     for m in models:
         cos_err_compl = ev.evaluate_completion_arr(m,emM,Y,part,crit='cos_err')
+        Ecos_err_compl = ev.evaluate_completion_arr(m,emM,Y,part,crit='Ecos_err')
         uerr_compl = ev.evaluate_completion_arr(m,emM,Y,part,
                                     crit='u_abserr',Utrue=Utrue_mn)
         dict ={'model':[m.name],
                'type':['compl'],
                'uerr':uerr_compl,
-               'cos_err':cos_err_compl}
+               'cos_err':cos_err_compl,
+               'Ecos_err':Ecos_err_compl}
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
 
@@ -279,6 +284,18 @@ def plot_P_maps(pmaps,grid):
     K = pmaps[0].shape[0]
     for i,m in enumerate(pmaps):
         grid.plot_maps(m,cmap='jet',vmax=1,grid=(n_models,K),offset=i*K+1)
+
+def plot_evaluation(D,criteria=['uerr','cos_err','Ecos_err']
+                      ,types=['test','compl']): 
+    # Get the final error and the true pott models
+    plt.figure(figsize=(12,7))
+    ncrit = len(criteria)
+    ntypes = len(types)
+    for j in range(ntypes): 
+        for i in range(ncrit): 
+            plt.subplot(ntypes,ncrit,i+j*ncrit+1)
+            sb.barplot(data=D[D.type==types[j]],x='model',y=criteria[i])
+            plt.title(f'{criteria[i]}{types[j]}')
 
 def simulation_1():
     K =5
@@ -468,12 +485,12 @@ def simulation_chain():
     P = 5
     num_subj=100
     batch_size=100
-    n_epoch=20
+    n_epoch=100
     logpi = 2.5
-    num_sim = 20
+    num_sim = 10
     theta = 1.3
     # Multinomial 
-    w = 1.6
+    w = 2.5
     # MixGaussian 
     sigma2 = 0.5
     N = 10 
@@ -524,10 +541,10 @@ def simulation_chain():
                             eneg_iter=eneg_iter,
                             eneg_numchains=num_subj)
         rbm3.bu = pt.zeros((K,P))
-        # rbm3.bu = indepAr.logpi.detach().clone()
-        # rbm3.bu = rbm.bu.detach().clone()
+        rbm3.bu = indepAr.logpi.detach().clone()
+        rbm3.bu = rbm.bu.detach().clone()
         rbm3.name=f'cRBM_Wc'
-        rbm3.fit_W = False
+        rbm3.fit_W = True
         rbm3.fit_bu = True
         rbm3.alpha = 1
 
@@ -544,7 +561,7 @@ def simulation_chain():
             T = pd.concat([T,T1],ignore_index=True)
 
         # Evaluate overall
-        D = eval_arrange(Models,Mtrue.emission,Ytrain,Ytest,Utrue)
+        D = eval_arrange(Models,Mtrue.emission,Ytrain,Ytest,Utrue=Utrue)
         D1 = eval_arrange_compl(Models,Mtrue.emission,Ytest,part=part,Utrue=Utrue)
 
         DD = pd.concat([DD,D,D1],ignore_index=True)
@@ -599,21 +616,7 @@ def simulation_chain():
     plt.plot(HH.T)
     plt.ylabel('Theta')
 
-    # Get the final error and the true pott models
-    plt.figure(figsize=(8,7))
-    plt.subplot(2,2,1)
-    sb.barplot(data=DD[DD.type=='test'],x='model',y='uerr')
-    plt.title('uerr test')
-    plt.subplot(2,2,2)
-    sb.boxplot(data=DD[DD.type=='test'],x='model',y='cos_err')
-    plt.title('logpy test')
-    plt.subplot(2,2,3)
-    sb.barplot(data=DD[DD.type=='compl'],x='model',y='uerr')
-    plt.title('uerr compl')
-    plt.subplot(2,2,4)
-    sb.boxplot(data=DD[DD.type=='compl'],x='model',y='cos_err')
-    plt.title('logpy compl')
-
+    plot_evaluation(DD)
     pass
 
 
