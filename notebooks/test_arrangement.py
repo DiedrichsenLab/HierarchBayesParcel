@@ -159,15 +159,16 @@ def make_cmpRBM_chain(P=5,K=3,num_subj=20,
 
 
 
-def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
-             n_epoch=20,batch_size=20,verbose=False,emission_model=None):
+def train_sml(arM,emM,Ytrain,Ytest,part,crit='cos_err',
+             n_epoch=20,batch_size=20,verbose=False):
     """Trains only arrangement model, given a fixed emission
     likelhoood.
 
     Args:
-        model (ArrangementMode): _description_
-        emlog_train (tensor):emission log likelihood (KxP)
-        emlog_test (tensor): emission log likelihood test (KxP)
+        arM (ArrangementMode): 
+        emM (EmissionModel )
+        Y_train (tensor): Y_testing log likelihood (KxP)
+        Y_test (tensor): Y_training log likelihood test (KxP)
         part (tensor): 1xP partition number for completion test
         crit (str): _description_. Defaults to 'logpY'.
         n_epoch (int): _description_. Defaults to 20.
@@ -179,78 +180,83 @@ def train_sml(model,emlog_train,emlog_test,part,crit='logpY',
         T: Pandas data frame with epoch level performance metrics
         thetaH: History of fitted thetas
     """
+    emlog_train = emM.Estep(Ytrain)
+    emlog_test = emM.Estep(Ytest)
     num_subj = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
+
     crit_types = ['train','marg','test','compl'] # different evaluation types
     CR = np.zeros((len(crit_types),n_epoch))
-    theta_hist = np.zeros((model.nparams,n_epoch))
+    theta_hist = np.zeros((arM.nparams,n_epoch))
     # Intialize negative sampling
     for epoch in range(n_epoch):
         # Get test error
-        EU,_ = model.Estep(emlog_train,gather_ss=False)
-
+        EU,_ = arM.Estep(emlog_train,gather_ss=False)
         for i, ct in enumerate(crit_types):
             # Training emission logliklihood:
             if ct=='train':
-                CR[i,epoch] = ev.evaluate_full_arr(emlog_train,EU,crit=crit)
+                CR[i,epoch] = ev.evaluate_full_arr(emM,Ytrain,EU,crit=crit)
             elif ct=='marg':
-                pi = model.marginal_prob()
-                CR[i,epoch] = ev.evaluate_full_arr(emlog_test,pi,crit=crit)
+                pi = arM.marginal_prob()
+                CR[i,epoch] = ev.evaluate_full_arr(emM,Ytest,pi,crit=crit)
             elif ct=='test':
-                CR[i,epoch] = ev.evaluate_full_arr(emlog_test,EU,crit=crit)
+                CR[i,epoch] = ev.evaluate_full_arr(emM,Ytest,EU,crit=crit)
             elif ct=='compl':
-                CR[i,epoch] = ev.evaluate_completion_arr(model,emlog_test,part,crit=crit)
+                CR[i,epoch] = ev.evaluate_completion_arr(arM,emM,Ytest,part,crit=crit)
         if (verbose):
             print(f'epoch {epoch:2d} Test: {crit[2,epoch]:.4f}')
 
         # Update the model in batches
         for b in range(0,num_subj-batch_size+1,batch_size):
             ind = range(b,b+batch_size)
-            model.Estep(emlog_train[ind,:,:])
-            if hasattr(model,'Eneg'):
-                model.Eneg(use_chains=ind,
-                           emission_model=emission_model)
-            model.Mstep()
+            arM.Estep(emlog_train[ind,:,:])
+            if hasattr(arM,'Eneg'):
+                arM.Eneg(use_chains=ind,
+                           emission_model=emM)
+            arM.Mstep()
 
         # Record the parameters
-        theta_hist[:,epoch]=model.get_params()
+        theta_hist[:,epoch]=arM.get_params()
 
     # Make a data frame for the results
     T=pd.DataFrame()
     for i, ct in enumerate(crit_types):
-        T1 = pd.DataFrame({'model':[model.name]*n_epoch,
+        T1 = pd.DataFrame({'model':[arM.name]*n_epoch,
                         'type':[ct]*n_epoch,
                         'iter':np.arange(n_epoch),
                         'crit':CR[i]})
         T = pd.concat([T,T1],ignore_index=True)
-    return model,T,theta_hist
+    return arM,T,theta_hist
 
-
-def eval_arrange(models,emloglik_train,emloglik_test,Utrue):
+def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
     D= pd.DataFrame()
     Utrue_mn = ar.expand_mn(Utrue,models[0].K)
+    emloglik_train = emM.Estep(Ytrain)
     for m in models:
+        
         EU,_ = m.Estep(emloglik_train)
-        logpy_test1= ev.logpY(emloglik_test,EU)
         uerr_test1= ev.u_abserr(Utrue_mn,EU)
+        cos_err= ev.coserr(Ytest,emM.V,EU,adjusted=False,
+                 soft_assign=False).mean(dim=0).item()
+
         dict ={'model':[m.name],
                'type':['test'],
                'uerr':uerr_test1,
-               'logpy':logpy_test1}
+               'cos_err':cos_err}
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
 
-def eval_arrange_compl(models,emloglik,part,Utrue):
+def eval_arrange_compl(models,emM,Y,part,Utrue):
     D= pd.DataFrame()
     Utrue_mn = ar.expand_mn(Utrue,models[0].K)
     for m in models:
-        logpy_compl = ev.evaluate_completion_arr(m,emloglik,part,crit='logpY')
-        uerr_compl = ev.evaluate_completion_arr(m,emloglik,part,
+        cos_err_compl = ev.evaluate_completion_arr(m,emM,Y,part,crit='cos_err')
+        uerr_compl = ev.evaluate_completion_arr(m,emM,Y,part,
                                     crit='u_abserr',Utrue=Utrue_mn)
         dict ={'model':[m.name],
                'type':['compl'],
                'uerr':uerr_compl,
-               'logpy':logpy_compl}
+               'cos_err':cos_err_compl}
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
 
@@ -505,8 +511,7 @@ def simulation_chain():
         # Independent spatial arrangement model
         indepAr = ar.ArrangeIndependent(K=K,P=P,spatial_specific=True,remove_redundancy=False)
         indepAr.name='idenp'
-        indepAr,T,theta1 = train_sml(indepAr,
-                emloglik_train,emloglik_test,
+        indepAr,T,theta1 = train_sml(indepAr,Mtrue.emission,Ytrain,Ytest,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
 
         # Gte the true arrangement model 
@@ -532,22 +537,15 @@ def simulation_chain():
         TH = [theta1]
         for m in Models[1:2]:
 
-            m, T1,theta_hist = train_sml(m,emloglik_train,emloglik_test,part,
+            m, T1,theta_hist = train_sml(m,Mtrue.emission,Ytrain,Ytest,part,
                 batch_size=batch_size,
-                n_epoch=n_epoch,
-                emission_model=Mtrue.emission)
+                n_epoch=n_epoch)
             TH.append(theta_hist)
             T = pd.concat([T,T1],ignore_index=True)
 
         # Evaluate overall
-        D = eval_arrange(Models,emloglik_train,emloglik_test,Utrue)
-        D1 = eval_arrange_compl(Models,emloglik_test,part=part,Utrue=Utrue)
-
-        true_test = ev.logpY(emloglik_test,ar.expand_mn(Utrue,K))
-        D.logpy -= true_test
-        D1.logpy -= true_test
-        T.loc[T.type=='test','crit'] -= true_test
-        T.loc[T.type=='compl','crit'] -= true_test
+        D = eval_arrange(Models,Mtrue.emission,Ytrain,Ytest,Utrue)
+        D1 = eval_arrange_compl(Models,Mtrue.emission,Ytest,part=part,Utrue=Utrue)
 
         DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
@@ -592,11 +590,11 @@ def simulation_chain():
     plt.subplot(3,1,1)
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='test')]
             ,y='crit',x='iter',hue='model')
-    plt.ylabel('Test logpy')
+    plt.ylabel('Test coserr')
     plt.subplot(3,1,2)
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='compl')]
             ,y='crit',x='iter',hue='model')
-    plt.ylabel('Compl logpy')
+    plt.ylabel('Compl coserr')
     plt.subplot(3,1,3)
     plt.plot(HH.T)
     plt.ylabel('Theta')
@@ -607,13 +605,13 @@ def simulation_chain():
     sb.barplot(data=DD[DD.type=='test'],x='model',y='uerr')
     plt.title('uerr test')
     plt.subplot(2,2,2)
-    sb.boxplot(data=DD[DD.type=='test'],x='model',y='logpy')
+    sb.boxplot(data=DD[DD.type=='test'],x='model',y='cos_err')
     plt.title('logpy test')
     plt.subplot(2,2,3)
     sb.barplot(data=DD[DD.type=='compl'],x='model',y='uerr')
     plt.title('uerr compl')
     plt.subplot(2,2,4)
-    sb.boxplot(data=DD[DD.type=='compl'],x='model',y='logpy')
+    sb.boxplot(data=DD[DD.type=='compl'],x='model',y='cos_err')
     plt.title('logpy compl')
 
     pass

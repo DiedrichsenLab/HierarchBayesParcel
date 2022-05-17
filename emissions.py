@@ -92,6 +92,7 @@ class MultiNomial(EmissionModel):
         self.w = pt.tensor(1.0)
         self.set_param_list(['w'])
         self.name = 'MN'
+        self.V = pt.eye(K) # This is for consistency only , so the model can be evaluated on test data (with cos err) 
         if params is not None:
             self.set_params(params)
 
@@ -100,7 +101,7 @@ class MultiNomial(EmissionModel):
         Calculates sufficient stats on the data that does not depend on u,
         and allocates memory for the sufficient stats that does.
         """
-        self.Y = ar.expand_mn(Y,self.K)
+        self.Y = Y
 
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
@@ -130,7 +131,7 @@ class MultiNomial(EmissionModel):
         """
         Ue = ar.expand_mn(U,self.K)
         p = pt.softmax(Ue*self.w,1)
-        Y = ar.sample_multinomial(p, kdim=1, compress=True)
+        Y = ar.sample_multinomial(p, kdim=1, compress=False)
         return Y
 
 class MixGaussian(EmissionModel):
