@@ -605,16 +605,17 @@ class MixGaussianExp(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None, params=None, uniform_kappa=True):
+    def __init__(self, K=4, N=10, P=20, data=None, D=None, X=None, params=None, uniform_kappa=True):
         self.uniform_kappa = uniform_kappa
         super().__init__(K, N, P, data, X)
+        self.D = D
         self.random_params()
         self.set_param_list(['V', 'kappa'])
         self.name = 'VMF'
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data, X=None):
+    def initialize(self, data, X=None, D=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
         and allocates memory for the sufficient stats that does. For the VMF, it length-standardizes the
         data to length one.
@@ -623,9 +624,25 @@ class MixVMF(EmissionModel):
         Returns: None. Store the data in emission model itself.
         """
         super().initialize(data, X=X)
-        self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
-        self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
+        if (self.D is not None) or (D is not None):  # if self.D is not None, meaning self.D is from the init
+            # Making normlization for run specific data
+            if D is not None:
+                self.D = D
+            assert self.D.shape[0] == self.Y.shape[1], "D must have same dimension with data Y."
+
+            # Here we first splitting data into (n_subj, run, N, P) and normalize
+            self.Y_raw = pt.tensor_split(self.Y, self.D.bincount()[:-1].cumsum(dim=0), dim=1)
+            self.Y_raw = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y_raw]
+            self.run = len(self.Y_raw)
+            self.Y_raw = pt.matmul(self.X.T, pt.hstack(self.Y_raw))  # This is the new data
+            self.N = self.Y_raw.shape[1]
+            self.Y = self.Y_raw
+            self.split = True
+        else:
+            self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+            self.run = 1
+            self.split = False
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -672,7 +689,7 @@ class MixVMF(EmissionModel):
 
         return approx
 
-    def Estep(self, Y=None, sub=None):
+    def Estep(self, Y=None, sub=None, pure_compute=False):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         Args:
@@ -681,7 +698,9 @@ class MixVMF(EmissionModel):
         Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
         if Y is not None:
-            self.initialize(Y)
+            if pure_compute:
+                self.D = None
+            self.initialize(Y, D=self.D)
 
         if sub is None:
             sub = range(self.Y.shape[0])
@@ -693,7 +712,11 @@ class MixVMF(EmissionModel):
             self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
         # Calculate log-likelihood
-        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
+        if self.split:
+            YV = pt.matmul(self.V.T, self.Y)
+        else:
+            YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
+
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
         if self.uniform_kappa:
@@ -718,18 +741,21 @@ class MixVMF(EmissionModel):
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
         this_U_hat = pt.clone(U_hat)
         this_U_hat[nan_voxIdx] = 0
-        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat, dim=0)
-        regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
 
-        # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        XYU = pt.matmul(regressX, YU)
-        self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
+        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
+        UU = pt.sum(this_U_hat * self.run, dim=0)
+        if not self.split:  # No data splitting
+            regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
+            XYU = pt.matmul(regressX, YU)
+            self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
+        else:
+            # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
+            self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = pt.sqrt(pt.sum(YU ** 2, dim=0)) / pt.sum(UU, dim=1)
+            r_bar = pt.sqrt(pt.sum(YU**2, dim=0)) / pt.sum(UU, dim=1)
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
