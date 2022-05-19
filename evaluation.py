@@ -116,6 +116,15 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     return pt.nanmean(cos_distance, dim=1)
 
 
+def logpY(emloglik,Uhat):
+    """Averaged log of <p(Y|U)>q
+    Not sure anymore that this criterion makes a lot of
+    """
+    pyu = pt.exp(emloglik)
+    py = pt.sum(pyu * Uhat,dim=1)
+    return pt.mean(pt.log(py),dim=(0,1)).item()
+
+
 def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
     """Compute the RMSE between true and predicted V's
     Args:
@@ -195,15 +204,6 @@ def permute(nums):
     return res
 
 
-def logpY(emloglik,Uhat):
-    """Averaged log of p(Y|U)
-    For save computation (to prevent underflow or overflow)
-    p(y|u) either gets a constant
-    """
-    pyu = pt.softmax(emloglik,dim=1)
-    py = pt.sum(pyu * Uhat,dim=1)
-    return pt.mean(pt.log(py),dim=(0,1)).item()
-
 
 def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
     """Calculate the adjusted squared error for goodness of model fitting
@@ -257,41 +257,45 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
     return pt.sum(U_hat * sse)/(n_sub * P)
 
 
-def evaluate_full_arr(data,Uhat,crit='logpY'):
+def evaluate_full_arr(emM,data,Uhat,crit='cos_err'):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
     Args:
-        data (tensor): Emission log-liklihood, Us (depends on crit)
+        emM (EmissionModel)
+        data (tensor): Y-data or U true (depends on crit)
         Uhat (tensor): Probility for each node (expected U)
-        crit (str): 'logpy','u_abserr'
+        crit (str): 'logpy','u_abserr', 'cos_err','Ecos_err'
     Returns:
         evaluation citerion: [description]
     """
     if type(data) is np.ndarray:
         data=pt.tensor(data,dtype=pt.get_default_dtype())
     if crit=='logpY':
-        emloglik = data
-        return logpY(emloglik,Uhat)
+        emloglik = emM.Estep(data)
+        critM = logpY(emloglik,Uhat)
     elif crit == 'u_abserr':
         U = data
-        return u_abserr(U,Uhat)
+        critM = u_abserr(U,Uhat)
+    elif crit == 'cos_err': 
+        critM = coserr(data, emM.V, Uhat, adjusted=False, soft_assign=False)
+    elif crit == 'Ecos_err': 
+        critM = coserr(data, emM.V, Uhat, adjusted=False, soft_assign=True)
+    return critM.mean().item()
 
 
-def evaluate_completion_arr(arM,emloglik,part,crit='logpY',Utrue=None):
+def evaluate_completion_arr(arM,emM,data,part,crit='Ecos_err',Utrue=None):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
     Args:
         arM (ArrangementModel): arrangement model 
         emloglik (tensor): Emission log-liklihood 
         part (Partitions): P tensor with partition indices
-        crit (str): 'logpY','u_abserr'
+        crit (str): 'logpY','u_abserr','cos_err'
         Utrue (tensor): For u_abserr you need to provide the true U's 
     Returns:
         mean evaluation citerion 
     """
-    if type(emloglik) is np.ndarray:
-        emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
-    pyu = pt.softmax(emloglik,dim=1)
+    emloglik=emM.Estep(data)
     num_subj = emloglik.shape[0]
     num_part = part.max()+1
     critM = pt.zeros(arM.P)
@@ -303,8 +307,15 @@ def evaluate_completion_arr(arM,emloglik,part,crit='logpY',Utrue=None):
         if crit=='u_abserr':
             critM[ind] = pt.mean(pt.abs(Utrue[:,:,ind] - Uhat[:,:,ind]),dim=(0,1))
         elif crit=='logpY':
+            pyu = pt.exp(emloglik)
             py = pt.sum(pyu[:,:,ind] * Uhat[:,:,ind],dim=1)
             critM[ind] = pt.mean(pt.log(py),dim=0)
+        elif crit=='cos_err':
+            critM[ind] = coserr(data[:,:,ind], emM.V, Uhat[:,:,ind], 
+                        adjusted=False, soft_assign=False).mean(dim=0)
+        elif crit=='Ecos_err':
+            critM[ind] = coserr(data[:,:,ind], emM.V, Uhat[:,:,ind], 
+                        adjusted=False, soft_assign=True).mean(dim=0)
     return pt.mean(critM).item()  # average across vertices
 
 

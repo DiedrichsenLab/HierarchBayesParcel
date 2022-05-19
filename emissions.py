@@ -7,6 +7,7 @@ from torch import log, exp, sqrt
 from generativeMRF.sample_vmf import rand_von_mises_fisher
 from generativeMRF.model import Model
 from generativeMRF.depreciated.AIS_test import rejection_sampling
+import generativeMRF.arrangements as ar
 
 PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
 log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
@@ -82,6 +83,56 @@ class EmissionModel(Model):
         """
         pass
 
+class MultiNomial(EmissionModel):
+    """
+    Multinomial emission model with coupling strength theta_s
+    """
+    def __init__(self, K=4, P=20, params=None):
+        super().__init__(K, 1, P)
+        self.w = pt.tensor(1.0)
+        self.set_param_list(['w'])
+        self.name = 'MN'
+        self.V = pt.eye(K) # This is for consistency only , so the model can be evaluated on test data (with cos err) 
+        if params is not None:
+            self.set_params(params)
+
+    def initialize(self, Y):
+        """Stores the data in emission model itself
+        Calculates sufficient stats on the data that does not depend on u,
+        and allocates memory for the sufficient stats that does.
+        """
+        self.Y = Y
+
+    def Estep(self, Y=None, sub=None):
+        """ Estep: Returns log p(Y|U) for each value of U, up to a constant
+            Collects the sufficient statistics for the M-step
+        specify which subject to optimize
+        return: the expected log likelihood for emission model, shape (nSubject * K * P)
+        """
+        if Y is not None:
+            self.initialize(Y)
+        n_subj = self.Y.shape[0]
+
+        LL = self.Y * self.w - log(self.K-1+exp(self.w))
+        return(LL)
+
+    def Mstep(self, U_hat):
+        """ Performs the M-step on a specific U-hat.
+            In this emission model, the parameters need to be updated
+            are V and sigma2.
+        """
+        mean_uy = pt.mean(pt.sum(self.Y * self.U_hat, dim=1)) # this is E(yTu)
+        self.w = log(1-self.K+(self.K-1)/(1-mean_uy)) 
+
+    def sample(self, U):
+        """ Generate random data given this emission model
+        :The prior arrangement U from arrangement model
+        :sampled data Y (compressed form)
+        """
+        Ue = ar.expand_mn(U,self.K)
+        p = pt.softmax(Ue*self.w,1)
+        Y = ar.sample_multinomial(p, kdim=1, compress=False)
+        return Y
 
 class MixGaussian(EmissionModel):
     """

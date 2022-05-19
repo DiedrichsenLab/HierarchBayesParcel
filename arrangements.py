@@ -549,7 +549,7 @@ class mpRBM_CDk(mpRBM):
 
 class cmpRBM(mpRBM):
 
-    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=3,epos_iter=5,eneg_numchains=77):
+    def __init__(self, K, P, nh=None, Wc = None, theta=None, eneg_iter=10,epos_iter=10,eneg_numchains=77):
         """convolutional multinomial (categorial) restricted Boltzman machine
         for learning of brain parcellations for probabilistic input
         Uses variational stochastic maximum likelihood for learning
@@ -710,7 +710,9 @@ class cmpRBM(mpRBM):
             # If we are dealing with component Wc:
             if self.Wc is not None:
                 gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
-                self.theta += self.alpha * pt.sum(gradW*self.Wc,dim=(0,1))
+                weights = pt.sum(self.Wc,dim=(0,1))
+                gradT   = pt.sum(gradW*self.Wc,dim=(0,1))/weights
+                self.theta += self.alpha * gradT
                 self.W = (self.Wc * self.theta).sum(dim=2)
             else:
                 self.W += self.alpha * gradW
@@ -719,7 +721,7 @@ class cmpRBM(mpRBM):
         if self.fit_bu: 
             gradBU =   1 / N * pt.sum(self.epos_Uhat,0) 
             gradBU -=  1 / M * pt.sum(self.eneg_U,0)
-            self.bu += self.alpha * 2 * gradBU
+            self.bu += self.alpha * gradBU
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution

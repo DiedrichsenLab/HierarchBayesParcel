@@ -324,6 +324,43 @@ $$
 $$
 In the E-step the emission model simply passes $p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)$ as a message to the arrangement model. In the M-step, $q(\mathbf{u}_i) = \langle \mathbf{u}_i \rangle$ is passed back, and the emission model optimizes the above quantity in respect to $\theta_E $.
 
+### Emission model 0: Multinomial 
+A simple (but instructive) emission model is that the observed data simpy has a multinomial distribution, like the latent variables $\mathbf{u}$. The coupling between the latent and the observed variable is stochastic, using a Potts model between the two nodes: 
+$$
+p(\mathbf{y_i}|\mathbf{u}_i;\theta_E) =  \frac{\exp(\mathbf{y}_i^T \mathbf{u}_i w)}{(K-1)+\exp(w)}
+$$
+
+The expected emission loglikelihood therefore is: 
+
+
+$$
+\begin{align*}
+\mathcal{L}_E=\sum_{i} (\mathbf{y}_i^T \langle \mathbf{u}_i \rangle w - \log((K-1)+\exp(w)))
+\end{align*}
+$$
+
+The derivative in respect to w then becomes: 
+$$
+\frac{\partial \mathcal{L}_E}{\partial w} = 
+\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle  - P\frac{\exp(w)}{(K-1)+\exp(w)}
+$$
+
+After setting the derivate to zero and solving for $w$, we obrain for the M-step: 
+$$
+\frac{\partial \mathcal{L}_E}{\partial w} = 
+\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle  - P\frac{\exp(w)}{(K-1)+\exp(w)}
+$$
+
+$$
+\begin{align*}
+\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle  = P\frac{\exp(w)}{(K-1)+\exp(w)}\\
+\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle / P   = 1-\frac{(K-1)}{(K-1)+\exp(w)}\\
+1-\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle / P   = \frac{(K-1)}{(K-1)+\exp(w)}\\
+\frac{(K-1)}{1-\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle / P}   = (K-1)+\exp(w)\\
+1-K+\frac{(K-1)}{1-\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle / P}   = \exp(w)\\
+w=\log(1-K+\frac{(K-1)}{1-\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle / P})\end{align*}
+$$
+
 
 ### Emission model 1: Mixture of Gaussians
 
