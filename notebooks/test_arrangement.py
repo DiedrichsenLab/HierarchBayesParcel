@@ -231,18 +231,26 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
 
 def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
     D= pd.DataFrame()
-    Utrue_mn = ar.expand_mn(Utrue,models[0].K)
+    Utrue_mn = ar.expand_mn(Utrue,emM.K)
     emloglik_train = emM.Estep(Ytrain)
+    
     for m in models:
-        
-        EU,_ = m.Estep(emloglik_train)
+        if m=='data':
+            EU = pt.softmax(emloglik_train,1)
+            name = m 
+        elif m=='Utrue':
+            EU = Utrue_mn
+            name = m 
+        else: 
+            EU,_ = m.Estep(emloglik_train)
+            name = m.name
         uerr_test1= ev.u_abserr(Utrue_mn,EU)
         cos_err= ev.coserr(Ytest,emM.V,EU,adjusted=False,
                  soft_assign=False).mean(dim=0).item()
         Ecos_err= ev.coserr(Ytest,emM.V,EU,adjusted=False,
                  soft_assign=True).mean(dim=0).item()
 
-        dict ={'model':[m.name],
+        dict ={'model':[name],
                'type':['test'],
                'uerr':uerr_test1,
                'cos_err':cos_err,
@@ -264,9 +272,18 @@ def eval_arrange_compl(models,emM,Y,part,Utrue):
                'cos_err':cos_err_compl,
                'Ecos_err':Ecos_err_compl}
         D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
+    # get the baseline for Utrue
+    cos_err= ev.coserr(Y,emM.V,Utrue_mn,adjusted=False,
+                 soft_assign=False).mean(dim=0).item()
+    Ecos_err= ev.coserr(Y,emM.V,Utrue_mn,adjusted=False,
+                 soft_assign=True).mean(dim=0).item()
+    dict ={'model':['Utrue'],
+               'type':['compl'],
+               'uerr':0,
+               'cos_err':cos_err,
+               'Ecos_err':Ecos_err}
+    D=pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
     return D
-
-
 
 def plot_Uhat_maps(models,emloglik,grid):
     plt.figure(figsize=(10,7))
@@ -335,6 +352,17 @@ def plot_evaluation(D,criteria=['uerr','cos_err','Ecos_err']
             plt.subplot(ntypes,ncrit,i+j*ncrit+1)
             sb.barplot(data=D[D.type==types[j]],x='model',y=criteria[i])
             plt.title(f'{criteria[i]}{types[j]}')
+
+def plot_evaluation2(): 
+    # Get the final error and the true pott models
+    plt.figure(figsize=(3,4))
+    D = pd.read_csv('deepMRF.csv')
+    T = D[(D.type=='test') & (D.model!='true') & (D.model!='Utrue')]
+    noisefloor = D[(D.type=='test') & (D.model=='Utrue')].Ecos_err.mean()
+    sb.barplot(data=T,x='model',y='Ecos_err')
+    plt.ylim([0.5,0.8])
+    plt.axhline(noisefloor)
+    pass
 
 def simulation_1():
     K =5
@@ -420,7 +448,7 @@ def simulation_2():
 
     eneg_iter = 10
     epos_iter = 10
-    num_sim = 1
+    num_sim = 20 
     
     
     pt.set_default_dtype(pt.float32)
@@ -521,7 +549,7 @@ def simulation_2():
             T = pd.concat([T,T1],ignore_index=True)
 
         # Evaluate overall
-        D = eval_arrange(Models,Mtrue.emission,Ytrain,Ytest,Utrue=Utrue)
+        D = eval_arrange(['data',indepAr,rbm3,rbm,'Utrue'],Mtrue.emission,Ytrain,Ytest,Utrue=Utrue)
         D1 = eval_arrange_compl(Models,Mtrue.emission,Ytest,part=part,Utrue=Utrue)
 
         DD = pd.concat([DD,D,D1],ignore_index=True)
@@ -748,7 +776,8 @@ if __name__ == '__main__':
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     # simulation_2()
     # simulation_chain()
-    simulation_2() 
+    # simulation_2() 
+    plot_evaluation2()
     # pass
     # test_cmpRBM_Estep()
     # test_sample_multinomial()
