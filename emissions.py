@@ -248,9 +248,9 @@ class MixGaussianExp(EmissionModel):
     Mixture of Gaussians with signal strength (fit gamma distribution)
     for each voxel. Scaling factor on the signal and a fixed noise variance
     """
-    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, params=None,
+    def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, X=None, params=None,
                  std_V=True, type_estep='linspace'):
-        super().__init__(K, N, P, data)
+        super().__init__(K, N, P, data, X)
         self.std_V = std_V  # Standardize mean vectors?
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
@@ -278,7 +278,7 @@ class MixGaussianExp(EmissionModel):
             Therefore, there are total k+1 parameters in this mixture model
             set the initial random parameters for gaussian mixture
         """
-        self.V = pt.randn(self.N, self.K)
+        self.V = pt.randn(self.M, self.K)/np.sqrt(self.M)
         if self.std_V:  # standardise V to unit length
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
@@ -423,8 +423,8 @@ class MixGaussianExp(EmissionModel):
 
         n_subj = self.Y.shape[0]
         LL = pt.empty((n_subj, self.K, self.P))
-        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
-        YV = pt.matmul(self.V.T,self.Y)
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
 
         # Instead of evenly spaced, sample from exp(beta)
         dist = pt.distributions.exponential.Exponential(self.beta)
@@ -463,8 +463,8 @@ class MixGaussianExp(EmissionModel):
             self.initialize(Y)
 
         n_subj = self.Y.shape[0]
-        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
-        YV = pt.matmul(self.V.T, self.Y)
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
 
         # Instead of evenly spaced, sample from q(x) (here is exp(beta))
         dist = pt.distributions.exponential.Exponential(self.beta)
@@ -512,9 +512,9 @@ class MixGaussianExp(EmissionModel):
 
         n_subj = self.Y.shape[0]
         LL = pt.empty((n_subj, self.K, self.P))
-        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
 
-        YV = pt.matmul(self.V.T, self.Y)
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         signal_max = self.maxlength*1.2  # Make the maximum signal 1.2 times the max data magnitude
         signal_bin = signal_max / self.num_signal_bins
         x = pt.linspace(signal_bin/2, signal_max, self.num_signal_bins)
@@ -551,8 +551,8 @@ class MixGaussianExp(EmissionModel):
 
         n_subj = self.Y.shape[0]
         LL = pt.empty((n_subj, self.K, self.P))
-        uVVu = pt.sum(self.V ** 2, dim=0)  # This is u.T V.T V u for each u
-        YV = pt.matmul(self.V.T, self.Y)
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
 
         # The unnormalized distribution that we want to compute the expecation
         p_x = lambda a: exp(- 0.5 / self.sigma2 * (-2 * YV.view(n_subj, self.K, self.P, 1) * a +
@@ -605,22 +605,26 @@ class MixGaussianExp(EmissionModel):
             U_hat: The expected emission log likelihood
         Returns: Update all model parameters, self attributes
         """
+        regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
+        this_U_hat = pt.clone(U_hat)
+        this_U_hat[nan_voxIdx] = 0
         YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat * self.s, 1, 2).nan_to_num())
-        U_hat[nan_voxIdx] = 0
-        US = (U_hat * self.s).nansum(dim=2)
-        US2 = (U_hat * self.s2).nansum(dim=2)
+        US = (this_U_hat * self.s).nansum(dim=2)
+        US2 = (this_U_hat * self.s2).nansum(dim=2)
+
 
         # 1. Updating the V - standardize if requested
         # Here we update the v_k, which is sum_i(<Uhat(k), s_i>,*Y_i) / sum_i(Uhat(k), s_i^2)
-        self.V = pt.sum(YU, dim=0) / pt.sum(US2, dim=0)
+        self.V = pt.matmul(regressX, pt.sum(YU, dim=0) / pt.sum(US2, dim=0))
         if self.std_V:
              self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating the sigma squared.
-        YV = pt.matmul(self.V.T, self.Y)
-        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + self.s2 * pt.sum(self.V ** 2, dim=0).view((self.K, 1))
-        self.sigma2 = pt.nansum(U_hat * ERSS) / (self.N * self.P * self.num_subj)
+        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
+        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s + \
+               self.s2 * pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
+        self.sigma2 = pt.nansum(this_U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
         # 3. Updating the beta (Since this is an exponential model)
         self.beta = self.P * self.num_subj / pt.sum(US)
@@ -634,7 +638,6 @@ class MixGaussianExp(EmissionModel):
         Returns: Sampled data Y
         """
         num_subj = U.shape[0]
-        Y = pt.empty((num_subj, self.N, self.P))
         if signal is not None:
             np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),
                                     err_msg='The given signal must with a shape of (num_subj, P)')
@@ -642,10 +645,10 @@ class MixGaussianExp(EmissionModel):
             # Draw the signal strength for each node from an exponential distribution
             signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
 
+        Y = pt.normal(0, pt.sqrt(self.sigma2), (num_subj, self.N, self.P))
         for s in range(num_subj):
-            Y[s, :, :] = self.V[:, U[s, :].long()] * signal[s, :]
-            # And add noise of variance 1
-            Y[s, :, :] = Y[s, :, :] + pt.normal(0, np.sqrt(self.sigma2), (self.N, self.P))
+            Y[s, :, :] = Y[s, :, :] + pt.matmul(self.X, self.V[:, U[s, :].long()]) * signal[s, :]
+
         # Only return signal when asked: compatibility with other models
         if return_signal:
             return Y, signal
@@ -764,9 +767,9 @@ class MixVMF(EmissionModel):
 
         # Calculate log-likelihood
         if self.split:
-            YV = pt.matmul(self.V.T, self.Y)
-        else:
             YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
+        else:
+            YV = pt.matmul(self.V.T, self.Y)
 
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
