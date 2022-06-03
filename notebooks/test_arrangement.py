@@ -166,7 +166,7 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
     likelhoood.
 
     Args:
-        arM (ArrangementMode): 
+        arM (ArrangementMode):
         emM (EmissionModel )
         Y_train (tensor): Y_testing log likelihood (KxP)
         Y_test (tensor): Y_training log likelihood test (KxP)
@@ -233,15 +233,15 @@ def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
     D= pd.DataFrame()
     Utrue_mn = ar.expand_mn(Utrue,emM.K)
     emloglik_train = emM.Estep(Ytrain)
-    
+
     for m in models:
         if m=='data':
             EU = pt.softmax(emloglik_train,1)
-            name = m 
+            name = m
         elif m=='Utrue':
             EU = Utrue_mn
-            name = m 
-        else: 
+            name = m
+        else:
             EU,_ = m.Estep(emloglik_train)
             name = m.name
         uerr_test1= ev.u_abserr(Utrue_mn,EU)
@@ -305,11 +305,11 @@ def plot_P_maps(pmaps,grid):
 
 def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
     # Get the expectation
-    n_models = len(models)+2 
+    n_models = len(models)+2
     K = emloglik.shape[1]
     P = emloglik.shape[2]
-    
-    Uh = [] 
+
+    Uh = []
     plt.figure(figsize=(10,7))
     Uh.append(ar.expand_mn(Utrue[0:1],K))
     Uh.append(pt.softmax(emloglik[0:1],dim=1))
@@ -318,21 +318,21 @@ def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
         Uh.append(A)
 
     if style=='prob':
-        for i,uh in enumerate(Uh): 
+        for i,uh in enumerate(Uh):
             grid.plot_maps(uh[0],cmap='jet',vmax=1,
                     grid=(n_models,K),
                     offset = K*i+1)
-    elif style=='argmax': 
+    elif style=='argmax':
         ArgM = pt.zeros(n_models,P)
-        for i,uh in enumerate(Uh): 
+        for i,uh in enumerate(Uh):
             ArgM[i,:] = pt.argmax(uh[0],dim=0)
         grid.plot_maps(ArgM,cmap='tab10',vmax=K,
                     grid=(1,n_models))
-    elif style=='mixed': 
+    elif style=='mixed':
         ArgM = pt.zeros(n_models,P)
         Prob = pt.zeros(n_models,P)
 
-        for i,uh in enumerate(Uh): 
+        for i,uh in enumerate(Uh):
             ArgM[i,:] = pt.argmax(uh[0],dim=0)
             Prob[i,:] = uh[0][2,:]
         grid.plot_maps(ArgM,cmap='tab10',vmax=K,
@@ -342,26 +342,27 @@ def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
                     offset = n_models+1)
 
 def plot_evaluation(D,criteria=['uerr','cos_err','Ecos_err']
-                      ,types=['test','compl']): 
+                      ,types=['test','compl']):
     # Get the final error and the true pott models
     plt.figure(figsize=(12,7))
     ncrit = len(criteria)
     ntypes = len(types)
-    for j in range(ntypes): 
-        for i in range(ncrit): 
+    for j in range(ntypes):
+        for i in range(ncrit):
             plt.subplot(ntypes,ncrit,i+j*ncrit+1)
             sb.barplot(data=D[D.type==types[j]],x='model',y=criteria[i])
             plt.title(f'{criteria[i]}{types[j]}')
 
-def plot_evaluation2(): 
+def plot_evaluation2():
     # Get the final error and the true pott models
-    plt.figure(figsize=(3,4))
-    D = pd.read_csv('deepMRF.csv')
+    fig = plt.figure(figsize=(3,4))
+    D = pd.read_csv('notebooks/deepMRF.csv')
     T = D[(D.type=='test') & (D.model!='true') & (D.model!='Utrue')]
     noisefloor = D[(D.type=='test') & (D.model=='Utrue')].Ecos_err.mean()
-    sb.barplot(data=T,x='model',y='Ecos_err')
-    plt.ylim([0.5,0.8])
-    plt.axhline(noisefloor)
+    sb.barplot(data=T,x='model',y='uerr')
+    plt.ylim([0,0.25])
+    # plt.axhline(noisefloor)
+    fig.savefig('deepMRF.pdf',format='pdf')
     pass
 
 def simulation_1():
@@ -440,22 +441,22 @@ def simulation_2():
     batch_size=30
     n_epoch=80
     theta = 1.3
-    # Multinomial 
+    # Multinomial
     w = 2.0
-    # MixGaussian 
+    # MixGaussian
     sigma2 = 0.4
     N = 10
 
     eneg_iter = 10
     epos_iter = 10
-    num_sim = 20 
-    
-    
+    num_sim = 20
+
+
     pt.set_default_dtype(pt.float32)
     TT=pd.DataFrame()
     DD=pd.DataFrame()
     HH = np.zeros((num_sim,n_epoch))
-    # REcorded bias parameter 
+    # REcorded bias parameter
     RecBu = pt.zeros((num_sim,K,P))
     RecLp = pt.zeros((num_sim,K,P))
     RecUtrue = pt.zeros((num_sim,K,P))
@@ -497,7 +498,7 @@ def simulation_2():
         indepAr,T,theta1 = train_sml(indepAr,Mtrue.emission,Ytrain,Ytest,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
 
-        # Gte the true arrangement model 
+        # Gte the true arrangement model
         rbm = Mtrue.arrange
         rbm.name = 'true'
 
@@ -555,8 +556,8 @@ def simulation_2():
         DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
         HH[s,:]= TH[1][rbm3.get_param_indices('theta'),:]
-        
-        #record the different fitting runs into structure 
+
+        #record the different fitting runs into structure
         RecBu[s] = pt.softmax(rbm3.bu,0)
         RecLp[s] = pt.softmax(indepAr.logpi,0)
         RecUtrue[s] = ar.expand_mn(Utrue,K).mean(dim=0)
@@ -601,11 +602,11 @@ def simulation_chain():
     logpi = 2.5
     num_sim = 10
     theta = 1.3
-    # Multinomial 
+    # Multinomial
     w = 3.0
-    # MixGaussian 
+    # MixGaussian
     sigma2 = 0.5
-    N = 10 
+    N = 10
 
     eneg_iter = 2
     epos_iter = 6
@@ -615,7 +616,7 @@ def simulation_chain():
     DD=pd.DataFrame()
     HH = np.zeros((num_sim,n_epoch))
 
-    # REcorded bias parameter 
+    # REcorded bias parameter
     RecBu = pt.zeros((num_sim,K,P))
     RecLp = pt.zeros((num_sim,K,P))
     RecUtrue = pt.zeros((num_sim,K,P))
@@ -644,7 +645,7 @@ def simulation_chain():
         indepAr,T,theta1 = train_sml(indepAr,Mtrue.emission,Ytrain,Ytest,
                 part=part,n_epoch=n_epoch,batch_size=num_subj)
 
-        # Gte the true arrangement model 
+        # Gte the true arrangement model
         rbm = Mtrue.arrange
         rbm.name = 'true'
 
@@ -681,8 +682,8 @@ def simulation_chain():
         DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
         HH[s,:]= TH[1][rbm3.get_param_indices('theta'),:]
-        
-        #record the different fitting runs into structure 
+
+        #record the different fitting runs into structure
         RecBu[s] = pt.softmax(rbm3.bu,0)
         RecLp[s] = pt.softmax(indepAr.logpi,0)
         RecUtrue[s] = ar.expand_mn(Utrue,K).mean(dim=0)
@@ -776,7 +777,7 @@ if __name__ == '__main__':
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     # simulation_2()
     # simulation_chain()
-    # simulation_2() 
+    # simulation_2()
     plot_evaluation2()
     # pass
     # test_cmpRBM_Estep()
