@@ -767,9 +767,9 @@ class MixVMF(EmissionModel):
 
         # Calculate log-likelihood
         if self.split:
-            YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
-        else:
             YV = pt.matmul(self.V.T, self.Y)
+        else:
+            YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
 
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)

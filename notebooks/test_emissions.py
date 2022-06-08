@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import evaluation
 import os
 from full_model import FullModel
-from arrangements import ArrangeIndependent
+from arrangements import ArrangeIndependent, expand_mn
 from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
 import time
 import copy
@@ -28,6 +28,8 @@ import h5py
 import scipy.io as spio
 import nibabel as nib
 from SUITPy import flatmap, make_label_gifti
+import scipy.stats as spst
+from scipy.cluster.vq import kmeans, vq
 
 
 def convert_to_vol(data, xyz, voldef):
@@ -309,6 +311,8 @@ def _simulate_full_GMM(X, K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,m
     T = FullModel(arrangeT, emissionT)
     U = arrangeT.sample(num_subj=num_sub)
     Y = emissionT.sample(U)
+    prior = expand_mn(U, K) * 7.0
+    prior = prior.softmax(dim=1)
 
     # Step 3: Compute the true log likelihood from the true model
     Uhat_true, loglike_true = T.Estep(Y)
@@ -323,6 +327,9 @@ def _simulate_full_GMM(X, K=5, P=100, N=40, num_sub=10, max_iter=50,sigma2=1.0,m
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
     emissionM = MixGaussian(K=K, N=N, P=P, X=X, std_V=False)
+    emissionM.initialize(Y, X=X)
+    emissionM.Mstep(prior)
+
     M = FullModel(arrangeM, emissionM)
     M, ll, theta, Uhat_fit = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
 
@@ -391,7 +398,7 @@ def _simulate_full_GME(X, K=5, P=1000, N=20, num_sub=10, max_iter=100,
     M = FullModel(arrangeM, emissionM)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
-    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
+    M, ll, theta, Uhat_fit = M.fit_em(Y=Y, iter=max_iter, tol=0.0001, fit_arrangement=False)
 
     # Plotfitting results
     fig, axs = plt.subplots(1, 4, figsize=(16, 4))
@@ -413,6 +420,15 @@ def _simulate_full_GME(X, K=5, P=1000, N=20, num_sub=10, max_iter=100,
     fig.suptitle('GME fitting results')
     plt.tight_layout()
     plt.show()
+
+    fig = plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    sb.scatterplot(x=Y.squeeze(dim=0)[0], y=Y.squeeze(dim=0)[1], hue=U[0], palette='tab10')
+    plt.subplot(1, 2, 2)
+    sb.scatterplot(x=Y.squeeze(dim=0)[0], y=Y.squeeze(dim=0)[1], hue=Uhat_fit.squeeze(0).argmax(0),
+                   palette='tab10')
+    plt.show()
+
     print('Done simulation GME.')
 
 
@@ -840,7 +856,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
         V_train.append(M[i].emission.V)
 
         # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
-        criterion = ['nmi', 'ari', 'coserr_E', 'coserrA_E', 'Uerr']
+        criterion = ['nmi', 'ari', 'coserr_E', 'coserrA_E', 'Uerr', 'homogeneity']
         D = {}
         D['data_type'] = [data_type]
         D['K'] = [K]
@@ -859,6 +875,10 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
             elif c in ['Uerr']:  # absolute prediction error
                 _, this_uerr = ev.matching_U(U, Uhat_train[i])
                 D[c]=[this_uerr.mean().item()]
+            elif c in ['homogeneity']:
+                U_group = pt.sum(Uhat_train[i], dim=0)  # sum across subjects
+                U_group = U_group / pt.sum(U_group, dim=0, keepdim=True)  # normalization to 1
+                D[c]=[ev.homogeneity(Y_test,U_group,soft_assign=False,z_transfer=False)]
         T=pd.concat([T,pd.DataFrame(D)])
     # Step 3.5. Do plot of the clustering results if required
     if do_plotting:
@@ -897,6 +917,7 @@ def do_full_comparison_emission(clusters=5, iters=2, N=20, P=1000, subjs=10, bet
                                           N=N, beta=beta, dispersion=disper[m],
                                           same_signal=same_signal, missingdata=missingdata)
             D = pd.concat([D, T])
+            print('Done iter=', i)
     return D
 
 
@@ -934,6 +955,30 @@ def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
 
     plt.suptitle('parameter recovery using different E_step (GME)')
     plt.tight_layout()
+
+
+def getData_from_T(T, crit='Uerr', true_model='GME', fit_model=['GME'], trim_locmin=True):
+    D = []
+    for fm in fit_model:
+        ind = (T.data_type == true_model) & (T.model != 'true') & (T.model == fm)
+        data = T[ind][crit].values
+        D.append(data)
+
+    if trim_locmin:
+        ind_matrix = []
+        for d in D:
+            # Find a threshold or standard to remove those local minimas
+            codebook, _ = kmeans(d, 2)  # Cluster array into two group
+            cluster_ind, _ = vq(d, codebook)
+
+            if d[np.where(cluster_ind == 0)].mean() > d[np.where(cluster_ind == 1)].mean():
+                cluster_ind = 1 - cluster_ind
+
+            ind_matrix.append(cluster_ind)
+        final_idx = np.where(np.asarray(ind_matrix).sum(axis=0) == 0)
+        return [this_d[final_idx] for this_d in D]
+    else:
+        return D
 
 
 def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/glm7',
@@ -1011,10 +1056,10 @@ if __name__ == '__main__':
     X = pt.eye(46).repeat(10, 1)  # simulate task design matrix X
     # _simulate_full_VMF(X=None, K=10, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
     #                    missingdata=None, n_inits=None)
-    # _simulate_full_GMM(X=None, K=5, P=1000, N=20, num_sub=10, max_iter=100, sigma2=0.5,
+    # _simulate_full_GMM(X=None, K=5, P=500, N=20, num_sub=10, max_iter=200, sigma2=2.0,
     #                    missingdata=None)
-    _simulate_full_GME(X=X, K=5, P=5000, N=20, num_sub=10, max_iter=100, sigma2=0.5, beta=0.4,
-                       num_bins=100, std_V=True, type_estep='linspace', missingdata=None)
+    # _simulate_full_GME(X=None, K=5, P=1000, N=2, num_sub=1, max_iter=100, sigma2=0.1, beta=2.0,
+    #                    num_bins=100, std_V=True, type_estep='linspace', missingdata=None)
 
     # T = pd.DataFrame()
     # for i in range(10):
@@ -1030,14 +1075,18 @@ if __name__ == '__main__':
     #                         std_V=True, num_iter=5, sigma2=[0.1, 0.5, 5.0], beta=[0.1, 0.5, 2.0],
     #                         type_estep=['linspace', 'import', 'reject'])
     # plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
-    #
-    T = do_full_comparison_emission(clusters=5, iters=100, beta=0.5,
+
+    T = do_full_comparison_emission(clusters=5, iters=10, beta=0.5,
                                     true_models=['GMM', 'GME', 'VMF'],
                                     disper=[0.1, 0.1, 50], same_signal=True, missingdata=None)
-    plot_comparision_emission(T)
-    plt.show()
-    # T.to_csv('notebooks/emission_modelrecover_2.csv')
-    # T = pd.read_csv('notebooks/emission_modelrecover_2.csv')
+    # T.to_csv('emission_modelrecover_k5_iter1000.csv')
+    # T = pd.read_csv('emission_modelrecover_k5_iter1000.csv')
+    # plot_comparision_emission(T)
+    # plt.show()
+
+    # T = pd.read_csv('emission_modelrecover_k5_iter100.csv')
+    # D = getData_from_T(T, crit='Uerr', true_model='GME', fit_model=['GME', 'VMF'])
+    # spst.ttest_rel(D[0], D[1])
     # pass
 
     # G, D = train_mdtb_dirty(K=5, train_participants=[2, 3, 4, 6, 8, 9, 10, 12, 14, 15],

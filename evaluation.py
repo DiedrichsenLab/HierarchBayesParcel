@@ -116,6 +116,64 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     return pt.nanmean(cos_distance, dim=1)
 
 
+def homogeneity(Y, U_hat, soft_assign=True, z_transfer=False, type='rsfc'):
+    """Compute the global homogeneity measure for a given \
+       parcellation. (Schaefer 2018)
+       \sum_{L}p(l)|l| / \sum_{L}|l|
+       L is the number of parcels, p(l) is the mean correlation
+       (Pearson's) between all vertex pairs within parcel l.
+    Args:
+        Y: The underlying data to compute correlation
+           must has a shope of (n_sub, N, P)
+        U_hat: the given parcellation, shape (K, P)
+        soft_assign: if True, compute the expected homogeneity
+                     False, otherwise
+        z_transfer: if True, apply r-to-z transformation
+    Returns:
+        the global homogeneity measure of a given parcellation
+    """
+    Y = Y - pt.nanmean(Y, dim=1, keepdim=True)  # mean centering
+    num_sub = Y.shape[0]
+    cov = pt.matmul(pt.transpose(Y, 1, 2), Y)
+    var = pt.nansum(Y**2, dim=1, keepdim=True)
+    var = pt.sqrt(pt.matmul(pt.transpose(var, 1, 2), var))
+    r = cov/var
+
+    if z_transfer:
+        r = 0.5 * (pt.log(1 + r) - pt.log(1 - r))
+
+    global_homo = []
+    N = []
+    if soft_assign:  # Calculate the expected homogeneity
+        #TODO: Not very sure if we need a soft version
+        pass
+    else:
+        # Calculate the argmax U_hat (hard assignments)
+        parcellation = pt.argmax(U_hat, dim=0)
+        for parcel in pt.unique(parcellation):
+            in_vertex = pt.where(parcellation == parcel)[0]
+            # remove vertex with no data in the parcel
+            n_k = in_vertex.shape[0] - Y[:, 0, in_vertex].isnan().sum(dim=1)
+
+            # Compute the average homogeneity within current parcel
+            this_r = r[:,in_vertex,:][:,:,in_vertex]
+            ind = pt.triu(pt.ones(this_r.shape[1], this_r.shape[2]), diagonal=1) == 1
+            this_homo = this_r[:, ind].nanmean(1)
+
+            # Check if there is less than two vertices in the parcel
+            this_homo = pt.where(n_k<2, 0.0, this_homo)
+            global_homo.append(this_homo)
+            N.append(n_k)
+
+        global_homo = pt.stack(global_homo)  # (K, num_sub)
+        N = pt.stack(N)
+        assert pt.all(N >= 0)
+
+    # compute the subject-specific homogenity measure
+    g_homogeneity = pt.sum(global_homo * N, dim=0) / pt.sum(N, dim=0)
+    return g_homogeneity, global_homo, N
+
+
 def logpY(emloglik,Uhat):
     """Averaged log of <p(Y|U)>q
     Not sure anymore that this criterion makes a lot of
