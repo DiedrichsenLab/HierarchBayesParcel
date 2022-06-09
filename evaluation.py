@@ -116,9 +116,10 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     return pt.nanmean(cos_distance, dim=1)
 
 
-def homogeneity(Y, U_hat, soft_assign=True, z_transfer=False, type='rsfc'):
-    """Compute the global homogeneity measure for a given \
-       parcellation. (Schaefer 2018)
+def homogeneity_rest(Y, U_hat, soft_assign=False, z_transfer=False,
+                     single_return=True):
+    """Compute the global Resting-state connectional homogeneity
+       measure for a given parcellation. (higher=better) [Schaefer 2018]
        \sum_{L}p(l)|l| / \sum_{L}|l|
        L is the number of parcels, p(l) is the mean correlation
        (Pearson's) between all vertex pairs within parcel l.
@@ -130,7 +131,9 @@ def homogeneity(Y, U_hat, soft_assign=True, z_transfer=False, type='rsfc'):
                      False, otherwise
         z_transfer: if True, apply r-to-z transformation
     Returns:
-        the global homogeneity measure of a given parcellation
+        g_homogeneity: the global resting-state homogeneity measure
+        global_homo: the mean honogeneity for each parcel
+        N: the valid (non-NaN) number of vertices in each parcel
     """
     Y = Y - pt.nanmean(Y, dim=1, keepdim=True)  # mean centering
     num_sub = Y.shape[0]
@@ -171,7 +174,67 @@ def homogeneity(Y, U_hat, soft_assign=True, z_transfer=False, type='rsfc'):
 
     # compute the subject-specific homogenity measure
     g_homogeneity = pt.sum(global_homo * N, dim=0) / pt.sum(N, dim=0)
-    return g_homogeneity, global_homo, N
+    if single_return:
+        return g_homogeneity.nanmean()
+    else:
+        return g_homogeneity, global_homo, N
+
+
+def inhomogeneity_task(Y, U_hat, soft_assign=False, z_transfer=False,
+                       single_return=True):
+    """Compute the global Task functional inhomogeneity measure
+       for a given parcellation. (lower = better) [Schaefer 2018]
+       \sum_{L}std(l)|l| / \sum_{L}|l|
+       L is the number of parcels, std(l) is the standard deviation
+       between all vertex pairs within parcel l.
+    Args:
+        Y: The underlying data to compute correlation
+           must has a shope of (n_sub, N, P)
+        U_hat: the given parcellation, shape (K, P)
+        soft_assign: if True, compute the expected homogeneity
+                     False, otherwise
+        z_transfer: if True, apply r-to-z transformation
+    Returns:
+        the global inhomogeneity task functional measure
+    """
+    # Y = Y - pt.nanmean(Y, dim=1, keepdim=True)  # mean centering
+    num_sub = Y.shape[0]
+
+    if z_transfer:
+        r = 0.5 * (pt.log(1 + r) - pt.log(1 - r))
+
+    global_homo = []
+    N = []
+    if soft_assign:  # Calculate the expected homogeneity
+        #TODO: Not very sure if we need a soft version
+        pass
+    else:
+        # Calculate the argmax U_hat (hard assignments)
+        parcellation = pt.argmax(U_hat, dim=0)
+        for parcel in pt.unique(parcellation):
+            in_vertex = pt.where(parcellation == parcel)[0]
+            this_r = Y[:,:,in_vertex]
+            # remove vertex with no data in the parcel
+            n_k = in_vertex.shape[0] - Y[:, 0, in_vertex].isnan().sum(dim=1)
+
+            # Compute the average inhomogeneity within current parcel
+            this_homo = pt.tensor(np.nanstd(this_r, axis=2))
+            this_homo = this_homo.mean(dim=1)
+            # Check if there is less than two vertices in the parcel
+            this_homo = pt.where(n_k<2, 0.0, this_homo)
+            global_homo.append(this_homo)
+            N.append(n_k)
+
+        global_homo = pt.stack(global_homo)  # (K, num_sub)
+        N = pt.stack(N)
+        assert pt.all(N >= 0)
+
+    # compute the subject-specific inhomogenity measure
+    g_homogeneity = pt.sum(global_homo * N, dim=0) / pt.sum(N, dim=0)
+    if single_return:
+        return g_homogeneity.nanmean()
+    else:
+        return g_homogeneity, global_homo, N
 
 
 def logpY(emloglik,Uhat):

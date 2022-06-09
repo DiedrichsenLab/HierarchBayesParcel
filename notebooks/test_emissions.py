@@ -878,7 +878,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
             elif c in ['homogeneity']:
                 U_group = pt.sum(Uhat_train[i], dim=0)  # sum across subjects
                 U_group = U_group / pt.sum(U_group, dim=0, keepdim=True)  # normalization to 1
-                D[c]=[ev.homogeneity(Y_test,U_group,soft_assign=False,z_transfer=False)]
+                D[c]=[ev.inhomogeneity_task(Y_test,U_group,z_transfer=False, single_return=True)]
         T=pd.concat([T,pd.DataFrame(D)])
     # Step 3.5. Do plot of the clustering results if required
     if do_plotting:
