@@ -261,7 +261,8 @@ def simulation_chain_obs():
         # Make list of candidate models
         Models = [rbm,Mtrue]
 
-        rbm, T1,theta_hist = train_sml(rbm,emloglik_train,emloglik_train,part,
+        rbm, T1,theta_hist = train_sml(rbm,emloglik_train,emloglik_train, 
+                part=part,
                 batch_size=batch_size,
                 n_epoch=n_epoch)
 
