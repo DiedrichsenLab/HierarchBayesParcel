@@ -16,7 +16,7 @@ import evaluation
 import os
 from full_model import FullModel
 from arrangements import ArrangeIndependent, expand_mn
-from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF
+from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF, wMixVMF
 import time
 import copy
 import seaborn as sb
@@ -242,6 +242,9 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
     elif emission == 'VMF':
         emissionT = MixVMF(K=k, N=dim, P=p, X=None, uniform_kappa=True)
         emissionT.kappa = pt.tensor(dispersion)
+    elif emission == 'wVMF':
+        emissionT = wMixVMF(K=k, N=dim, P=p, X=None, uniform_kappa=True)
+        emissionT.kappa = pt.tensor(dispersion)
     else:
         raise ValueError("The value of emission must be 0(GMM), 1(GMM_exp), 2(GMM_gamma), "
                          "or 3(VMF).")
@@ -263,6 +266,10 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
         if not same_signal:
             signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, 1, p))
         Y_test = Y_test * signal
+    elif emission == 'wVMF':
+        Y_train = MT.emission.sample(U)
+        Y_test = MT.emission.sample(U)
+        signal = MT.emission.W
     else:
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
@@ -513,6 +520,89 @@ def _simulate_full_VMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
     plt.tight_layout()
     plt.show()
     print('Done simulation VMF.')
+
+
+def _simulate_full_wVMF(X, K=5, P=100, N=40, num_sub=10, max_iter=50,
+                       uniform_kappa=True, missingdata=None, n_inits=None):
+    """Simulation function used for testing full model with a VMF emission
+    Args:
+        K: the number of clusters
+        P: the number of data points
+        N: the number of dimensions
+        num_sub: the number of subject to simulate
+        max_iter: the maximum iteration for EM procedure
+        uniform_kappa: If true, the kappa is a scaler across different K's;
+                       Otherwise, the kappa is different across K's
+    Returns:
+        Several evaluation plots.
+    """
+    # Step 1: Set the true model to some interesting value
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionT = wMixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
+
+    # Step 2: Generate data by sampling from the above model
+    T = FullModel(arrangeT, emissionT)
+    U = arrangeT.sample(num_subj=num_sub)
+    Y = emissionT.sample(U)
+
+    # Step 3: Compute the log likelihood from the true model
+    Uhat_true, loglike_true = T.Estep(Y=Y)  # Run only Estep!
+    theta_true = T.get_params()
+
+    if missingdata is not None:
+        idx = pt.randint(0, P-1, (num_sub, int(missingdata*P)))
+        Y = pt.transpose(Y, 1, 2)
+        Y[pt.arange(Y.shape[0]).unsqueeze(-1), idx] = pt.nan
+        Y = pt.transpose(Y, 1, 2)
+
+    # Step 4: Generate new models for fitting
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
+    emissionM = wMixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
+    M = FullModel(arrangeM, emissionM)
+
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
+    M, ll, theta, _ = M.fit_em(Y=Y, iter=max_iter, tol=0.00001, fit_arrangement=False)
+
+    # Multiple random initializations to check local maxima if required
+    if n_inits is not None:
+        max_ll = -pt.inf
+        for i in range(n_inits):
+            this_emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
+            this_M = FullModel(arrangeM, this_emissionM)
+            # Step 5: Estimate the parameter thetas to fit the new model using EM
+            this_M, this_ll, this_theta, _ = this_M.fit_em(Y=Y, iter=max_iter, tol=0.00001,
+                                                           fit_arrangement=False)
+            if this_ll[-1] > max_ll:
+                M = this_M
+                max_ll = this_ll[-1]
+                ll = this_ll
+                theta = this_theta
+                emissionM = this_emissionM
+
+    # Plot fitting results
+    fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+    _plot_loglike(axs[0], ll, loglike_true, color='b')
+
+    ind = M.get_param_indices('emission.V')
+    true_V = theta_true[ind].reshape(emissionM.M, K)
+    predicted_V = theta[:, ind]
+    idx = matching_params(true_V, predicted_V, once=False)
+    _plot_diff(axs[1], true_V, predicted_V, index=idx, name='V')
+
+    ind = M.get_param_indices('emission.kappa')
+    if uniform_kappa or emissionT.uniform_kappa:
+        # Plot if kappa is uniformed
+        _plt_single_param_diff(axs[2], theta_true[T.get_param_indices('emission.kappa')],
+                               theta[:, ind], name='kappa')
+    else:
+        # Plot if kappa is not uniformed
+        idx = matching_params(theta_true[ind].reshape(1, K), theta[:, ind], once=False)
+        _plot_diff(axs[2], theta_true[ind].reshape(1, K), theta[:, ind], index=idx, name='kappa')
+
+    fig.suptitle('VMF fitting results, run = %d' % int(emissionT.X.shape[0]/emissionT.X.shape[1]))
+    plt.tight_layout()
+    plt.show()
+    print('Done simulation wVMF.')
 
 
 def _simulate_full_GMM_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50, beta=0.5, sigma2=1.0):
@@ -834,13 +924,14 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
                                                         dispersion=dispersion, beta=beta,
                                                         do_plot=False, same_signal=same_signal,
                                                         missingdata=missingdata)
-    model=['GMM', 'GME', 'VMF', 'true']
+    model=['GMM', 'GME', 'VMF', 'wVMF', 'true']
 
     # Step 2. Fit the competing emission model using the training data
     emissionM = []
     emissionM.append(MixGaussian(K=K, N=N, P=P, X=None, std_V=False))
     emissionM.append(MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True))
     emissionM.append(MixVMF(K=K, N=N, P=P, X=None, uniform_kappa=True))
+    emissionM.append(wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=True))
     M = []
     Uhat_train = []  # Probability of assignments
     V_train = []  # Predicted mean directions
@@ -856,7 +947,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
         V_train.append(M[i].emission.V)
 
         # Step 4. evaluate the emission model (freezing arrangement model) by a given criterion.
-        criterion = ['nmi', 'ari', 'coserr_E', 'coserrA_E', 'Uerr', 'homogeneity']
+        criterion = ['coserr_E', 'coserrA_E', 'Uerr']
         D = {}
         D['data_type'] = [data_type]
         D['K'] = [K]
@@ -884,7 +975,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
     if do_plotting:
         fig = make_subplots(rows=2, cols=2, specs=[[{'type': 'surface'}, {'type': 'surface'}],
                                                    [{'type': 'surface'}, {'type': 'surface'}]],
-                            subplot_titles=["True", "GMM", "GME", "VMF"])
+                            subplot_titles=["True", "GMM", "GME", "VMF", "wVMF"])
         fig.add_trace(go.Scatter3d(x=Y_train[0, 0, :], y=Y_train[0, 1, :], z=Y_train[0, 2, :],
                                    mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])),
                       row=1, col=1)
@@ -921,8 +1012,8 @@ def do_full_comparison_emission(clusters=5, iters=2, N=20, P=1000, subjs=10, bet
     return D
 
 
-def plot_comparision_emission(T, criterion=['nmi', 'ari', 'coserr_E', 'coserrA_E', 'Uerr'],
-                              true_models=['GMM', 'GME', 'VMF']):
+def plot_comparision_emission(T, criterion=['coserr_E', 'coserrA_E', 'Uerr'],
+                              true_models=['GMM', 'GME', 'VMF', 'wVMF']):
     num_rows = len(criterion)
     num_cols = len(true_models)
     fig1, axs = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharey='row')
@@ -1056,6 +1147,8 @@ if __name__ == '__main__':
     X = pt.eye(46).repeat(10, 1)  # simulate task design matrix X
     # _simulate_full_VMF(X=None, K=10, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
     #                    missingdata=None, n_inits=None)
+    # _simulate_full_wVMF(X=None, K=10, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
+    #                     missingdata=None, n_inits=None)
     # _simulate_full_GMM(X=None, K=5, P=500, N=20, num_sub=10, max_iter=200, sigma2=2.0,
     #                    missingdata=None)
     # _simulate_full_GME(X=None, K=5, P=1000, N=2, num_sub=1, max_iter=100, sigma2=0.1, beta=2.0,
@@ -1076,13 +1169,13 @@ if __name__ == '__main__':
     #                         type_estep=['linspace', 'import', 'reject'])
     # plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
 
-    T = do_full_comparison_emission(clusters=5, iters=10, beta=0.5,
-                                    true_models=['GMM', 'GME', 'VMF'],
-                                    disper=[0.1, 0.1, 50], same_signal=True, missingdata=None)
-    # T.to_csv('emission_modelrecover_k5_iter1000.csv')
-    # T = pd.read_csv('emission_modelrecover_k5_iter1000.csv')
-    # plot_comparision_emission(T)
-    # plt.show()
+    T = do_full_comparison_emission(clusters=5, iters=50, beta=0.5,
+                                    true_models=['GMM', 'GME', 'VMF', 'wVMF'],
+                                    disper=[0.1, 0.1, 25, 25], same_signal=True, missingdata=None)
+    T.to_csv('emission_modelrecover_k5_iter50.csv')
+    T = pd.read_csv('emission_modelrecover_k5_iter50.csv')
+    plot_comparision_emission(T)
+    plt.show()
 
     # T = pd.read_csv('emission_modelrecover_k5_iter100.csv')
     # D = getData_from_T(T, crit='Uerr', true_model='GME', fit_model=['GME', 'VMF'])
