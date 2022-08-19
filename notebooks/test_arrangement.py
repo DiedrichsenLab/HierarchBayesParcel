@@ -501,7 +501,7 @@ def simulation_2():
         rbm = Mtrue.arrange
         rbm.name = 'true'
 
-        # Convolutional Boltzmann:
+        # Boltzmann with a arbitrary fully connected model - P hiden nodes
         n_hidden = P # hidden nodes
         rbm2 = ar.cmpRBM(K,P,nh=n_hidden,
                             eneg_iter=eneg_iter,
@@ -516,7 +516,8 @@ def simulation_2():
         rbm2.fit_W = True
         rbm2.fit_bu = True
 
-        # Covolutional
+        # Covolutional Boltzman machine with the true neighbourhood matrix 
+        # theta_w in this case is not fit. 
         rbm3 = ar.cmpRBM(K,P,Wc=rbm.Wc,
                             theta=theta,
                             eneg_iter=eneg_iter,
@@ -602,12 +603,12 @@ def simulation_chain():
     num_sim = 10
     theta = 1.3
     # Multinomial 
-    w = 3.0
+    w = 1.5
     # MixGaussian 
     sigma2 = 0.5
     N = 10 
 
-    eneg_iter = 2
+    eneg_iter = 6
     epos_iter = 6
 
     pt.set_default_dtype(pt.float32)
@@ -776,9 +777,9 @@ if __name__ == '__main__':
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     # simulation_2()
     # simulation_chain()
-    # simulation_2() 
-    plot_evaluation2()
-    # pass
+    simulation_2() 
+    # plot_evaluation2()
+    pass
     # test_cmpRBM_Estep()
     # test_sample_multinomial()
     # train_RBM()
