@@ -494,7 +494,7 @@ def matching_U(U_true, U_predict):
         The U_hat with aligned labels
     """
     U_predict = pt.argmax(U_predict, dim=1)
-    perm = permute(np.unique(U_predict))
+    perm = permute(np.unique(U_true))
     min_err = 1
     U_match = U_predict
     pred_err = None

@@ -863,7 +863,7 @@ class wMixVMF(EmissionModel):
         self.D = D
         self.random_params()
         self.set_param_list(['V', 'kappa', 'W'])
-        self.name = 'VMF'
+        self.name = 'wVMF'
         if params is not None:
             self.set_params(params)
 
@@ -892,8 +892,13 @@ class wMixVMF(EmissionModel):
             self.Y = self.Y_raw
             self.split = True
         else:
+            # use data density as weights
+            # W = pt.nanmean(self._init_weights(self.Y), dim=0, keepdim=True)
+
+            # # use signal lengh as weights
             W = pt.nanmean(pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True)),
-                           dim=0, keepdim=True) # use signal lengh as weight
+                           dim=0, keepdim=True)
+
             self.W = W * (self.P / pt.sum(W))
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.run = 1
@@ -918,10 +923,43 @@ class wMixVMF(EmissionModel):
         else:
             self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
 
-        # Initialize W suppose there is one subject (1,k,P)
-        W = pt.distributions.normal.Normal(0, 1).sample((1, self.P))
-        W = pt.softmax(W, dim=1) * self.P
-        self.W = W.unsqueeze(1) # unsqueeze the second dimension for futher computation
+        # Option 1: Initialize W suppose there is one subject (1,k,P)
+        # W = pt.distributions.normal.Normal(0, 1).sample((1, self.P))
+        # W = pt.softmax(W, dim=1) * self.P
+        # self.W = W.unsqueeze(1)  # unsqueeze the second dimension for futher computation
+
+        # Option 2.1: Initialize W (SNR) ~ (80% no signal - 0.01, 20% full signal - 1)
+        W = pt.ones((self.P,)) * 0.5
+        W[pt.randint(self.P, (int(self.P * 0.2),))] = 1
+        self.W = W.unsqueeze(0).unsqueeze(1)
+
+        # Option 2.2. The (SNR) ~ bernoulli(80% - 0, 20% - 1)
+        # W = pt.distributions.bernoulli.Bernoulli(0.2).sample((1, self.P))
+        # W[W == 0] = 0.01
+        # self.W = W.unsqueeze(1)
+
+        # Option 3: SNR ~ exponential(beta) - default beta = 10.0
+        # W = pt.distributions.exponential.Exponential(10.0).sample((1, self.P))
+        # W[W > 1] = 1 # Trim SNR to 1 if > 1
+        # self.W = W.unsqueeze(1)
+
+    def _init_weights(self, data, q=20, sigma=5):
+        """ Compute the initial weights of data based on gaussian kernel
+            w_i = \sum_j exp(-d(x_i, x_j)^2 / sigma), where j is the set of
+            q-nearest neighbours of i. sigma is a positive scalar
+        Args:
+            data: the initialzed data, shape (n_subj, N, P)
+            q: the number of nearest neighbours. Defalut q = 20
+            sigma: a positive scalar. Default sigma = 5
+        Returns:
+            the initial weights associated with each data point.
+            shape (n_subj, 1, P)
+        """
+        data = pt.transpose(data, 1, 2) # the tensor shape (subj, P, N)
+        dist = pt.cdist(data, data, p=2)
+        W, idx = pt.topk(dist, q, dim=1, largest=False)
+        W = pt.sum(pt.exp(-W ** 2 / sigma), dim=1, keepdim=True)
+        return W
 
     def _bessel_function(self, order, kappa):
         """ The modified bessel function of the first kind of real order
@@ -1007,11 +1045,11 @@ class wMixVMF(EmissionModel):
         UU = pt.sum(this_U_hat * self.run, dim=0)
         if not self.split:  # No data splitting
             regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
-            XYU = pt.matmul(regressX, WYU)
+            XYU = pt.matmul(regressX, YU)
             self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
         else:
             # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-            self.V = WYU / pt.sqrt(pt.sum(WYU ** 2, dim=0))
+            self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat

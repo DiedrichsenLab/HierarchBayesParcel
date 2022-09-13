@@ -259,7 +259,20 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
         else:
             Y_test = MT.emission.sample(U)
     elif emission == 'VMF':
-        signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, 1, p))
+        # 1. The SNR is generated from exponential distribution
+        # signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, 1, p))
+        # signal[signal > 1] = 1  # Trim SNR to 1 if > 1
+
+        # 2. The (SNR) ~ bernoulli(80% - 0.1, 20% - 1)
+        # signal = pt.distributions.bernoulli.Bernoulli(0.2).sample((num_sub, p))
+        # signal[signal == 0] = 0.05
+        # signal = signal.unsqueeze(1)
+
+        # 3. The (SNR) ~ (80% no signal - 0.01, 20% full signal - 1)
+        signal = pt.ones((p,)) * 0.5
+        signal[pt.randint(p, (int(p * 0.2),))] = 1
+        signal = signal.unsqueeze(0).unsqueeze(1)
+
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
         Y_train = Y_train * signal
@@ -1008,24 +1021,26 @@ def do_full_comparison_emission(clusters=5, iters=2, N=20, P=1000, subjs=10, bet
                                           N=N, beta=beta, dispersion=disper[m],
                                           same_signal=same_signal, missingdata=missingdata)
             D = pd.concat([D, T])
-            print('Done iter=', i)
+            # print('Done iter=', i)
     return D
 
 
-def plot_comparision_emission(T, criterion=['coserr_E', 'coserrA_E', 'Uerr'],
-                              true_models=['GMM', 'GME', 'VMF', 'wVMF']):
+def plot_comparision_emission(T, K=5, criterion=['coserr_E', 'coserrA_E', 'Uerr'],
+                              true_models=['GMM', 'GME', 'VMF', 'wVMF'],
+                              dispersion=[0.1, 0.1, 18, 18]):
     num_rows = len(criterion)
     num_cols = len(true_models)
-    fig1, axs = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharey='row')
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharey='row')
     for i in range(num_rows):
         for j in range(num_cols):
             plt.sca(axs[i, j])
             ind = (T.data_type == true_models[j]) & (T.model != 'true')
             sb.barplot(data=T[ind], x='model', y=criterion[i])
             axs[i][0].set_ylabel(criterion[i])
-            axs[0][j].set_title(true_models[j])
+            axs[0][j].set_title(true_models[j]+f' {dispersion[j]}')
             ind = (T.data_type == true_models[j]) & (T.model == 'true')
             plt.axhline(y=T[ind][criterion[i]].mean(), linestyle=':', color='k')
+    fig.suptitle('The emission models comparison, k = %d' %K, fontsize=16)
 
 
 def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
@@ -1169,12 +1184,14 @@ if __name__ == '__main__':
     #                         type_estep=['linspace', 'import', 'reject'])
     # plot_comparison_samplingGME(T, type_estep=['linspace', 'import', 'reject'])
 
-    T = do_full_comparison_emission(clusters=5, iters=50, beta=0.5,
+    ######### emission completion test #########
+    K = 5
+    T = do_full_comparison_emission(clusters=K, iters=10, beta=2.0,
                                     true_models=['GMM', 'GME', 'VMF', 'wVMF'],
-                                    disper=[0.1, 0.1, 25, 25], same_signal=True, missingdata=None)
-    T.to_csv('emission_modelrecover_k5_iter50.csv')
-    T = pd.read_csv('emission_modelrecover_k5_iter50.csv')
-    plot_comparision_emission(T)
+                                    disper=[0.1, 0.1, 50, 50], same_signal=True, missingdata=None)
+    # T.to_csv('emission_modelrecover_k%d_iter50_new.csv' %K)
+    # T = pd.read_csv('emission_modelrecover_k%d_iter50_new.csv' %K)
+    plot_comparision_emission(T, K=K, dispersion=[0.1, 0.1, 50, 50])
     plt.show()
 
     # T = pd.read_csv('emission_modelrecover_k5_iter100.csv')
