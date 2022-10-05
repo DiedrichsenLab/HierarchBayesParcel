@@ -401,20 +401,20 @@ def matching_greedy(Y_target, Y_source):
     """
     K = Y_target.shape[0]
     # Compute the row x row correlation matrix 
-    Y_target -= Y_target.mean(dim=1,keepdim=True)
-    Y_source -= Y_source.mean(dim=1,keepdim=True)
-    Cov = pt.matmul(Y_target,Y_source.t())
-    Var1 = pt.sum(Y_target*Y_target,dim=1)
-    Var2 = pt.sum(Y_source*Y_source,dim=1)
-    Corr = Cov / pt.sqrt(pt.outer(Var1,Var2))
+    Y_target_mc = Y_target - Y_target.mean(dim=1, keepdim=True)
+    Y_source_mc = Y_source - Y_source.mean(dim=1, keepdim=True)
+    Cov = pt.matmul(Y_target_mc, Y_source_mc.t())
+    Var1 = pt.sum(Y_target_mc * Y_target_mc, dim=1)
+    Var2 = pt.sum(Y_source_mc * Y_source_mc, dim=1)
+    Corr = Cov / pt.sqrt(pt.outer(Var1, Var2))
     
     # Initialize index array 
-    indx = np.empty((K,),np.int)
+    indx = np.empty((K,), np.int)
     for i in range(K):
-        ind = np.unravel_index(np.nanargmax(Corr),Corr.shape)
-        indx[ind[0]]=ind[1]
-        Corr[ind[0],:]=pt.nan
-        Corr[:,ind[1]]=pt.nan
+        ind = np.unravel_index(np.nanargmax(Corr), Corr.shape)
+        indx[ind[0]] = ind[1]
+        Corr[ind[0], :] = pt.nan
+        Corr[:, ind[1]] = pt.nan
 
     return indx 
 
