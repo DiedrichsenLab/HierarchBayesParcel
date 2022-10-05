@@ -412,7 +412,7 @@ def matching_greedy(Y_target, Y_source):
     indx = np.empty((K,),np.int)
     for i in range(K):
         ind = np.unravel_index(np.nanargmax(Corr),Corr.shape)
-        indx[ind[1]]=ind[0]
+        indx[ind[0]]=ind[1]
         Corr[ind[0],:]=pt.nan
         Corr[:,ind[1]]=pt.nan
 
