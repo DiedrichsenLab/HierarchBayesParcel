@@ -642,8 +642,16 @@ class MixGaussianExp(EmissionModel):
             np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),
                                     err_msg='The given signal must with a shape of (num_subj, P)')
         else:
-            # Draw the signal strength for each node from an exponential distribution
-            signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
+            # 1. Draw the signal strength for each node from an exponential distribution
+            # signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
+
+            # 2. Draw the signal strength from 80%-0; 20%-maxlength
+            W = pt.tensor(np.random.choice(2, self.P, p=[0.8, 0.2]), dtype=pt.float32)
+            W = W * self.beta
+            signal = W.expand(num_subj, -1)
+
+            # W = pt.tensor(np.random.choice(3, self.P, p=[0.3, 0.4, 0.3]), dtype=pt.float32)
+            # signal = W.expand(num_subj, -1)
 
         Y = pt.normal(0, pt.sqrt(self.sigma2), (num_subj, self.N, self.P))
         for s in range(num_subj):
@@ -694,6 +702,7 @@ class MixVMF(EmissionModel):
             self.Y = self.Y_raw
             self.split = True
         else:
+            self.W = pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.run = 1
             self.split = False
@@ -802,9 +811,49 @@ class MixVMF(EmissionModel):
             regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
             XYU = pt.matmul(regressX, YU)
             self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
+            r_norm = pt.sqrt(pt.sum(XYU ** 2, dim=0))
         else:
             # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
             self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
+            r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
+
+        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
+        # where r_bar = ||V_k||/N*Uhat
+        if self.uniform_kappa:
+            r_bar = r_norm.sum() / (self.P * self.num_subj)
+            # r_bar[r_bar > 0.95] = 0.95
+            # r_bar[r_bar < 0.05] = 0.05
+            r_bar = pt.mean(r_bar)
+        else:
+            r_bar = r_norm / pt.sum(UU, dim=1)
+            # r_bar[r_bar > 0.95] = 0.95
+            # r_bar[r_bar < 0.05] = 0.05
+
+        self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
+
+    def Mstep_test(self, U_hat, signal_range=None):
+        """ Performs the M-step on a specific U-hat. In this emission model,
+            the parameters need to be updated are Vs (unit norm projected on
+            the N-1 sphere) and kappa (concentration value).
+        Args:
+            U_hat: the expected log likelihood from the arrangement model
+        Returns: Update all the object's parameters
+        """
+        if type(U_hat) is np.ndarray:
+            U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
+        if signal_range is not None:
+            Y = pt.where((self.W>=signal_range[0])&(self.W<signal_range[1]), self.Y, pt.nan)
+        else:
+            Y = self.Y
+
+        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
+        nan_voxIdx = Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
+        this_U_hat = pt.clone(U_hat)
+        this_U_hat[nan_voxIdx] = 0
+
+        YU = pt.sum(pt.matmul(pt.nan_to_num(Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
+        WYU = pt.sum(pt.matmul(pt.nan_to_num(Y)*self.W, pt.transpose(this_U_hat, 1, 2)), dim=0)
+        UU = pt.sum(this_U_hat * self.run, dim=0)
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
@@ -818,7 +867,8 @@ class MixVMF(EmissionModel):
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
 
-        self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
+        kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
+        return kappa
 
     def sample(self, U):
         """ Draw data sample from this model and given parameters
@@ -862,12 +912,12 @@ class wMixVMF(EmissionModel):
         super().__init__(K, N, P, data, X)
         self.D = D
         self.random_params()
-        self.set_param_list(['V', 'kappa', 'W'])
+        self.set_param_list(['V', 'kappa'])
         self.name = 'wVMF'
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data, X=None, D=None):
+    def initialize(self, data, X=None, D=None, signal=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
         and allocates memory for the sufficient stats that does. For the VMF, it length-standardizes the
         data to length one.
@@ -896,10 +946,11 @@ class wMixVMF(EmissionModel):
             # W = pt.nanmean(self._init_weights(self.Y), dim=0, keepdim=True)
 
             # # use signal lengh as weights
-            W = pt.nanmean(pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True)),
-                           dim=0, keepdim=True)
+            if signal is not None:
+                self.W = signal.unsqueeze(1)
+            else:
+                self.W = pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
 
-            self.W = W * (self.P / pt.sum(W))
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.run = 1
             self.split = False
@@ -929,18 +980,23 @@ class wMixVMF(EmissionModel):
         # self.W = W.unsqueeze(1)  # unsqueeze the second dimension for futher computation
 
         # Option 2.1: Initialize W (SNR) ~ (80% no signal - 0.01, 20% full signal - 1)
-        W = pt.ones((self.P,)) * 0.5
-        W[pt.randint(self.P, (int(self.P * 0.2),))] = 1
-        self.W = W.unsqueeze(0).unsqueeze(1)
+        # W = pt.zeros((self.P,))
+        # W[pt.randint(self.P, (int(self.P * 0.1),))] = 1
+        #
+        # self.minlength = pt.tensor(0.1)
+        # self.maxlength = pt.tensor(4)
+        # W = pt.where(W == 0, self.minlength.double(), self.maxlength.double())
+        # # Create noise ~ N(0,I)
+        # self.W = W.unsqueeze(0).unsqueeze(1)
 
         # Option 2.2. The (SNR) ~ bernoulli(80% - 0, 20% - 1)
         # W = pt.distributions.bernoulli.Bernoulli(0.2).sample((1, self.P))
         # W[W == 0] = 0.01
         # self.W = W.unsqueeze(1)
 
-        # Option 3: SNR ~ exponential(beta) - default beta = 10.0
-        # W = pt.distributions.exponential.Exponential(10.0).sample((1, self.P))
-        # W[W > 1] = 1 # Trim SNR to 1 if > 1
+        # Option 3.1: SNR ~ exponential(beta) - default beta = 10.0
+        # W = pt.distributions.exponential.Exponential(1.2).sample((1, self.P))
+        # # W[W > 1] = 1 # Trim SNR to 1 if > 1
         # self.W = W.unsqueeze(1)
 
     def _init_weights(self, data, q=20, sigma=5):
@@ -1018,9 +1074,9 @@ class wMixVMF(EmissionModel):
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
         if self.uniform_kappa:
-            LL = logCnK + self.kappa * self.W * YV
+            LL = logCnK + self.kappa * YV
         else:
-            LL = logCnK.unsqueeze(1) + self.kappa.unsqueeze(1) * self.W * YV
+            LL = logCnK.unsqueeze(1) + self.kappa.unsqueeze(1) * YV
 
         return pt.nan_to_num(LL)
 
@@ -1040,30 +1096,33 @@ class wMixVMF(EmissionModel):
         this_U_hat = pt.clone(U_hat)
         this_U_hat[nan_voxIdx] = 0
 
-        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
         WYU = pt.sum(pt.matmul(pt.nan_to_num(self.Y)*self.W, pt.transpose(this_U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat * self.run, dim=0)
         if not self.split:  # No data splitting
             regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
-            XYU = pt.matmul(regressX, YU)
+            XYU = pt.matmul(regressX, WYU)
             self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
+            r_norm = pt.sqrt(pt.sum(XYU ** 2, dim=0))
         else:
             # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-            self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
+            self.V = WYU / pt.sqrt(pt.sum(WYU ** 2, dim=0))
+            r_norm = pt.sqrt(pt.sum(WYU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = pt.sqrt(pt.sum(WYU**2, dim=0)) / pt.sum(UU, dim=1)
+            r_bar = r_norm.sum() / self.W.sum(dim=2)
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
         else:
-            r_bar = pt.sqrt(pt.sum(WYU**2, dim=0)) / pt.sum(UU, dim=1)
+            r_bar = r_norm / pt.sum(self.W.sum(dim=0) * UU, dim=1)
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
+        if self.kappa.any() < 0:  # - Debug flag
+            print(self.kappa)
 
         # # 3. Updating W, W = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # if not self.split:
@@ -1089,24 +1148,56 @@ class wMixVMF(EmissionModel):
 
         num_subj = U.shape[0]
         Y = pt.empty((num_subj, self.N, self.P))
+        new_V = pt.matmul(self.X, self.V)
+        new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
+        kappas = pt.where(self.W > 1, self.kappa * self.W **2, self.kappa * self.W**2)
+
         for s in range(num_subj):
             for p in range(self.P):
                 # Draw sample from the vmf distribution given the input U
                 # JD: Ideally re-write this routine to native Pytorch...
                 # So here the mean direction for sampling is the new V which
                 # calculated by X * V, shape of (N, k)
-                new_V = pt.matmul(self.X, self.V)
-                new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
                 if self.uniform_kappa:
                     Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa),
+                        rand_von_mises_fisher(new_V[:, U[s, p]], kappas[s,:,p]),
                         dtype=pt.get_default_dtype())
                 else:
                     Y[s, :, p] = pt.tensor(
                         rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
                         dtype=pt.get_default_dtype())
 
-        return Y * self.W
+        Y = Y * self.W
+
+        return Y
+
+    def sample_new(self, U):
+        """ Draw data sample from this model and given parameters
+        Args:
+            U: The prior arrangement U from arragnment model (tensor)
+        Returns: The samples data form this distribution
+        """
+        if type(U) is np.ndarray:
+            U = pt.tensor(U, dtype=pt.int)
+        elif type(U) is pt.Tensor:
+            U = U.int()
+        else:
+            raise ValueError('The given U must be numpy ndarray or torch Tensor!')
+
+        num_subj = U.shape[0]
+        Y = pt.empty((num_subj, self.N, self.P))
+        new_V = pt.matmul(self.X, self.V)
+        new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
+
+        for s in range(num_subj):
+            Y[s, :, :] = new_V[:, U[s, :].long()] * self.W
+
+        W = self.W.expand(Y.shape)
+        noise_far = pt.normal(0, pt.sqrt(pt.tensor(0.005)), Y.shape)
+        noise_near = pt.normal(0, pt.sqrt(pt.tensor(0.1)), Y.shape)
+        Y = pt.where(W == self.minlength, Y + noise_near, Y + noise_far)
+
+        return Y
 
 
 class MixGaussianGamma(EmissionModel):

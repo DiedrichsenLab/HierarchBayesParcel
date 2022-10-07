@@ -16,7 +16,7 @@ import evaluation
 import os
 from full_model import FullModel
 from arrangements import ArrangeIndependent, expand_mn
-from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF, wMixVMF
+from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF, wMixVMF, VMFMixture
 import time
 import copy
 import seaborn as sb
@@ -31,6 +31,9 @@ from SUITPy import flatmap, make_label_gifti
 import scipy.stats as spst
 from scipy.cluster.vq import kmeans, vq
 
+use_gpu = lambda x=True: pt.set_default_tensor_type(pt.cuda.FloatTensor
+                                             if pt.cuda.is_available() and x
+                                             else pt.FloatTensor)
 
 def convert_to_vol(data, xyz, voldef):
     """
@@ -261,17 +264,13 @@ def generate_data(emission, k=2, dim=3, p=1000, num_sub=10, dispersion=1.2,
     elif emission == 'VMF':
         # 1. The SNR is generated from exponential distribution
         # signal = pt.distributions.exponential.Exponential(beta).sample((num_sub, 1, p))
-        # signal[signal > 1] = 1  # Trim SNR to 1 if > 1
+        # # signal[signal > 1] = 1  # Trim SNR to 1 if > 1
 
-        # 2. The (SNR) ~ bernoulli(80% - 0.1, 20% - 1)
-        # signal = pt.distributions.bernoulli.Bernoulli(0.2).sample((num_sub, p))
-        # signal[signal == 0] = 0.05
-        # signal = signal.unsqueeze(1)
-
-        # 3. The (SNR) ~ (80% no signal - 0.01, 20% full signal - 1)
-        signal = pt.ones((p,)) * 0.5
-        signal[pt.randint(p, (int(p * 0.2),))] = 1
-        signal = signal.unsqueeze(0).unsqueeze(1)
+        # 2. The (SNR) ~ fake exponential
+        W = pt.tensor([0.4, 0.6, 0.8, 1, 2, 4])
+        a = pt.distributions.categorical.Categorical(
+            pt.tensor([0.25, 0.3, 0.25, 0.14, 0.05, 0.01])).sample((num_sub, p))
+        signal = W[a.long()].unsqueeze(1)
 
         Y_train = MT.emission.sample(U)
         Y_test = MT.emission.sample(U)
@@ -933,7 +932,7 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
         shape of (num_criterion, num_emissionModels)
     """
     # Step 1. generate the training dataset from VMF model given a signal length
-    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P,
+    Y_train, Y_test, signal_true, U, MT = generate_data(data_type, k=K, dim=N, p=P, num_sub=num_sub,
                                                         dispersion=dispersion, beta=beta,
                                                         do_plot=False, same_signal=same_signal,
                                                         missingdata=missingdata)
@@ -955,7 +954,15 @@ def _full_comparison_emission(data_type='GMM', num_sub=10, P=1000, K=5, N=20, be
             Uhat, ll = MT.Estep(Y_train)
         else:
             M.append(FullModel(MT.arrange, emissionM[i]))
-            M[i], this_ll, _, Uhat = M[i].fit_em(Y=Y_train, iter=max_iter, tol=tol, fit_arrangement=False)
+            if M[i].emission.name == 'wVMF':
+                M[i], this_ll, _, Uhat = M[i].fit_em(Y=Y_train, signal=signal_true, iter=max_iter,
+                                                     tol=tol, fit_arrangement=False)
+                # plot emission log-likelihood
+                # plt.plot(this_ll, color='b')
+                # plt.show()
+            else:
+                M[i], this_ll, _, Uhat = M[i].fit_em(Y=Y_train, iter=max_iter, tol=tol,
+                                                     fit_arrangement=False)
         Uhat_train.append(Uhat)
         V_train.append(M[i].emission.V)
 
@@ -1030,6 +1037,9 @@ def plot_comparision_emission(T, K=5, criterion=['coserr_E', 'coserrA_E', 'Uerr'
                               dispersion=[0.1, 0.1, 18, 18]):
     num_rows = len(criterion)
     num_cols = len(true_models)
+    col_names = ['GMM', 'random mean direction \n (unit) with signal \n + isotropic noise=',
+                'VMF data with \n exponential signal, \n kappa=',
+                'VMF with different kappa \n based on signal \n magnitude']
     fig, axs = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharey='row')
     for i in range(num_rows):
         for j in range(num_cols):
@@ -1037,11 +1047,11 @@ def plot_comparision_emission(T, K=5, criterion=['coserr_E', 'coserrA_E', 'Uerr'
             ind = (T.data_type == true_models[j]) & (T.model != 'true')
             sb.barplot(data=T[ind], x='model', y=criterion[i])
             axs[i][0].set_ylabel(criterion[i])
-            axs[0][j].set_title(true_models[j]+f' {dispersion[j]}')
+            axs[0][j].set_title(col_names[j]+f' {dispersion[j]}')
             ind = (T.data_type == true_models[j]) & (T.model == 'true')
             plt.axhline(y=T[ind][criterion[i]].mean(), linestyle=':', color='k')
     fig.suptitle('The emission models comparison, k = %d' %K, fontsize=16)
-
+    plt.tight_layout()
 
 def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
                                 type_estep=['linspace', 'import', 'reject']):
@@ -1062,6 +1072,24 @@ def plot_comparison_samplingGME(T, params_name=['sigma2', 'beta'],
     plt.suptitle('parameter recovery using different E_step (GME)')
     plt.tight_layout()
 
+def plot_comparision_VMF_wVMF(T, K=5, criterion=['coserr_E', 'coserrA_E', 'Uerr'],
+                              true_models=['GME'], dispersion=0.1):
+    num_rows = len(true_models)
+    num_cols = len(criterion)
+    col_names = ['GMM', 'random mean direction \n (unit) with signal \n + isotropic noise=',
+                'VMF data with \n exponential signal, \n kappa=',
+                'VMF with different kappa \n based on signal \n magnitude']
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(12, 4), sharey='row')
+    for j in range(num_cols):
+        plt.sca(axs[j])
+        ind = (T.data_type == 'GME') & (T.model != 'true')
+        sb.barplot(data=T[ind], x='model', y=criterion[j])
+        axs[j].set_ylabel(criterion[j])
+        # axs[0][j].set_title(col_names[j]+f' {dispersion[j]}')
+        ind = (T.data_type == 'GME') & (T.model == 'true')
+        plt.axhline(y=T[ind][criterion[j]].mean(), linestyle=':', color='k')
+    fig.suptitle('VMF vs wVMF: on GME data with signal 0.8-0 and 0.2-1 (noise sigma2=%f), K = %d' %(dispersion, K), fontsize=16)
+    plt.tight_layout()
 
 def getData_from_T(T, crit='Uerr', true_model='GME', fit_model=['GME'], trim_locmin=True):
     D = []
@@ -1159,6 +1187,7 @@ def train_mdtb_dirty(root_dir='Y:/data/Cerebellum/super_cerebellum/sc1/beta_roi/
 
 
 if __name__ == '__main__':
+    # use_gpu()
     X = pt.eye(46).repeat(10, 1)  # simulate task design matrix X
     # _simulate_full_VMF(X=None, K=10, P=500, N=20, num_sub=10, max_iter=100, uniform_kappa=True,
     #                    missingdata=None, n_inits=None)
@@ -1186,21 +1215,32 @@ if __name__ == '__main__':
 
     ######### emission completion test #########
     K = 5
-    T = do_full_comparison_emission(clusters=K, iters=10, beta=2.0,
-                                    true_models=['GMM', 'GME', 'VMF', 'wVMF'],
-                                    disper=[0.1, 0.1, 50, 50], same_signal=True, missingdata=None)
-    # T.to_csv('emission_modelrecover_k%d_iter50_new.csv' %K)
-    # T = pd.read_csv('emission_modelrecover_k%d_iter50_new.csv' %K)
-    plot_comparision_emission(T, K=K, dispersion=[0.1, 0.1, 50, 50])
+    # T = do_full_comparison_emission(clusters=K, iters=50, P=1000, beta=1.5, subjs=1,
+    #                                 true_models=['GMM', 'GME', 'VMF', 'wVMF'],
+    #                                 disper=[0.1, 0.01, 50, 50], same_signal=True, missingdata=None)
+    #
+    # plot_comparision_emission(T, K=K, dispersion=[0.1, 0.01, 50, 50])
+    # plt.show()
+
+    # Data visualization
+    # Y2, _, _, U2, _ = generate_data('GME', k=5, dim=20, p=5000, num_sub=1, dispersion=0.01,
+    #                                 beta=0.5, do_plot=False, same_signal=True, missingdata=None)
+    # plt.figure(figsize=(6, 6))
+    #
+    # plt.hist(pt.norm(Y2, dim=1).reshape(-1).numpy(), bins=100)
+    # plt.title('GME: distribution of data magnitude')
+    #
+    # plt.show()
+
+    T = do_full_comparison_emission(clusters=K, iters=50, P=5000, beta=0.5, subjs=1,
+                                    true_models=['GME'], disper=[0.01],
+                                    same_signal=True, missingdata=None)
+    plot_comparision_VMF_wVMF(T, K=K, dispersion=0.01)
     plt.show()
 
     # T = pd.read_csv('emission_modelrecover_k5_iter100.csv')
-    # D = getData_from_T(T, crit='Uerr', true_model='GME', fit_model=['GME', 'VMF'])
-    # spst.ttest_rel(D[0], D[1])
+    D = getData_from_T(T, crit='Uerr', true_model='GME', fit_model=['VMF', 'wVMF'], trim_locmin=False)
+    print(spst.ttest_rel(D[0], D[1]))
     # pass
-
-    # G, D = train_mdtb_dirty(K=5, train_participants=[2, 3, 4, 6, 8, 9, 10, 12, 14, 15],
-    #                         test_participants=[29, 30, 31], emission='VMF')
-    # nib.save(G, 'test_5.label.gii')
 
     print('Done simulation.')
