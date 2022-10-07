@@ -401,11 +401,11 @@ def matching_greedy(Y_target, Y_source):
     """
     K = Y_target.shape[0]
     # Compute the row x row correlation matrix 
-    Y_target -= Y_target.mean(dim=1,keepdim=True)
-    Y_source -= Y_source.mean(dim=1,keepdim=True)
-    Cov = pt.matmul(Y_target,Y_source.t())
-    Var1 = pt.sum(Y_target*Y_target,dim=1)
-    Var2 = pt.sum(Y_source*Y_source,dim=1)
+    Y_tar = Y_target - Y_target.mean(dim=1,keepdim=True)
+    Y_sou = Y_source - Y_source.mean(dim=1,keepdim=True)
+    Cov = pt.matmul(Y_tar,Y_sou.t())
+    Var1 = pt.sum(Y_tar*Y_tar,dim=1)
+    Var2 = pt.sum(Y_sou*Y_sou,dim=1)
     Corr = Cov / pt.sqrt(pt.outer(Var1,Var2))
     
     # Initialize index array 
@@ -415,7 +415,36 @@ def matching_greedy(Y_target, Y_source):
         indx[ind[0]]=ind[1]
         Corr[ind[0],:]=pt.nan
         Corr[:,ind[1]]=pt.nan
-
     return indx 
 
-
+def calc_consistency(params,dim_rem = None):
+    """Calculates consistency across a number of different solutions 
+    to a problem (after alignment of the rows/columns)
+    Computes cosine similarities across the entire matrix of 
+    params 
+    Args:
+        params (pt.tensor): n_sol x N x P array of data
+        dim_rem (int): Dimension along which to remove the mean
+            None: No mean removal 
+            0: Remove the overall mean of the matrices
+            1: Remove the row mean 
+            2: Remove the column mean
+    Returns:
+        R (pt.tensory): n_sol x n_sol matrix of cosine similarites 
+    """
+    data = params.clone()
+    n_sol = data.shape[0]
+    R = pt.ones((n_sol,n_sol))
+    if dim_rem is not None:
+        if dim_rem==0:
+            data -= data.mean(dim=[1,2],keepdim=True)
+        else:
+            data -= data.mean(dim=dim_rem,keepdim=True)
+    for i in range(n_sol):
+        for j in range(i+1,n_sol):
+            cov = pt.sum(data[i,:,:] * data[j,:,:])
+            var1 = pt.sum(data[i,:,:] * data[i,:,:])
+            var2 = pt.sum(data[j,:,:] * data[j,:,:])
+            R[i,j]=cov/pt.sqrt(var1*var2)
+            R[j,i]=R[i,j]
+    return R
