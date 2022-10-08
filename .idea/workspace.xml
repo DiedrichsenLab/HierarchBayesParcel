@@ -2,10 +2,12 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="87ba84bb-63f0-4862-abbf-20d12119c063" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/evaluation.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_missingData-checkpoint.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_missingData-checkpoint.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/simulate_missingData.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/simulate_missingData.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/simulate_missingData.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/simulate_missingData.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/full_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/full_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_emissions-checkpoint.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_emissions-checkpoint.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/test_emissions.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_emissions.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/test_emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_emissions.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -50,7 +52,7 @@
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
     <property name="settings.editor.selected.configurable" value="project.propVCSSupport.Mappings" />
   </component>
-  <component name="RunManager" selected="Python.simulate_missingData">
+  <component name="RunManager" selected="Python.test_wVMF">
     <configuration name="emissions" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="generativeMRF" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -139,8 +141,31 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="test_wVMF" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="generativeMRF" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/notebooks" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/test_wVMF.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.test_wVMF" />
         <item itemvalue="Python.simulate_missingData" />
         <item itemvalue="Python.test_emissions" />
         <item itemvalue="Python.emissions" />
@@ -171,6 +196,7 @@
       <workItem from="1650825087390" duration="2643000" />
       <workItem from="1650905834310" duration="57000" />
       <workItem from="1650917692563" duration="88670000" />
+      <workItem from="1665260404954" duration="346000" />
     </task>
     <servers />
   </component>
@@ -182,21 +208,27 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/notebooks/test_emissions.py</url>
-          <line>445</line>
+          <line>477</line>
           <option name="timeStamp" value="27" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/notebooks/test_emissions.py</url>
-          <line>949</line>
+          <line>1196</line>
           <option name="timeStamp" value="40" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/notebooks/test_wVMF.py</url>
+          <line>233</line>
+          <option name="timeStamp" value="41" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/generativeMRF$simulate_missingData.coverage" NAME="simulate_missingData Coverage Results" MODIFIED="1651272664568" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$test_emissions.coverage" NAME="test_emissions Coverage Results" MODIFIED="1651083609543" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$emissions.coverage" NAME="emissions Coverage Results" MODIFIED="1651008660821" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$evaluation.coverage" NAME="evaluation Coverage Results" MODIFIED="1646253969207" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/generativeMRF$test_wVMF.coverage" NAME="test_wVMF Coverage Results" MODIFIED="1665260713496" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$simulate_missingData.coverage" NAME="simulate_missingData Coverage Results" MODIFIED="1651272664568" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$emissions.coverage" NAME="emissions Coverage Results" MODIFIED="1651008660821" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/generativeMRF$test_emissions.coverage" NAME="test_emissions Coverage Results" MODIFIED="1651083609543" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
   </component>
 </project>

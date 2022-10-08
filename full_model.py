@@ -43,7 +43,7 @@ class FullModel:
             return Uhat,ll_a.sum()+ll_e
 
     def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False,
-               fit_emission=True, fit_arrangement=True):
+               fit_emission=True, fit_arrangement=True, signal=None):
         """ Run the EM-algorithm on a full model
         this demands that both the Emission and Arrangement model
         have a full Estep and Mstep and can calculate the likelihood, including the partition function
@@ -63,7 +63,10 @@ class FullModel:
         # Initialize the tracking
         ll = np.zeros((iter, 2))
         theta = np.zeros((iter, self.nparams))
-        self.emission.initialize(Y)
+        if signal is not None:
+            self.emission.initialize(Y, signal=signal)
+        else:
+            self.emission.initialize(Y)
         for i in range(iter):
             # Track the parameters
             theta[i, :] = self.get_params()
