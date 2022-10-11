@@ -544,18 +544,21 @@ class FullMultiModelSymmetric(FullMultiModel):
             indx_reduced (ndarray): P-vector of indices mapping nodes to data
             same_parcels (bool): are the means of parcels the same or different across hemispheres?
         """
-        super.__init__(self, arrange, emission)
+        super().__init__(arrange, emission)
         self.same_parcels = same_parcels
         self.indx_full = indx_full
         self.indx_reduced = indx_reduced
         self.P_sym = arrange.P
         self.K_sym = arrange.K
+        self.K = self.emissions[0].K
+        self.P = self.emissions[0].P
+        
         if indx_full.shape[1]!=self.P_sym:
             raise(NameError('index_full must be of size 2 x P_sym'))
         if indx_reduced.shape[0]!=self.emissions[0].P:
             raise(NameError('index_reduced must be of size P (same as emissions)'))
         if not same_parcels:
-            if self.K_sym*2 != self.emissions[0].K:
+            if self.K_sym*2 != self.K:
                 raise(NameError('K in emission models must be twice K in arrangement model'))
 
     def collect_evidence(self,emloglik):
@@ -570,9 +573,9 @@ class FullMultiModelSymmetric(FullMultiModel):
         emloglik_comb = pt.cat(emloglik, dim=0)  # concatenate all emloglike
         # Combine emission log-likelihoods across left and right sides
         if self.same_parcels:
-            emloglik_comb = emloglik_comb[:,:,self.index_full[0]] + emloglik_comb[:,:,self.index_full[1]]
+            emloglik_comb = emloglik_comb[:,:,self.indx_full[0]] + emloglik_comb[:,:,self.indx_full[1]]
         else:
-            emloglik_comb = emloglik_comb[:,:self.K_sym,self.index_full[0]] + emloglik_comb[:,self.K_sym:,self.index_full[1]]
+            emloglik_comb = emloglik_comb[:,:self.K_sym,self.indx_full[0]] + emloglik_comb[:,self.K_sym:,self.indx_full[1]]
         return emloglik_comb
 
     def distribute_evidence(self,Uhat):
@@ -586,9 +589,9 @@ class FullMultiModelSymmetric(FullMultiModel):
             Usplit (list): List of Uhats (per emission model)
         """
         if self.same_parcels:
-            Uhat_full = Uhat[:,:,self.index_reduced]
+            Uhat_full = Uhat[:,:,self.indx_reduced]
         else:
-            Uhat_full = pt.zeros((Uhat.shape[0],self.K_sym*2,Uhat.shape[2]))
+            Uhat_full = pt.zeros((Uhat.shape[0],self.K,self.P))
             Uhat_full[:,:self.K_sym,self.indx_full[0]]=Uhat
             Uhat_full[:,self.K_sym:,self.indx_full[1]]=Uhat
         # Distribute over data sets
