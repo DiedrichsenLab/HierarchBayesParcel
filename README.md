@@ -556,27 +556,37 @@ where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels),
 $$
 \begin{align*}
 \mathcal{L}_E &=\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q\\
-&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa{(\mathbf{X}\mathbf{v}_{k})}^{T}\mathbf{y}_i
+&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{X}^{T}\mathbf{y}_i
 \end{align*}
+$$
+Note here: if design matrix $X$ (shape of $N \times M$, $N$ is number of observation, $M$ is number of conditions) is not identity, which means the $\mathbf{y}$ needs to be partitioned and normalized in each of the $m$ partitions. We call the resultant $\mathbf{y}$ to be $\mathbf{Y}$ from now. So that:
+$$
+\begin{align*}
+\mathcal{L}_E=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{X}^{T}\mathbf{Y}_i\end
+{align*}
 $$
 Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
 
-1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Thus, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step as, 
+1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Then, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step in two options: **(A)** learn a common $\mathbf{v}_{k}$ :
    $$
    \begin{align*}
    
-   \mathbf{v}_{k}^{(t)} &=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
+   \mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{X}^T\mathbf{Y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
    
    \end{align*}
    $$
 
-2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005): 
+2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions") in two options: **(A)** learn a common $\kappa$ :
 
 $$
-\kappa_k^{(t)} \approx \frac{\overline{r}_kN-\overline{r}_k^3}{1-\overline{r}_k^2}\\
-\bar{r}_k=\frac{r_k}{\sum_i \langle u_i^{(k)} \rangle_q}
+\kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\
+\bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{X}^T\mathbf{Y}_{i}||}{P \times m}
 $$
 
+​		Or **(B)** learn $K$-class specific kappa $\kappa_k$ :
+$$
+\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\bar{r}_k=\frac{r_k}{m\sum_i \langle u_i^{(k)} \rangle_q}
+$$
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
 
 ## Model Evaluation
