@@ -278,7 +278,7 @@ class MixGaussianExp(EmissionModel):
             Therefore, there are total k+1 parameters in this mixture model
             set the initial random parameters for gaussian mixture
         """
-        self.V = pt.randn(self.M, self.K)/np.sqrt(self.M)
+        self.V = pt.randn(self.M, self.K)
         if self.std_V:  # standardise V to unit length
             self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
         self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
@@ -643,12 +643,12 @@ class MixGaussianExp(EmissionModel):
                                     err_msg='The given signal must with a shape of (num_subj, P)')
         else:
             # 1. Draw the signal strength for each node from an exponential distribution
-            # signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
+            signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
 
             # 2. Draw the signal strength from 80%-0; 20%-maxlength
-            W = pt.tensor(np.random.choice(2, self.P, p=[0.8, 0.2]), dtype=pt.float32)
-            W = W * self.beta
-            signal = W.expand(num_subj, -1)
+            # W = pt.tensor(np.random.choice(2, self.P, p=[0.8, 0.2]), dtype=pt.float32)
+            # W = W * self.beta
+            # signal = W.expand(num_subj, -1)
 
             # W = pt.tensor(np.random.choice(3, self.P, p=[0.3, 0.4, 0.3]), dtype=pt.float32)
             # signal = W.expand(num_subj, -1)
@@ -667,34 +667,49 @@ class MixGaussianExp(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, D=None, X=None, params=None, uniform_kappa=True):
+    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_Vec=None, params=None,
+                 uniform_kappa=True):
         self.uniform_kappa = uniform_kappa
         super().__init__(K, N, P, data, X)
-        self.D = D
         self.random_params()
         self.set_param_list(['V', 'kappa'])
         self.name = 'VMF'
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data, X=None, D=None):
+    def initialize(self, data, X=None, part_Vec=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
-        and allocates memory for the sufficient stats that does. For the VMF, it length-standardizes the
-        data to length one.
+            and allocates memory for the sufficient stats that does. For the VMF,
+            it length-standardizes the data to length one. If part_Vec is given, then
+            the raw data needs to be partitioned and normalize in each partition.
+            After that, we restore Y to its original shape (num_sub, N, P). The new
+            data for further fitting is X^T (shape M, N) * Y which has a shape
+            (num_sub, M, P)
+            Note: The shape of X (N, M) - N is # of observations, M is # of conditions
         Args:
-            data: the input data array.
+            data: the input data array (or torch tensor). shape (n_subj, N, P)
+            X: Design matrix, shape (N, M)
+            part_Vec: If given, the vector indicating the independent data partition
+                      (repetition). Otherwise, no data partition
         Returns: None. Store the data in emission model itself.
+        Class attributes:
+            self.run: the number of partitions (usually runs)
+            self.split: a class-wide flag to tell wether the current data is partitioned
+            self.W: the data magnitude of Y, for Mstep test only. You don't need to know
+                    this, it's not relavent to model fitting :)
         """
         super().initialize(data, X=X)
         self.rss = pt.empty((self.num_subj, self.K, self.P))
-        if (self.D is not None) or (D is not None):  # if self.D is not None, meaning self.D is from the init
-            # Making normlization for run specific data
-            if D is not None:
-                self.D = D
-            assert self.D.shape[0] == self.Y.shape[1], "D must have same dimension with data Y."
 
-            # Here we first splitting data into (n_subj, run, N, P) and normalize
-            self.Y_raw = pt.tensor_split(self.Y, self.D.bincount()[:-1].cumsum(dim=0), dim=1)
+        if (part_Vec is not None) or (self.part_Vec is not None):
+            if part_Vec is not None:
+                self.part_Vec = part_Vec
+            elif self.part_Vec is not None:
+                part_Vec = self.part_Vec
+            # If self.D is not None, meaning we need to split the data and making
+            # normlization for partition specific data. Here we first splitting
+            # data into (n_subj, run, N, P) and normalize it along dimemsion run
+            self.Y_raw = pt.tensor_split(self.Y, part_Vec, dim=1)
             self.Y_raw = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y_raw]
             self.run = len(self.Y_raw)
             self.Y_raw = pt.matmul(self.X.T, pt.hstack(self.Y_raw))  # This is the new data
@@ -752,18 +767,21 @@ class MixVMF(EmissionModel):
 
         return approx
 
-    def Estep(self, Y=None, sub=None, pure_compute=False):
+    def Estep(self, Y=None, sub=None, part_Vec=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         Args:
             Y : Data (optional)
             sub: specify which subject to optimize (optional)
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+            part_Vec: The vector indicating the independent data partition
+                      (repetition) when Y is not None. If None, the new
+                      input Y doesn't need to be parsed, otherwise partition
+                      it by this vector
+        Returns:
+            the expected log likelihood for emission model, shape (nSubject * K * P)
         """
         if Y is not None:
-            if pure_compute:
-                self.D = None
-            self.initialize(Y, D=self.D)
+            self.initialize(Y, part_Vec=part_Vec)
 
         if sub is None:
             sub = range(self.Y.shape[0])
@@ -820,7 +838,7 @@ class MixVMF(EmissionModel):
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = r_norm.sum() / (self.P * self.num_subj)
+            r_bar = r_norm.sum() / (self.P * self.num_subj * self.run)
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
@@ -907,13 +925,15 @@ class MixVMF(EmissionModel):
 class wMixVMF(EmissionModel):
     """ Mixture of von-Mises Fisher distribution weighted by SNR
     """
-    def __init__(self, K=4, N=10, P=20, data=None, D=None, X=None, params=None, uniform_kappa=True):
+    def __init__(self, K=4, N=10, P=20, data=None, D=None, X=None,
+                 params=None, uniform_kappa=True, weighting=1):
         self.uniform_kappa = uniform_kappa
         super().__init__(K, N, P, data, X)
         self.D = D
         self.random_params()
         self.set_param_list(['V', 'kappa'])
         self.name = 'wVMF'
+        self.weighting=weighting
         if params is not None:
             self.set_params(params)
 
@@ -942,14 +962,32 @@ class wMixVMF(EmissionModel):
             self.Y = self.Y_raw
             self.split = True
         else:
-            # use data density as weights
-            # W = pt.nanmean(self._init_weights(self.Y), dim=0, keepdim=True)
-
-            # # use signal lengh as weights
             if signal is not None:
                 self.W = signal.unsqueeze(1)
             else:
-                self.W = pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+                # use signal lengh as weights
+                W = pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+
+                # use data density as weights
+                density = self._init_weights(self.Y, crit='cosine')
+                density = pt.nan_to_num_(density, neginf=pt.nan)
+                density = (density - np.nanmin(density, axis=2, keepdims=True)) / (np.nanmax(
+                    density, axis=2, keepdims=True) - np.nanmin(density, axis=2, keepdims=True))
+
+                if self.weighting == 1:  # weights are the magnitude
+                    self.W = W
+                elif self.weighting == 2:  # weights are the normalized magnitude
+                    W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
+                        W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
+                    self.W = W
+                elif self.weighting == 3:  # weights are the density
+                    self.W = density
+                elif self.weighting ==4:  # weights are the density + magnitude
+                    W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
+                        W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
+                    self.W = density + W
+                else:  # if no weighting is given, restore VMF
+                    self.W = pt.mean(pt.ones(self.Y.shape), dim=1, keepdim=True)
 
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.run = 1
@@ -999,22 +1037,32 @@ class wMixVMF(EmissionModel):
         # # W[W > 1] = 1 # Trim SNR to 1 if > 1
         # self.W = W.unsqueeze(1)
 
-    def _init_weights(self, data, q=20, sigma=5):
+    def _init_weights(self, Y, q=20, sigma=100, crit='euclidean'):
         """ Compute the initial weights of data based on gaussian kernel
             w_i = \sum_j exp(-d(x_i, x_j)^2 / sigma), where j is the set of
             q-nearest neighbours of i. sigma is a positive scalar
         Args:
-            data: the initialzed data, shape (n_subj, N, P)
+            Y: the initialzed data, shape (n_subj, N, P)
             q: the number of nearest neighbours. Defalut q = 20
             sigma: a positive scalar. Default sigma = 5
         Returns:
             the initial weights associated with each data point.
             shape (n_subj, 1, P)
         """
-        data = pt.transpose(data, 1, 2) # the tensor shape (subj, P, N)
-        dist = pt.cdist(data, data, p=2)
-        W, idx = pt.topk(dist, q, dim=1, largest=False)
-        W = pt.sum(pt.exp(-W ** 2 / sigma), dim=1, keepdim=True)
+        data = pt.transpose(Y, 1, 2) # the tensor shape (subj, P, N)
+        if crit == 'euclidean':
+            dist = pt.cdist(data, data, p=2)
+            W, idx = pt.topk(dist, q, dim=1, largest=False)
+            W = pt.sum(pt.exp(-W ** 2 / sigma), dim=1, keepdim=True)
+        elif crit == 'cosine':
+            data = data / pt.sqrt(pt.sum(data ** 2, dim=2, keepdim=True))
+            W, idx = pt.topk(pt.nan_to_num_(pt.matmul(data, pt.transpose(data, 1, 2)), nan=-pt.inf),
+                             q+1, dim=1, largest=True)
+            W = W[:, 1:, :]
+            W = pt.mean(W, dim=1, keepdim=True)
+        else:
+            raise NameError('The input criterion must be either euclidean or cosine!')
+
         return W
 
     def _bessel_function(self, order, kappa):
@@ -1096,7 +1144,7 @@ class wMixVMF(EmissionModel):
         this_U_hat = pt.clone(U_hat)
         this_U_hat[nan_voxIdx] = 0
 
-        WYU = pt.sum(pt.matmul(pt.nan_to_num(self.Y)*self.W, pt.transpose(this_U_hat, 1, 2)), dim=0)
+        WYU = pt.sum(pt.matmul(pt.nan_to_num(self.Y * self.W), pt.transpose(this_U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat * self.run, dim=0)
         if not self.split:  # No data splitting
             regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
@@ -1111,7 +1159,7 @@ class wMixVMF(EmissionModel):
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = r_norm.sum() / self.W.sum(dim=2)
+            r_bar = r_norm.sum() / pt.nan_to_num_(self.W).sum()
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
