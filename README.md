@@ -548,24 +548,29 @@ Note that $\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}
 
 ### Emission model 3: Mixture of Von-Mises Distributions
 
-For a $N$-dimensional data $\mathbf{y} \in $ the probability density function of von Mises-Fisher distribution is defined as following, 
+For a $M$-dimensional data $\mathbf{y} \in $ the probability density function of von Mises-Fisher distribution is defined as following, 
 $$
-V_N(\mathbf{y}|\mathbf{v}_k,\kappa) = C_N(\kappa)exp(\kappa(\mathbf{X}\mathbf{v}_k)^{T}\mathbf{y})
+V_M(\mathbf{y}|\mathbf{v}_k,\kappa) = C_M(\kappa)exp(\kappa\mathbf{v}_k^{T}\mathbf{y})
 $$
-where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels), $\kappa$ indicates the concentration parameter ($\kappa\geqslant0$), which is joint over all parcels. $C_N(\kappa) = \frac{\kappa^{N/2-1}}{(2\pi)^{N/2}I_{N/2-1}(\kappa)}$ is the normalization constant where $I_r(.)$ refers to the modified Bessel function of the $r$ order. Thus, the *expected emission log-likelihood* of a mixture of $K$-classes von-Mises fisher distributions is defined as:
+where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels), $\mathbf{y}$ has unit length,$\kappa$ indicates the concentration parameter ($\kappa\geqslant0$), which is joint over all parcels. $C_M(\kappa) = \frac{\kappa^{M/2-1}}{(2\pi)^{M/2}I_{M/2-1}(\kappa)}$ is the normalization constant where $I_r(.)$ refers to the modified Bessel function of the $r$ order. Thus, the *expected emission log-likelihood* of a mixture of $K$-classes von-Mises fisher distributions is defined as:
 $$
 \begin{align*}
 \mathcal{L}_E &=\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q\\
-&=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{X}^{T}\mathbf{y}_i
+&=P\log C_M(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{y}_i
 \end{align*}
 $$
-Note here: if design matrix $X$ (shape of $N \times M$, $N$ is number of observation, $M$ is number of conditions) is not identity, which means the $\mathbf{y}$ needs to be partitioned and normalized in each of the $m$ partitions. We call the resultant $\mathbf{y}$ to be $\mathbf{Y}$ from now. So that:
+If the design has repeated measurements of the same $M$ conditions, the user can specify this over the $N \times M$ design matrix  $X$ ($N$ is number of observation, $M$ is number of conditions). If we combine across the different repetitions, the resultant data would be $\mathbf{y}=\mathbf{X}^T \tilde{\mathbf{y}}$, and then normalized. However, we can also treat the different repetitions as independent observations, meaning that the resultant data is normalized to length 1 for each of the $J$ independent partitions.  The likelihood is then the sum over partitions and voxels:
 $$
 \begin{align*}
-\mathcal{L}_E=P\log C_N(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{X}^{T}\mathbf{Y}_i\end
-{align*}
+\mathcal{L}_E=PJ\log C_N(\kappa)+\sum_{i}^P\sum_{j}^J\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{y}_{i,j}\\
+=PJ\log C_N(\kappa)+\sum_{i}^P\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\sum_{j}^J\mathbf{y}_{i,j}
+\end{align*}
 $$
-Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in von-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
+Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=\mathbf{X}^T \tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we the vectors across partitions. The resultant summed vectors are not length 1 anymore, but with this preprocessing we can forget about the number of partitions.  
+
+
+
+Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in vn-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
 
 1. Updating mean direction $\mathbf{v}_k$, we take derivative in respect to $\mathbf{v}_{k}$ and set it to 0. Then, we get the updated $\mathbf{v}_{k}$ in current $\Mu$ step in two options: **(A)** learn a common $\mathbf{v}_{k}$ :
    $$
@@ -580,7 +585,7 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
 
 $$
 \kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\
-\bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{X}^T\mathbf{Y}_{i}||}{P \times m}
+\bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{X}^T\mathbf{Y}_{i}||}{P \times J}
 $$
 
 ​		Or **(B)** learn $K$-class specific kappa $\kappa_k$ :
