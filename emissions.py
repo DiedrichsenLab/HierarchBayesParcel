@@ -676,8 +676,8 @@ class MixVMF(EmissionModel):
             P: the number of voxels
             data: training data
             X: design matrix for task conditions or runs
-            part_Vec: if not None, the vector indicating the independent
-                      data partition (repetition). Otherwise, no data partition
+            part_Vec: Vector indicating number of independent
+                      data partition (repetition). None: no data partition
             params: if None, no parameters to pass in. Otherwise take the passing
                     parameters as the model params
             uniform_kappa: if True, the model learns a common kappa. Otherwise,
