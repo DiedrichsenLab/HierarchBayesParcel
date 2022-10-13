@@ -566,7 +566,7 @@ $$
 =PJ\log C_N(\kappa)+\sum_{i}^P\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\sum_{j}^J\mathbf{y}_{i,j}
 \end{align*}
 $$
-Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=\mathbf{X}^T \tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we the vectors across partitions. The resultant summed vectors are not length 1 anymore, but with this preprocessing we can forget about the number of partitions.  
+Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=\mathbf{X}^T \tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$ The resultant summed vectors are not length 1 anymore, but with this preprocessing we can forget about the number of partitions.  
 
 
 
