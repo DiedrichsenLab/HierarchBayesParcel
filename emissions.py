@@ -706,10 +706,14 @@ class MixVMF(EmissionModel):
 
         Returns: None. Store the data in emission model itself.
         Class attributes:
-            self.run: the number of partitions (usually runs)
-            self.split: a class-wide flag to tell wether the current data is partitioned
-            self.W: the data magnitude of Y, for Mstep test only. You don't need to know
-                    this, it's not relavent to model fitting :)
+            self.run:           the number of partitions (usually runs)
+            self.split:         a class-wide flag to tell wether the current data
+                                is partitioned
+            self.W:             the data magnitude of Y, for Mstep test only.
+                                You don't need to know this, it's not relavent
+                                to model fitting :)
+            self.num_nanvoxel:  get the number of total nan voxels, which will be
+                                used in M step
         """
         super().initialize(data)
         self.rss = pt.empty((self.num_subj, self.K, self.P))
@@ -719,13 +723,24 @@ class MixVMF(EmissionModel):
             # normlization for partition specific data. Here we first splitting
             # data into (n_subj, run, N, P) and normalize it along dimemsion run
             self.Y = pt.tensor_split(self.Y, self.part_Vec, dim=1)
+
+            # count total number of nan value voxels
+            self.W = [pt.sqrt(pt.sum(y ** 2, dim=1, keepdim=True)) for y in self.Y]
+            self.num_nanvoxel = pt.isnan(pt.hstack(self.W).view(-1)).nonzero().shape[0]
+
+            # normalize in each partition
             self.Y = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y]
             self.run = len(self.Y)
-            self.Y = pt.matmul(self.X.T, pt.hstack(self.Y))  # This is the new data
+            self.mask = pt.where(pt.hstack(self.Y).isnan(), 0, 1)
+
+            # Reshape back by X^T*Y - we basically take the nansum across partitions
+            self.Y = pt.matmul(self.X.T, pt.nan_to_num(pt.hstack(self.Y)))
             self.N = self.Y.shape[1]
         else:
-            self.W = pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+            self.W = [pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))]
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+
+            self.num_nanvoxel = pt.isnan(self.W[0].view(-1)).nonzero().shape[0]
             self.run = 1
 
             # Make sure self.X now is identity matrix since there is no data split
@@ -825,13 +840,12 @@ class MixVMF(EmissionModel):
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
         # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
-        this_U_hat = pt.clone(U_hat)
-        this_U_hat[nan_voxIdx] = 0
+        mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]  # run-wise
+        this_U_hat = pt.stack([U_hat * m for m in mask]).sum(dim=0)
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat * self.run, dim=0)
+        UU = pt.sum(this_U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
         self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
@@ -840,7 +854,7 @@ class MixVMF(EmissionModel):
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = r_norm.sum() / (self.P * self.num_subj * self.run)
+            r_bar = r_norm.sum() / (self.P * self.num_subj * self.run - self.num_nanvoxel)
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
@@ -850,6 +864,7 @@ class MixVMF(EmissionModel):
             # r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
+        self.kappa = self.kappa + 1000
 
     def Mstep_test(self, U_hat, signal_range=None):
         """ Performs the M-step on a specific U-hat. In this emission model,
@@ -862,7 +877,7 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
         if signal_range is not None:
-            Y = pt.where((self.W>=signal_range[0])&(self.W<signal_range[1]), self.Y, pt.nan)
+            Y = pt.where((self.W[0]>=signal_range[0])&(self.W[0]<signal_range[1]), self.Y, pt.nan)
         else:
             Y = self.Y
 
@@ -872,7 +887,7 @@ class MixVMF(EmissionModel):
         this_U_hat[nan_voxIdx] = 0
 
         YU = pt.sum(pt.matmul(pt.nan_to_num(Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
-        WYU = pt.sum(pt.matmul(pt.nan_to_num(Y)*self.W, pt.transpose(this_U_hat, 1, 2)), dim=0)
+        WYU = pt.sum(pt.matmul(pt.nan_to_num(Y)*self.W[0], pt.transpose(this_U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat * self.run, dim=0)
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
@@ -927,11 +942,26 @@ class MixVMF(EmissionModel):
 class wMixVMF(EmissionModel):
     """ Mixture of von-Mises Fisher distribution weighted by SNR
     """
-    def __init__(self, K=4, N=10, P=20, data=None, D=None, X=None,
+    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_Vec=None,
                  params=None, uniform_kappa=True, weighting=1):
+        """ Constructor
+        Args:
+            K: the number of clusters
+            N: the number of observations
+            P: the number of voxels
+            data: training data
+            X: design matrix for task conditions or runs
+            part_Vec: if not None, the vector indicating the independent
+                      data partition (repetition). Otherwise, no data partition
+            params: if None, no parameters to pass in. Otherwise take the passing
+                    parameters as the model params
+            uniform_kappa: if True, the model learns a common kappa. Otherwise,
+                           cluster-specific kappa
+            weighting: the weighting strategy, default 1 is data magnitude
+        """
         self.uniform_kappa = uniform_kappa
+        self.part_Vec = part_Vec
         super().__init__(K, N, P, data, X)
-        self.D = D
         self.random_params()
         self.set_param_list(['V', 'kappa'])
         self.name = 'wVMF'
@@ -939,30 +969,37 @@ class wMixVMF(EmissionModel):
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data, X=None, D=None, signal=None):
+    def initialize(self, data, signal=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
-        and allocates memory for the sufficient stats that does. For the VMF, it length-standardizes the
-        data to length one.
+            and allocates memory for the sufficient stats that does. For the VMF,
+            it length-standardizes the data to length one. If part_Vec is exist, then
+            the raw data needs to be partitioned and normalize in each partition.
+            After that, we restore Y to its original shape (num_sub, N, P). The new
+            data for further fitting is X^T (shape M, N) * Y which has a shape
+            (num_sub, M, P)
+            Note: The shape of X (N, M) - N is # of observations, M is # of conditions
         Args:
-            data: the input data array.
-        Returns: None. Store the data in emission model itself.
-        """
-        super().initialize(data, X=X)
-        self.rss = pt.empty((self.num_subj, self.K, self.P))
-        if (self.D is not None) or (D is not None):  # if self.D is not None, meaning self.D is from the init
-            # Making normlization for run specific data
-            if D is not None:
-                self.D = D
-            assert self.D.shape[0] == self.Y.shape[1], "D must have same dimension with data Y."
+            data: the input data array (or torch tensor). shape (n_subj, N, P)
+            signal: pass in the signal for data points is given
 
-            # Here we first splitting data into (n_subj, run, N, P) and normalize
-            self.Y_raw = pt.tensor_split(self.Y, self.D.bincount()[:-1].cumsum(dim=0), dim=1)
-            self.Y_raw = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y_raw]
-            self.run = len(self.Y_raw)
-            self.Y_raw = pt.matmul(self.X.T, pt.hstack(self.Y_raw))  # This is the new data
-            self.N = self.Y_raw.shape[1]
-            self.Y = self.Y_raw
-            self.split = True
+        Returns: None. Store the data in emission model itself.
+
+        Class attributes added:
+            self.run: the number of partitions (usually runs)
+            self.W: the weights associated to each data points
+        """
+        super().initialize(data)
+        self.rss = pt.empty((self.num_subj, self.K, self.P))
+
+        if self.part_Vec is not None:
+            # If self.part_Vec is not None, meaning we need to split the data and making
+            # normlization for partition specific data. Here we first splitting
+            # data into (n_subj, run, N, P) and normalize it along dimemsion run
+            self.Y = pt.tensor_split(self.Y, self.part_Vec, dim=1)
+            self.Y = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y]
+            self.run = len(self.Y)
+            self.Y = pt.matmul(self.X.T, pt.hstack(self.Y))  # This is the new data
+            self.N = self.Y.shape[1]
         else:
             if signal is not None:
                 self.W = signal.unsqueeze(1)
@@ -993,7 +1030,12 @@ class wMixVMF(EmissionModel):
 
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.run = 1
-            self.split = False
+
+            # Make sure self.X now is identity matrix since there is no data split
+            assert (self.X.shape[0] == self.X.shape[1]) and \
+                   (self.X == pt.eye(self.X.shape[0])).all(), \
+                "X must be identity matrix if no data partition. Otherwise, " \
+                "please give part_Vec for partition."
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -1013,31 +1055,6 @@ class wMixVMF(EmissionModel):
             self.kappa = pt.distributions.uniform.Uniform(10, 150).sample()
         else:
             self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
-
-        # Option 1: Initialize W suppose there is one subject (1,k,P)
-        # W = pt.distributions.normal.Normal(0, 1).sample((1, self.P))
-        # W = pt.softmax(W, dim=1) * self.P
-        # self.W = W.unsqueeze(1)  # unsqueeze the second dimension for futher computation
-
-        # Option 2.1: Initialize W (SNR) ~ (80% no signal - 0.01, 20% full signal - 1)
-        # W = pt.zeros((self.P,))
-        # W[pt.randint(self.P, (int(self.P * 0.1),))] = 1
-        #
-        # self.minlength = pt.tensor(0.1)
-        # self.maxlength = pt.tensor(4)
-        # W = pt.where(W == 0, self.minlength.double(), self.maxlength.double())
-        # # Create noise ~ N(0,I)
-        # self.W = W.unsqueeze(0).unsqueeze(1)
-
-        # Option 2.2. The (SNR) ~ bernoulli(80% - 0, 20% - 1)
-        # W = pt.distributions.bernoulli.Bernoulli(0.2).sample((1, self.P))
-        # W[W == 0] = 0.01
-        # self.W = W.unsqueeze(1)
-
-        # Option 3.1: SNR ~ exponential(beta) - default beta = 10.0
-        # W = pt.distributions.exponential.Exponential(1.2).sample((1, self.P))
-        # # W[W > 1] = 1 # Trim SNR to 1 if > 1
-        # self.W = W.unsqueeze(1)
 
     def _init_weights(self, Y, q=20, sigma=100, crit='euclidean'):
         """ Compute the initial weights of data based on gaussian kernel
@@ -1093,18 +1110,18 @@ class wMixVMF(EmissionModel):
 
         return approx
 
-    def Estep(self, Y=None, sub=None, pure_compute=False):
+    def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
         Args:
             Y : Data (optional)
             sub: specify which subject to optimize (optional)
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+        Returns:
+            the expected log likelihood for emission model,
+            shape (nSubject * K * P)
         """
         if Y is not None:
-            if pure_compute:
-                self.D = None
-            self.initialize(Y, D=self.D)
+            self.initialize(Y)
 
         if sub is None:
             sub = range(self.Y.shape[0])
@@ -1116,11 +1133,7 @@ class wMixVMF(EmissionModel):
             self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
         # Calculate log-likelihood
-        if self.split:
-            YV = pt.matmul(self.V.T, self.Y)
-        else:
-            YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
-
+        YV = pt.matmul(self.V.T, self.Y)
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
         if self.uniform_kappa:
@@ -1136,27 +1149,24 @@ class wMixVMF(EmissionModel):
             the N-1 sphere) and kappa (concentration value).
         Args:
             U_hat: the expected log likelihood from the arrangement model
-        Returns: Update all the object's parameters
+        Returns:
+            Update all the object's parameters
         """
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
+        # Making the U_hat to 0 for the NaN voxels (for handling missing data)
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
         this_U_hat = pt.clone(U_hat)
         this_U_hat[nan_voxIdx] = 0
 
+        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
         WYU = pt.sum(pt.matmul(pt.nan_to_num(self.Y * self.W), pt.transpose(this_U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat * self.run, dim=0)
-        if not self.split:  # No data splitting
-            regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
-            XYU = pt.matmul(regressX, WYU)
-            self.V = XYU / pt.sqrt(pt.sum(XYU ** 2, dim=0))
-            r_norm = pt.sqrt(pt.sum(XYU ** 2, dim=0))
-        else:
-            # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-            self.V = WYU / pt.sqrt(pt.sum(WYU ** 2, dim=0))
-            r_norm = pt.sqrt(pt.sum(WYU ** 2, dim=0))
+
+        # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
+        self.V = WYU / pt.sqrt(pt.sum(WYU ** 2, dim=0))
+        r_norm = pt.sqrt(pt.sum(WYU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
@@ -1173,7 +1183,7 @@ class wMixVMF(EmissionModel):
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
         if self.kappa.any() < 0:  # - Debug flag
             print(self.kappa)
-
+        self.kappa = self.kappa + 1000
         # # 3. Updating W, W = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # if not self.split:
         #     YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
