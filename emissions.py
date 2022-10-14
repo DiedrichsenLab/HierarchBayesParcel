@@ -671,20 +671,26 @@ class MixVMF(EmissionModel):
                  uniform_kappa=True):
         """ Constructor
         Args:
-            K: the number of clusters
-            N: the number of observations
-            P: the number of voxels
-            data: training data
-            X: design matrix for task conditions or runs
-            part_vec: Vector indicating number of independent
-                      data partition (repetition). None: no data partition
-            params: if None, no parameters to pass in. Otherwise take the passing
-                    parameters as the model params
+            K (int): the number of clusters
+            N (int): the number of observations 
+            P (int): the number of voxels
+            data (ndarray,pt.tensor): n_sub x N x P  training data
+            X (ndarray or tensor): N x M design matrix for task conditions 
+            part_vec (ndarray or tensor): N-Vector indicating the number of the 
+                      data partition (repetition). Expample = [1,2,3,1,2,3,...]None: no data partition
+            params: if None, no parameters to pass in. Otherwise take the passing parameters as the model params
             uniform_kappa: if True, the model learns a common kappa. Otherwise,
                            cluster-specific kappa
         """
         self.uniform_kappa = uniform_kappa
-        self.part_Vec = part_Vec
+        if part_vec is not None:
+            if isinstance(part_vec,(np.ndarray,pt.Tensor)):
+                self.part_vec = pt.tensor(part_vec, dtype=pt.int)
+            else:
+                raise ValueError('Part_vec must be numpy ndarray or torch Tensor')
+        else:
+            part_vec = None
+        
         super().__init__(K, N, P, data, X)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
@@ -695,7 +701,7 @@ class MixVMF(EmissionModel):
     def initialize(self, data):
         """ Calculates the sufficient stats on the data that does not depend on U,
             and allocates memory for the sufficient stats that does. For the VMF,
-            it length-standardizes the data to length one. If part_Vec is exist, then
+            it length-standardizes the data to length one. If part_vec is exist, then
             the raw data needs to be partitioned and normalize in each partition.
             After that, we restore Y to its original shape (num_sub, N, P). The new
             data for further fitting is X^T (shape M, N) * Y which has a shape
@@ -706,48 +712,44 @@ class MixVMF(EmissionModel):
 
         Returns: None. Store the data in emission model itself.
         Class attributes:
-            self.run:           the number of partitions (usually runs)
-            self.split:         a class-wide flag to tell wether the current data
-                                is partitioned
-            self.W:             the data magnitude of Y, for Mstep test only.
-                                You don't need to know this, it's not relavent
-                                to model fitting :)
-            self.num_nanvoxel:  get the number of total nan voxels, which will be
-                                used in M step of fitting a common kappa
+            self.W:         The data magnitude of raw data Y, before normalization (TODO:remove if not relevant)
+            self.num_part:  Number of available partitions per voxels. numsubj x 1 x P tensor 
+                used in M step 
         """
         super().initialize(data)
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
-        if self.part_Vec is not None:
-            # If self.part_Vec is not None, meaning we need to split the data and making
+        if self.part_vec is not None:
+            # If self.part_vec is not None, meaning we need to split the data and making
             # normlization for partition specific data.
             assert (self.X.shape[0] == self.Y.shape[1]), \
                 "When data partitioning happens, the design matrix X should have" \
                 " same number of observations with input data Y."
 
-            # Here we first splitting data into partitions
-            self.Y = pt.tensor_split(self.Y, self.part_Vec, dim=1)
+            # Split the design matrix X and data and calculate (X^T*X)-1*X^T in each partition
+            parts = pt.unique(self.part_vec)
 
-            # Split the design matrix X as well and calculate (X^T*X)-1*X^T in each partition
-            X = pt.tensor_split(self.X, self.part_Vec, dim=0)
-            regressX = [pt.matmul(pt.linalg.inv(pt.matmul(x.T, x)), x.T) for x in X]
+            # Create array of new normalized data
+            Y = pt.empty((len(parts),self.num_subj,self.M,self.P))
+            for i,p in enumerate(parts):
+                x = self.X[self.part_vec==p,:]
+                Y[i,:,:,:]=pt.linalg.solve(x,self.Y[:,self.part_vec==p,:])
 
-            # count total number of nan value voxels and making nan mask
-            self.W = [pt.sqrt(pt.sum(y ** 2, dim=1, keepdim=True)) for y in self.Y]
-            self.num_nanvoxel = pt.isnan(pt.hstack(self.W).view(-1)).nonzero().shape[0]
-            self.mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]  # run-wise
-            self.num_part = pt.sum(pt.where(pt.hstack(self.W).isnan(), 0, 1), dim=1, keepdim=True)
+            # Length of vectors per partition, subject and voxel
+            self.W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
+            # Keep track of how many available partions per voxels
+            self.num_part = pt.sum(~self.W.isnan(),dim=0)
 
             # normalize in each partition
-            self.Y = [pt.matmul(regressX[i], y)/pt.sqrt(pt.sum(pt.matmul(regressX[i], y)**2, dim=1, keepdim=True)) for i, y in enumerate(self.Y)]
-            self.run = len(self.Y)
-
+            Y = Y / self.W
+            # Then sum over all the partitions
+            self.Y = Y.nansum(dim=0)
             # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
-            self.Y = pt.nan_to_num(pt.stack(self.Y)).sum(dim=0)
-            self.N = self.Y.shape[1]
+            self.M = self.Y.shape[1]
         else:
             # No data splitting
             # calculate the data magnitude and get info of nan voxels
+            # TODO: 
             self.W = [pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))]
             self.num_nanvoxel = pt.isnan(self.W[0].view(-1)).nonzero().shape[0]
             self.mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]
@@ -762,7 +764,7 @@ class MixVMF(EmissionModel):
             assert (self.X.shape[0] == self.X.shape[1]) and \
                    (self.X == pt.eye(self.X.shape[0])).all(), \
                     "X must be identity matrix if no data partition. Otherwise, " \
-                    "please give part_Vec for partition."
+                    "please give part_vec for partition."
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -810,13 +812,15 @@ class MixVMF(EmissionModel):
         return approx
 
     def Estep(self, Y=None, sub=None):
-        """ Estep: Returns log p(Y|U) for each value of U, up to a constant
-            Collects the sufficient statistics for the M-step
+        """ Estep: Returns log p(Y|U) for each voxel and value of U, 
+        up to a constant
+        Collects the sufficient statistics for the M-step
+        
         Args:
-            Y : Data (optional)
-            sub: specify which subject to optimize (optional)
+            Y (pt.tensor): Data (optional)
+            sub (pt.tensor): vector of integer indices specify which subject to estimate (optional)
         Returns:
-            the expected log likelihood for emission model,
+            LL (pt.tensor): the expected log likelihood for emission model,
             shape (nSubject * K * P)
         """
         if Y is not None:
@@ -833,8 +837,8 @@ class MixVMF(EmissionModel):
 
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
-        logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
-                 self._log_bessel_function(self.N/2 - 1, self.kappa)
+        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
+                 self._log_bessel_function(self.M/2 - 1, self.kappa)
         # logCnK = pt.stack([logCnK * m for m in self.mask]).sum(dim=0)
 
         if self.uniform_kappa:
@@ -958,7 +962,7 @@ class MixVMF(EmissionModel):
 class wMixVMF(EmissionModel):
     """ Mixture of von-Mises Fisher distribution weighted by SNR
     """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_Vec=None,
+    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_vec=None,
                  params=None, uniform_kappa=True, weighting=1):
         """ Constructor
         Args:
@@ -967,7 +971,7 @@ class wMixVMF(EmissionModel):
             P: the number of voxels
             data: training data
             X: design matrix for task conditions or runs
-            part_Vec: if not None, the vector indicating the independent
+            part_vec: if not None, the vector indicating the independent
                       data partition (repetition). Otherwise, no data partition
             params: if None, no parameters to pass in. Otherwise take the passing
                     parameters as the model params
@@ -976,7 +980,7 @@ class wMixVMF(EmissionModel):
             weighting: the weighting strategy, default 1 is data magnitude
         """
         self.uniform_kappa = uniform_kappa
-        self.part_Vec = part_Vec
+        self.part_vec = part_vec
         super().__init__(K, N, P, data, X)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
@@ -988,7 +992,7 @@ class wMixVMF(EmissionModel):
     def initialize(self, data, signal=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
             and allocates memory for the sufficient stats that does. For the VMF,
-            it length-standardizes the data to length one. If part_Vec is exist, then
+            it length-standardizes the data to length one. If part_vec is exist, then
             the raw data needs to be partitioned and normalize in each partition.
             After that, we restore Y to its original shape (num_sub, N, P). The new
             data for further fitting is X^T (shape M, N) * Y which has a shape
@@ -1007,11 +1011,11 @@ class wMixVMF(EmissionModel):
         super().initialize(data)
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
-        if self.part_Vec is not None:
-            # If self.part_Vec is not None, meaning we need to split the data and making
+        if self.part_vec is not None:
+            # If self.part_vec is not None, meaning we need to split the data and making
             # normlization for partition specific data. Here we first splitting
             # data into (n_subj, run, N, P) and normalize it along dimemsion run
-            self.Y = pt.tensor_split(self.Y, self.part_Vec, dim=1)
+            self.Y = pt.tensor_split(self.Y, self.part_vec, dim=1)
             self.Y = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y]
             self.run = len(self.Y)
             self.Y = pt.matmul(self.X.T, pt.hstack(self.Y))  # This is the new data
@@ -1051,7 +1055,7 @@ class wMixVMF(EmissionModel):
             assert (self.X.shape[0] == self.X.shape[1]) and \
                    (self.X == pt.eye(self.X.shape[0])).all(), \
                 "X must be identity matrix if no data partition. Otherwise, " \
-                "please give part_Vec for partition."
+                "please give part_vec for partition."
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
