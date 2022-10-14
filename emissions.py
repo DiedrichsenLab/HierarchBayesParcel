@@ -42,7 +42,13 @@ class EmissionModel(Model):
             self.initialize(data)
 
     def initialize(self, data, X=None):
-        """Stores the data in emission model itself
+        """Initializes the emission model with data set. 
+        The data are stored in the object itself
+        call clear() to remove.
+        Args:
+            data (pt.tensor, ndarray): numsubj x N x P data tensor
+            X (array, optional): Design matrix. Defaults to None.
+        
         """
         if type(data) is np.ndarray:
             data = pt.tensor(data, dtype=pt.get_default_dtype())
@@ -61,6 +67,13 @@ class EmissionModel(Model):
 
         self.Y = data  # This is assumed to be (num_sub,P,N)
         self.num_subj = data.shape[0]
+    
+    def clear(self):
+        """Removes the data from the emission model
+        This is important when saving model fits
+        """
+        if hasattr(self,'Y'):
+            delattr(self,'Y')
 
     def Estep(self, sub=None):
         """Implemnents E-step and returns

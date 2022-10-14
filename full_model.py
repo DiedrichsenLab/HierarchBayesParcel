@@ -215,6 +215,12 @@ class FullMultiModel:
         self.emissions = emission
         self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
 
+    def clear(self):
+        """Clears the data from all emission models
+        """
+        for em in self.emissions:
+            em.clear()
+
     def collect_evidence(self,emloglik):
         """Collects evidence over the different data sets
         This is a function here to make inheritance easier
