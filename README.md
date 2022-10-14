@@ -559,14 +559,14 @@ $$
 &=P\log C_M(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{y}_i
 \end{align*}
 $$
-If the design has repeated measurements of the same $M$ conditions, the user can specify this over the $N \times M$ design matrix  $X$ ($N$ is number of observation, $M$ is number of conditions). If we combine across the different repetitions, the resultant data would be $\mathbf{y}=\mathbf{X}^T \tilde{\mathbf{y}}$, and then normalized. However, we can also treat the different repetitions as independent observations, meaning that the resultant data is normalized to length 1 for each of the $J$ independent partitions.  The likelihood is then the sum over partitions and voxels:
+If the design has repeated measurements of the same $M$ conditions, the user can specify this over the $N \times M$ design matrix  $X$ ($N$ is number of observation, $M$ is number of conditions). If we combine across the different repetitions, the resultant data would be $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$, and then normalized. However, we can also treat the different repetitions as independent observations, meaning that the resultant data is normalized to length 1 for each of the $J$ independent partitions.  The likelihood is then the sum over partitions and voxels:
 $$
 \begin{align*}
 \mathcal{L}_E=PJ\log C_N(\kappa)+\sum_{i}^P\sum_{j}^J\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{y}_{i,j}\\
 =PJ\log C_N(\kappa)+\sum_{i}^P\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\sum_{j}^J\mathbf{y}_{i,j}
 \end{align*}
 $$
-Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=\mathbf{X}^T \tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$ The resultant summed vectors are not length 1 anymore, but with this preprocessing we can forget about the number of partitions.  
+Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$ The resultant summed vectors are not length 1 anymore, but with this preprocessing we can forget about the number of partitions.  
 
 
 
@@ -576,7 +576,7 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    $$
    \begin{align*}
    
-   \mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{X}^T\mathbf{Y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
+   \mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
    
    \end{align*}
    $$
@@ -585,12 +585,12 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
 
 $$
 \kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\
-\bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{X}^T\mathbf{Y}_{i}||}{P \times J}
+\bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{P \times J}
 $$
 
 ​		Or **(B)** learn $K$-class specific kappa $\kappa_k$ :
 $$
-\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\bar{r}_k=\frac{r_k}{m\sum_i \langle u_i^{(k)} \rangle_q}
+\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\bar{r}_k=\frac{r_k}{J\sum_i \langle u_i^{(k)} \rangle_q}
 $$
 The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
 

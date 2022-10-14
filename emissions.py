@@ -712,7 +712,6 @@ class MixVMF(EmissionModel):
 
         Returns: None. Store the data in emission model itself.
         Class attributes:
-            self.W:         The data magnitude of raw data Y, before normalization (TODO:remove if not relevant)
             self.num_part:  Number of available partitions per voxels. numsubj x 1 x P tensor 
                 used in M step 
         """
@@ -736,35 +735,28 @@ class MixVMF(EmissionModel):
                 Y[i,:,:,:]=pt.linalg.solve(x,self.Y[:,self.part_vec==p,:])
 
             # Length of vectors per partition, subject and voxel
-            self.W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
+            W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
             # Keep track of how many available partions per voxels
-            self.num_part = pt.sum(~self.W.isnan(),dim=0)
+            self.num_part = pt.sum(~W.isnan(),dim=0)
 
             # normalize in each partition
-            Y = Y / self.W
+            Y = Y / W
             # Then sum over all the partitions
             self.Y = Y.nansum(dim=0)
             # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
             self.M = self.Y.shape[1]
         else:
             # No data splitting
+            # calculate (X^T*X)X^T*y to make the shape of Y is (num_sub, M, P)
+            Y = pt.linalg.solve(self.X, self.Y)
+
             # calculate the data magnitude and get info of nan voxels
-            # TODO: 
-            self.W = [pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))]
-            self.num_nanvoxel = pt.isnan(self.W[0].view(-1)).nonzero().shape[0]
-            self.mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]
-            self.num_part = self.mask[0]
+            W = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True)).unsqueeze(0)
+            self.num_part = pt.sum(~W.isnan(), dim=0)
 
-            # Normalized data
+            # Normalized data with nan value
             self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
-            self.run = 1
-
-            # Make sure self.X now is identity matrix since there is no data split
-            # If the X is
-            assert (self.X.shape[0] == self.X.shape[1]) and \
-                   (self.X == pt.eye(self.X.shape[0])).all(), \
-                    "X must be identity matrix if no data partition. Otherwise, " \
-                    "please give part_vec for partition."
+            self.M = self.Y.shape[1]
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -842,9 +834,10 @@ class MixVMF(EmissionModel):
         # logCnK = pt.stack([logCnK * m for m in self.mask]).sum(dim=0)
 
         if self.uniform_kappa:
+            # TODO: Still feel unsafe of J * logCnK but not sure why
             LL = logCnK * self.num_part + self.kappa * YV
         else:
-            LL = logCnK * self.num_part + self.kappa.unsqueeze(1) * YV
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
 
         return pt.nan_to_num(LL)
 
@@ -864,7 +857,7 @@ class MixVMF(EmissionModel):
         this_U_hat = self.num_part * U_hat
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
-        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
+        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
@@ -874,7 +867,7 @@ class MixVMF(EmissionModel):
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = r_norm.sum() / (self.P * self.num_subj * self.run - self.num_nanvoxel)
+            r_bar = r_norm.sum() / self.num_part.sum()
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
