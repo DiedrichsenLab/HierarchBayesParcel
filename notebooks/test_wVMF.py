@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import evaluation as ev
 import scipy.stats as spst
+from scipy.cluster.vq import kmeans, vq
 
 def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, beta=0.5, sigma2=1.0,
                                     uniform_kappa=True, plot_weight=False, plot=False):
@@ -44,6 +45,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     T = FullModel(arrangeT, emissionT)
     U = arrangeT.sample(num_subj=num_sub)
     Y, signal = emissionT.sample(U, return_signal=True)
+    signal_normal = (signal - signal.min()) / (signal.max() - signal.min())
 
     # Step 3: Compute the log likelihood from the true model
     Uhat_true, loglike_true = T.Estep(Y=Y)
@@ -52,13 +54,21 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False,
                                   remove_redundancy=False)
-    emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=1)
+    emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=2)
     emissionM2 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=4)
     emissionM3 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
+    emissionM4 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=None)
     emVMF = MixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
+
+    emissionM2.V = pt.clone(emissionM1.V)
+    emissionM3.V = pt.clone(emissionM1.V)
+    emissionM4.V = pt.clone(emissionM1.V)
+    emVMF.V = pt.clone(emissionM1.V)
+
     M1 = FullModel(arrangeM, emissionM1)
     M2 = FullModel(arrangeM, emissionM2)
     M3 = FullModel(arrangeM, emissionM3)
+    M4 = FullModel(arrangeM, emissionM4)
     M_vmf = FullModel(arrangeM, emVMF)
 
     # Step 5: Estimate the parameter thetas to fit the new model using EM
@@ -68,16 +78,20 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     M2, ll2, theta2, Uhat_fit_2 = M2.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                             fit_arrangement=False)
 
-    M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal, iter=max_iter, tol=0.0001,
+    M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal_normal, iter=max_iter, tol=0.0001,
                                             fit_arrangement=False)
 
     M4, ll4, theta4, Uhat_fit_4 = M_vmf.fit_em(Y=Y, iter=max_iter, tol=0.0001,
                                                fit_arrangement=False)
 
+    M0, ll0, theta0, Uhat_fit_0 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
+                                            fit_arrangement=False)
+
     U_recon_1, this_uerr_1 = ev.matching_U(U, Uhat_fit_1)
     U_recon_2, this_uerr_2 = ev.matching_U(U, Uhat_fit_2)
     U_recon_3, this_uerr_3 = ev.matching_U(U, Uhat_fit_3)
     U_recon_4, this_uerr_4 = ev.matching_U(U, Uhat_fit_4)
+    U_recon_0, this_uerr_0 = ev.matching_U(U, Uhat_fit_0)
     U_recon_true, this_uerr_true = ev.matching_U(U, Uhat_true)
 
     if plot_weight:
@@ -99,7 +113,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
 
-        max_length = M1.emission.W.max()
+        max_length = Y.norm(dim=1).max()
         Ms = [T, M1, M2, M3, M4]
         x_lines = list()
         y_lines = list()
@@ -335,6 +349,24 @@ def _check_VMF_and_wVMF_equivalent(K=5, P=100, N=40, num_sub=10, max_iter=50,
     return wVMF_kappa, VMF_kappa, wVMF_V, VMF_V
 
 
+def trim_locmin(T1, T2):
+    D = [T1, T2]
+    ind_matrix = []
+
+    for d in D:
+        # Find a threshold or standard to remove those local minimas
+        codebook, _ = kmeans(d, 2)  # Cluster array into two group
+        cluster_ind, _ = vq(d, codebook)
+
+        if d[np.where(cluster_ind == 0)].mean() > d[np.where(cluster_ind == 1)].mean():
+            cluster_ind = 1 - cluster_ind
+
+        ind_matrix.append(cluster_ind)
+    final_idx = np.where(np.asarray(ind_matrix).sum(axis=0) == 0)
+
+    return [this_d[final_idx] for this_d in D]
+
+
 if __name__ == '__main__':
     A, B ,C, D, E = [], [], [], [], []
 
@@ -344,7 +376,8 @@ if __name__ == '__main__':
     dof = np.sqrt(iter)
     for i in range(iter):
         a, b, c, d, e = _simulate_VMF_and_wVMF_from_GME(K=5, P=5000, N=20, num_sub=1, max_iter=500,
-                                                        beta=0.5, sigma2=0.01, plot=True)
+                                                        beta=0.5, sigma2=0.01,
+                                                        plot_weight=False, plot=False)
         # a, b, = _simulate_VMF_and_wVMF_from_VMF(K=5, P=5000, N=20, num_sub=1, max_iter=100,
         #                                              kappa=30, plot=True)
         A.append(a)
@@ -368,4 +401,5 @@ if __name__ == '__main__':
     plt.title('simulation on GME data, max_length=EXP E[X]=2.0')
     plt.show()
 
+    res = trim_locmin(C, D)
     pass
