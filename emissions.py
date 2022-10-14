@@ -761,14 +761,14 @@ class MixVMF(EmissionModel):
         else:
             # No data splitting
             # calculate (X^T*X)X^T*y to make the shape of Y is (num_sub, M, P)
-            Y = pt.linalg.solve(self.X, self.Y)
+            Y = pt.matmul(pt.linalg.inv(self.X.T @ self.X) @ self.X.T, self.Y)
 
             # calculate the data magnitude and get info of nan voxels
             W = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True)).unsqueeze(0)
             self.num_part = pt.sum(~W.isnan(), dim=0)
 
             # Normalized data with nan value
-            self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+            self.Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
             self.M = self.Y.shape[1]
 
     def random_params(self):
@@ -844,10 +844,8 @@ class MixVMF(EmissionModel):
         YV = pt.matmul(self.V.T, self.Y)
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
                  self._log_bessel_function(self.M/2 - 1, self.kappa)
-        # logCnK = pt.stack([logCnK * m for m in self.mask]).sum(dim=0)
 
         if self.uniform_kappa:
-            # TODO: Still feel unsafe of J * logCnK but not sure why
             LL = logCnK * self.num_part + self.kappa * YV
         else:
             LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
