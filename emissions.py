@@ -713,37 +713,52 @@ class MixVMF(EmissionModel):
                                 You don't need to know this, it's not relavent
                                 to model fitting :)
             self.num_nanvoxel:  get the number of total nan voxels, which will be
-                                used in M step
+                                used in M step of fitting a common kappa
         """
         super().initialize(data)
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
         if self.part_Vec is not None:
             # If self.part_Vec is not None, meaning we need to split the data and making
-            # normlization for partition specific data. Here we first splitting
-            # data into (n_subj, run, N, P) and normalize it along dimemsion run
+            # normlization for partition specific data.
+            assert (self.X.shape[0] == self.Y.shape[1]), \
+                "When data partitioning happens, the design matrix X should have" \
+                " same number of observations with input data Y."
+
+            # Here we first splitting data into partitions
             self.Y = pt.tensor_split(self.Y, self.part_Vec, dim=1)
 
-            # count total number of nan value voxels
+            # Split the design matrix X as well and calculate (X^T*X)-1*X^T in each partition
+            X = pt.tensor_split(self.X, self.part_Vec, dim=0)
+            regressX = [pt.matmul(pt.linalg.inv(pt.matmul(x.T, x)), x.T) for x in X]
+
+            # count total number of nan value voxels and making nan mask
             self.W = [pt.sqrt(pt.sum(y ** 2, dim=1, keepdim=True)) for y in self.Y]
             self.num_nanvoxel = pt.isnan(pt.hstack(self.W).view(-1)).nonzero().shape[0]
+            self.mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]  # run-wise
+            self.num_part = pt.sum(pt.where(pt.hstack(self.W).isnan(), 0, 1), dim=1, keepdim=True)
 
             # normalize in each partition
-            self.Y = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y]
+            self.Y = [pt.matmul(regressX[i], y)/pt.sqrt(pt.sum(pt.matmul(regressX[i], y)**2, dim=1, keepdim=True)) for i, y in enumerate(self.Y)]
             self.run = len(self.Y)
-            self.mask = pt.where(pt.hstack(self.Y).isnan(), 0, 1)
 
-            # Reshape back by X^T*Y - we basically take the nansum across partitions
-            self.Y = pt.matmul(self.X.T, pt.nan_to_num(pt.hstack(self.Y)))
+            # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
+            self.Y = pt.nan_to_num(pt.stack(self.Y)).sum(dim=0)
             self.N = self.Y.shape[1]
         else:
+            # No data splitting
+            # calculate the data magnitude and get info of nan voxels
             self.W = [pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))]
-            self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
-
             self.num_nanvoxel = pt.isnan(self.W[0].view(-1)).nonzero().shape[0]
+            self.mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]
+            self.num_part = self.mask[0]
+
+            # Normalized data
+            self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
             self.run = 1
 
             # Make sure self.X now is identity matrix since there is no data split
+            # If the X is
             assert (self.X.shape[0] == self.X.shape[1]) and \
                    (self.X == pt.eye(self.X.shape[0])).all(), \
                     "X must be identity matrix if no data partition. Otherwise, " \
@@ -820,10 +835,12 @@ class MixVMF(EmissionModel):
         YV = pt.matmul(self.V.T, self.Y)
         logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
                  self._log_bessel_function(self.N/2 - 1, self.kappa)
+        # logCnK = pt.stack([logCnK * m for m in self.mask]).sum(dim=0)
+
         if self.uniform_kappa:
-            LL = logCnK + self.kappa * YV
+            LL = logCnK * self.num_part + self.kappa * YV
         else:
-            LL = logCnK.unsqueeze(1) + self.kappa.unsqueeze(1) * YV
+            LL = logCnK * self.num_part + self.kappa.unsqueeze(1) * YV
 
         return pt.nan_to_num(LL)
 
@@ -840,8 +857,7 @@ class MixVMF(EmissionModel):
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
         # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        mask = [pt.where(w.repeat(1, self.K, 1).isnan(), 0, 1) for w in self.W]  # run-wise
-        this_U_hat = pt.stack([U_hat * m for m in mask]).sum(dim=0)
+        this_U_hat = pt.stack([U_hat * m for m in self.mask]).sum(dim=0)
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
@@ -864,7 +880,7 @@ class MixVMF(EmissionModel):
             # r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
-        self.kappa = self.kappa + 1000
+        # self.kappa = self.kappa + 1000
 
     def Mstep_test(self, U_hat, signal_range=None):
         """ Performs the M-step on a specific U-hat. In this emission model,
