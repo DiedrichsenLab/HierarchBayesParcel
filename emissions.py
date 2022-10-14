@@ -857,7 +857,7 @@ class MixVMF(EmissionModel):
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
         # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        this_U_hat = pt.stack([U_hat * m for m in self.mask]).sum(dim=0)
+        this_U_hat = self.num_part * U_hat
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
