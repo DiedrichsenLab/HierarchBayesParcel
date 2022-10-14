@@ -667,7 +667,7 @@ class MixGaussianExp(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_Vec=None, params=None,
+    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_vec=None, params=None,
                  uniform_kappa=True):
         """ Constructor
         Args:
@@ -676,7 +676,7 @@ class MixVMF(EmissionModel):
             P: the number of voxels
             data: training data
             X: design matrix for task conditions or runs
-            part_Vec: Vector indicating number of independent
+            part_vec: Vector indicating number of independent
                       data partition (repetition). None: no data partition
             params: if None, no parameters to pass in. Otherwise take the passing
                     parameters as the model params
