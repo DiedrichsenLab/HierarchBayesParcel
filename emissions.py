@@ -745,7 +745,10 @@ class MixVMF(EmissionModel):
             Y = pt.empty((len(parts),self.num_subj,self.M,self.P))
             for i,p in enumerate(parts):
                 x = self.X[self.part_vec==p,:]
-                Y[i,:,:,:]=pt.linalg.solve(x,self.Y[:,self.part_vec==p,:])
+                # TODO: We cannot use pt.linalg.solve() as x could be non-square matrix in
+                #  a single partition. Change to (X^T@X)-1 @ X^T doesn't hurt and always true
+                # Y[i,:,:,:]=pt.linalg.solve(x,self.Y[:,self.part_vec==p,:])
+                Y[i,:,:,:] = pt.matmul(pt.linalg.inv(x.T @ x) @ x.T, self.Y[:,self.part_vec==p,:])
 
             # Length of vectors per partition, subject and voxel
             W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
