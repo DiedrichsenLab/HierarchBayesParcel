@@ -102,7 +102,8 @@ def simulate_full_VMF(X, K=5, P=100, num_sub=10, max_iter=20,
     plt.show()
 
 def simulate_full_VMF2(X, K=5, P=100, num_sub=10, max_iter=20,
-                       uniform_kappa=True, missingdata=None, n_inits=10):
+                       uniform_kappa=True, missingdata=None, 
+                       part_vec = None, n_inits=10):
     """Simulation function used for testing full model with a VMF emission
     using em_ninits 
     Args:
@@ -112,6 +113,9 @@ def simulate_full_VMF2(X, K=5, P=100, num_sub=10, max_iter=20,
         max_iter: the maximum iteration for EM procedure
         uniform_kappa: If true, the kappa is a scaler across different K's;
                        Otherwise, the kappa is different across K's
+        missingdata: Make some data miss at random? 
+        part_vec: Partition vector 
+        n_inits: how many random initis? 
     Returns:
         Several evaluation plots.
     """
@@ -119,7 +123,7 @@ def simulate_full_VMF2(X, K=5, P=100, num_sub=10, max_iter=20,
 
     # Step 1: Set the true model to some interesting value
     arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionT = MixVMF(K=K, N=X.shape[0], P=P, X=X, uniform_kappa=uniform_kappa)
+    emissionT = MixVMF(K=K, N=X.shape[0], P=P, X=X, uniform_kappa=uniform_kappa,part_vec=part_vec)
 
     # Step 2: Generate data by sampling from the above model
     T = FullMultiModel(arrangeT, [emissionT])
@@ -138,7 +142,7 @@ def simulate_full_VMF2(X, K=5, P=100, num_sub=10, max_iter=20,
     theta_true = T.get_params()
 
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False, remove_redundancy=False)
-    emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa)
+    emissionM = MixVMF(K=K, N=N, P=P, X=X, uniform_kappa=uniform_kappa,part_vec=part_vec)
     M = FullMultiModel(arrangeM, [emissionM])
 
     M, ll, theta, U_hat, first_ll = M.fit_em_ninits(Y=[Y], iter=max_iter, first_iter=6,
@@ -176,4 +180,4 @@ if __name__ == '__main__':
     # Test full model fitting: 
     X = pt.eye(9).repeat(4, 1)  # simulate task design matrix X
     part_vec = np.kron(np.arange(4),np.ones((9,)))
-    simulate_full_VMF2(X,num_sub=11)
+    simulate_full_VMF2(X,num_sub=11,part_vec = part_vec)

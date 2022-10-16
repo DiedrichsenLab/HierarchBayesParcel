@@ -930,8 +930,8 @@ class MixVMF(EmissionModel):
     def sample(self, U):
         """ Draw data sample from this model and given parameters
         Args:
-            U: The prior arrangement U from arragnment model (tensor)
-        Returns: The samples data form this distribution
+            U(pt.tensor): num_subj x P arrangement for each subject  
+        Returns: The samples data from this distribution
         """
         if type(U) is np.ndarray:
             U = pt.tensor(U, dtype=pt.int)
@@ -940,24 +940,32 @@ class MixVMF(EmissionModel):
         else:
             raise ValueError('The given U must be numpy ndarray or torch Tensor!')
 
+        if self.part_vec is None:
+            num_parts = 1
+            ind = pt.arange(self.N)
+        else:
+            parts = pt.unique(self.part_vec)
+            num_parts = len(parts)
+    
         num_subj = U.shape[0]
+
         Y = pt.empty((num_subj, self.N, self.P))
         for s in range(num_subj):
             for p in range(self.P):
-                # Draw sample from the vmf distribution given the input U
-                # JD: Ideally re-write this routine to native Pytorch...
-                # So here the mean direction for sampling is the new V which
-                # calculated by X * V, shape of (N, k)
-                new_V = pt.matmul(self.X, self.V)
-                new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
-                if self.uniform_kappa:
-                    Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa),
-                        dtype=pt.get_default_dtype())
-                else:
-                    Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
-                        dtype=pt.get_default_dtype())
+                for j in range(num_parts):
+                    if self.uniform_kappa:
+                        y = pt.tensor(rand_von_mises_fisher(
+                                              self.V[:, U[s, p]],
+                                              self.kappa),
+                                     dtype=pt.get_default_dtype())
+                    else:
+                        y = pt.tensor(rand_von_mises_fisher(
+                                              self.V[:, U[s, p]],
+                                              self.kappa[U[s, p]]),
+                                     dtype=pt.get_default_dtype())
+                    if self.part_vec is not None:
+                        ind = self.part_vec==parts[j]
+                    Y[s,ind,p]=pt.matmul(self.X[ind,:],y.squeeze())
         return Y
 
 
