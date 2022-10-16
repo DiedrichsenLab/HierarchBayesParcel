@@ -4,14 +4,14 @@
 Created on 2/18/2022
 Full Model class
 
-Author: DZHI
+Author: DZHI, jdiedrichsen
 """
 import numpy as np
 import torch as pt
 import generativeMRF.emissions as emi
 import generativeMRF.arrangements as arr
 import warnings
-
+from copy import copy,deepcopy
 
 class FullModel:
     """The full generative model contains single arrangement model and
@@ -391,13 +391,14 @@ class FullMultiModel:
             ll[i, 0] = pt.sum(ll_A)
             ll[i, 1] = pt.sum(ll_E)
             # Check convergence: 
-            # This is what is here before. It ignores whether likelihood increased or decreased! 
+            # This is what was here before. It ignores whether likelihood increased or decreased! 
             # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
             if i==iter-1:
                 break
             elif i>1:
                 dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood 
-                if dl<0:
+                # Check if likelihood decreases more than tolerance
+                if dl<-tol:
                     warnings.warn(f'Likelihood decreased - terminating on iteration {i}')
                     break
                 elif dl<tol:
@@ -416,11 +417,13 @@ class FullMultiModel:
         else:
             return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
 
-    def fit_em_ninits(self, Y, n_inits=20, first_iter=20, iter=30, tol=0.01,
-                      seperate_ll=False, fit_emission=True, fit_arrangement=True):
-        """Run the EM-algorithm on a full model started with multiple random
-           initialization values and escape from local maxima by selecting the
-           maximum likelihood inits. This demands that both the Emission and
+    def fit_em_ninits(self, Y=None, n_inits=20, first_iter=20, iter=30, tol=0.01,
+                      fit_emission=True, fit_arrangement=True,
+                      init_emission=True, init_arrangement=True):
+        """Run the EM-algorithm on a full model starting with n_inits multiple 
+           random initialization values and escape from local maxima by selecting
+           the model with the highest likelihood after first_iter. 
+           This demands that both the Emission and
            Arrangement model have a full Estep and Mstep and can calculate the
            likelihood, including the partition function
         Args:
@@ -430,87 +433,41 @@ class FullMultiModel:
                         the inits parameters with maximal likelihood
             iter: the number of iterations for full EM process
             tol: Tolerance on overall likelihood (def: 0.01)
-            seperate_ll: Return arrangement and emission LL separetely
             fit_emission (list): If True, fit emission model. Otherwise, freeze it
-            fit_arrangement: If True, fit the arrangement model.
-                             Otherwise, freeze it
+            fit_arrangement: If True, fit arrangement model. Otherwise, freeze it
         Returns:
             model (Full Model): fitted model (also updated)
-            ll (ndarray): Log-likelihood of full model as function of iteration
-                If seperate_ll, the first column is ll_A, the second ll_E
+            ll (ndarray): Log-likelihood of best full model as function of iteration
+                the initial iterations are included
             theta (ndarray): History of the parameter vector
             Uhat: the predicted U (probabilistic)
             first_lls: the log-likelihoods for the n_inits random parameters
                        after first_iter runs
         """
-        max_ll = -pt.inf
-        first_lls = []
+        max_ll = np.array([-np.inf])
+        first_lls = np.full((n_inits,iter),np.nan)
         for i in range(n_inits):
             # Making the new set of emission models with random initializations
-            this_emissions = []
-            for e in self.emissions:
-                if e.name == 'GMM':
-                    this_emissions.append(emi.MixGaussian(K=e.K, N=e.N, P=e.P, std_V=e.std_V))
-                elif e.name == 'GME':
-                    this_emissions.append(emi.MixGaussianExp(K=e.K, N=e.N, P=e.P, num_signal_bins=100,
-                                                             std_V=False, type_estep='linspace'))
-                elif e.name == 'VMF':
-                    this_emissions.append(emi.MixVMF(K=e.K, N=e.N, P=e.P,
-                                                     uniform_kappa=e.uniform_kappa))
-                else:
-                    raise NameError("The given emission model is not recognized.")
-            tmp = self.emissions
-            self.emissions = this_emissions
-
-            _, this_ll, _, _ = self.fit_em(Y, iter=first_iter, tol=tol, seperate_ll=seperate_ll,
+            fm = deepcopy(self)
+            if init_arrangement: 
+                fm.arrange.random_params()
+            if init_emission:
+                for em in fm.emissions:
+                    em.random_params()
+            fm, this_ll, theta, _ = fm.fit_em(Y, iter=first_iter, tol=tol, seperate_ll=False,
                                            fit_emission=fit_emission,
                                            fit_arrangement=fit_arrangement)
-            first_lls.append(this_ll)
-            if this_ll[-1] > max_ll:
-                max_ll = this_ll[-1]
-            else:
-                self.emissions = tmp
-
-        # Initialize the tracking
-        ll = np.zeros((iter, 2))
-        theta = np.zeros((iter, self.nparams))
-
-        self.nsub_list = []
-        for n, em in enumerate(self.emissions):
-            em.initialize(Y[n])
-            this_nsub = Y[n].shape[0]
-            self.nsub_list.append(this_nsub)
-
-        for i in range(iter):
-            # Track the parameters
-            theta[i, :] = self.get_params()
-
-            # Get the (approximate) posterior p(U|Y)
-            emloglik = [e.Estep() for e in self.emissions]
-            emloglik_comb = self.collect_evidence(emloglik)  # concatenate vertically
-
-            Uhat, ll_A = self.arrange.Estep(emloglik_comb)
-            # Compute the expected complete logliklihood
-            ll_E = pt.sum(Uhat * emloglik, dim=(1, 2))
-            ll[i, 0] = pt.sum(ll_A)
-            ll[i, 1] = pt.sum(ll_E)
-            # Check convergence
-            # ll_decrease_flag = (i > 0) and (ll[i, :].sum() - ll[i-1, :].sum() < 0)
-            if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
-                break
-
-            # Updates the parameters
-            Uhat_split = self.distribute_evidence(Uhat)
-            for em, Us in enumerate(Uhat_split):
-                if fit_emission[em]:
-                    self.emissions[em].Mstep(Us)
-            if fit_arrangement:
-                self.arrange.Mstep()
-
-        if seperate_ll:
-            return self, ll[0:i+1], theta[0:i+1, :], Uhat, first_lls
-        else:
-            return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat, first_lls
+            first_lls[i,:len(this_ll)]=this_ll
+            if this_ll[-1] > max_ll[-1]:
+                max_ll = this_ll
+                self = fm
+                best_theta = theta
+        self, ll, theta, U_hat = self.fit_em(Y, iter=iter-first_iter, tol=tol, seperate_ll=False,
+                                           fit_emission=fit_emission,
+                                           fit_arrangement=fit_arrangement)
+        ll = np.r_[max_ll,ll[1:]]
+        theta = np.r_[best_theta,theta[1:, :]]
+        return self, ll, theta, U_hat, first_lls
 
     def get_params(self):
         """Get the concatenated parameters from arrangemenet + emission model

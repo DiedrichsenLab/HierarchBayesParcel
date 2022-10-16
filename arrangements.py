@@ -18,6 +18,7 @@ class ArrangementModel(Model):
         self.K = K  # Number of states
         self.P = P  # Number of nodes
 
+
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment
         Either with a spatially uniform prior
@@ -41,6 +42,11 @@ class ArrangeIndependent(ArrangementModel):
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1, :]
         self.set_param_list(['logpi'])
+
+    def random_params(self):
+        """ Sets prior parameters to random starting values 
+        """
+        self.logpi = pt.normal(0,1,size=self.logpi.shape)
 
     def Estep(self, emloglik, gather_ss=True):
         """ Estep for the spatial arrangement model

@@ -92,7 +92,7 @@ class EmissionModel(Model):
         pass
 
     def random_params(self):
-        """Sets all random parameters from a vector
+        """Sets parameters to random values
         """
         pass
 
