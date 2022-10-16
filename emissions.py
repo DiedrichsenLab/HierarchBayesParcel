@@ -968,21 +968,27 @@ class wMixVMF(EmissionModel):
                  params=None, uniform_kappa=True, weighting=1):
         """ Constructor
         Args:
-            K: the number of clusters
-            N: the number of observations
-            P: the number of voxels
-            data: training data
-            X: design matrix for task conditions or runs
-            part_vec: if not None, the vector indicating the independent
-                      data partition (repetition). Otherwise, no data partition
-            params: if None, no parameters to pass in. Otherwise take the passing
-                    parameters as the model params
+            K (int): the number of clusters
+            N (int): the number of observations
+            P (int): the number of voxels
+            data (ndarray,pt.tensor): n_sub x N x P  training data
+            X (ndarray or tensor): N x M design matrix for task conditions
+            part_vec (ndarray or tensor): N-Vector indicating the number of the
+                      data partition (repetition). Expample = [1,2,3,1,2,3,...]None: no data partition
+            params: if None, no parameters to pass in. Otherwise take the passing parameters as the model params
             uniform_kappa: if True, the model learns a common kappa. Otherwise,
                            cluster-specific kappa
             weighting: the weighting strategy, default 1 is data magnitude
         """
         self.uniform_kappa = uniform_kappa
-        self.part_vec = part_vec
+        if part_vec is not None:
+            if isinstance(part_vec, (np.ndarray, pt.Tensor)):
+                self.part_vec = pt.tensor(part_vec, dtype=pt.int)
+            else:
+                raise ValueError('Part_vec must be numpy ndarray or torch Tensor')
+        else:
+            part_vec = None
+
         super().__init__(K, N, P, data, X)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
@@ -1014,49 +1020,65 @@ class wMixVMF(EmissionModel):
 
         if self.part_vec is not None:
             # If self.part_vec is not None, meaning we need to split the data and making
-            # normlization for partition specific data. Here we first splitting
-            # data into (n_subj, run, N, P) and normalize it along dimemsion run
-            self.Y = pt.tensor_split(self.Y, self.part_vec, dim=1)
-            self.Y = [y/pt.sqrt(pt.sum(y**2, dim=1, keepdim=True)) for y in self.Y]
-            self.run = len(self.Y)
-            self.Y = pt.matmul(self.X.T, pt.hstack(self.Y))  # This is the new data
-            self.N = self.Y.shape[1]
+            # normlization for partition specific data.
+            assert (self.X.shape[0] == self.Y.shape[1]), \
+                "When data partitioning happens, the design matrix X should have" \
+                " same number of observations with input data Y."
+
+            # Split the design matrix X and data and calculate (X^T*X)-1*X^T in each partition
+            parts = pt.unique(self.part_vec)
+
+            # Create array of new normalized data
+            Y = pt.empty((len(parts), self.num_subj, self.M, self.P))
+            for i, p in enumerate(parts):
+                x = self.X[self.part_vec == p, :]
+                # Y = (X^T@X)-1 @ X^T @ data:
+                # Use pinv (pseudo inverse here)- equivalent to :
+                # pt.matmul(pt.linalg.inv(x.T @ x), x.T @ self.Y[:,self.part_vec==p,:])
+                # But numerically more stable (i.e. when (xT @ x) is not invertible)
+                Y[i, :, :, :] = pt.matmul(pt.linalg.pinv(x), self.Y[:, self.part_vec == p, :])
+
+            # Length of vectors per partition, subject and voxel
+            W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
+            # Keep track of how many available partions per voxels
+            self.num_part = pt.sum(~W.isnan(), dim=0)
+            self.W = W
+
+            # normalize in each partition
+            Y = Y / W
+            # Then sum over all the partitions
+            self.Y = Y.nansum(dim=0)
+            # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
+            self.M = self.Y.shape[1]
         else:
-            if signal is not None:
-                self.W = signal.unsqueeze(1)
-            else:
-                # use signal lengh as weights
-                W = pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
+            # No data splitting
+            # calculate (X^T*X)X^T*y to make the shape of Y is (num_sub, M, P)
+            Y = pt.matmul(pt.linalg.pinv(self.X), self.Y)
 
-                # use data density as weights
-                density = self._init_weights(self.Y, crit='cosine')
-                density = pt.nan_to_num_(density, neginf=pt.nan)
-                density = (density - np.nanmin(density, axis=2, keepdims=True)) / (np.nanmax(
-                    density, axis=2, keepdims=True) - np.nanmin(density, axis=2, keepdims=True))
+            # calculate the data magnitude and get info of nan voxels
+            W = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True)).unsqueeze(0)
+            self.num_part = pt.sum(~W.isnan(), dim=0)
+            self.W = W
 
-                if self.weighting == 1:  # weights are the magnitude
-                    self.W = W
-                elif self.weighting == 2:  # weights are the normalized magnitude
-                    W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
-                        W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
-                    self.W = W
-                elif self.weighting == 3:  # weights are the density
-                    self.W = density
-                elif self.weighting ==4:  # weights are the density + magnitude
-                    W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
-                        W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
-                    self.W = density + W
-                else:  # if no weighting is given, restore VMF
-                    self.W = pt.mean(pt.ones(self.Y.shape), dim=1, keepdim=True)
+            # Normalized data with nan value
+            self.Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
+            self.M = self.Y.shape[1]
 
-            self.Y = self.Y / pt.sqrt(pt.sum(self.Y ** 2, dim=1, keepdim=True))
-            self.run = 1
+            # if self.weighting == 1:  # weights are the magnitude
+            #     self.W = W
+            # elif self.weighting == 2:  # weights are the normalized magnitude
+            #     W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
+            #         W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
+            #     self.W = W
+            # elif self.weighting == 3:  # weights are the density
+            #     self.W = density
+            # elif self.weighting ==4:  # weights are the density + magnitude
+            #     W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
+            #         W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
+            #     self.W = density + W
+            # else:  # if no weighting is given, restore VMF
+            #     self.W = pt.mean(pt.ones(self.Y.shape), dim=1, keepdim=True)
 
-            # Make sure self.X now is identity matrix since there is no data split
-            assert (self.X.shape[0] == self.X.shape[1]) and \
-                   (self.X == pt.eye(self.X.shape[0])).all(), \
-                "X must be identity matrix if no data partition. Otherwise, " \
-                "please give part_vec for partition."
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -1155,12 +1177,13 @@ class wMixVMF(EmissionModel):
 
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
-        logCnK = (self.N/2 - 1)*log(self.kappa) - (self.N/2)*log(2*PI) - \
-                 self._log_bessel_function(self.N/2 - 1, self.kappa)
+        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
+                 self._log_bessel_function(self.M/2 - 1, self.kappa)
+
         if self.uniform_kappa:
-            LL = logCnK + self.kappa * YV
+            LL = logCnK * self.num_part + self.kappa * YV
         else:
-            LL = logCnK.unsqueeze(1) + self.kappa.unsqueeze(1) * YV
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
 
         return pt.nan_to_num(LL)
 
@@ -1177,42 +1200,32 @@ class wMixVMF(EmissionModel):
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
         # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
-        this_U_hat = pt.clone(U_hat)
-        this_U_hat[nan_voxIdx] = 0
+        this_U_hat = self.num_part * U_hat
 
-        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
-        WYU = pt.sum(pt.matmul(pt.nan_to_num(self.Y * self.W), pt.transpose(this_U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat * self.run, dim=0)
+        # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
+        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y * self.W), pt.transpose(U_hat, 1, 2)), dim=0)
+        UU = pt.sum(this_U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        self.V = WYU / pt.sqrt(pt.sum(WYU ** 2, dim=0))
-        r_norm = pt.sqrt(pt.sum(WYU ** 2, dim=0))
+        self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
+        r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = r_norm.sum() / pt.nan_to_num_(self.W).sum()
+            r_bar = r_norm.sum() / self.num_part.sum()
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
         else:
-            r_bar = r_norm / pt.sum(self.W.sum(dim=0) * UU, dim=1)
+            r_bar = r_norm / pt.sum(UU, dim=1)
             # r_bar[r_bar > 0.95] = 0.95
             # r_bar[r_bar < 0.05] = 0.05
 
-        self.kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
+        self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
         if self.kappa.any() < 0:  # - Debug flag
             print(self.kappa)
-        self.kappa = self.kappa + 1000
-        # # 3. Updating W, W = (r_bar*N - r_bar^3)/(1-r_bar^2),
-        # if not self.split:
-        #     YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
-        # else:
-        #     YV = pt.matmul(self.V.T, self.Y)
-        #
-        # W = pt.nanmean(this_U_hat * self.kappa * YV, dim=0)
-        # self.W = pt.softmax(W, dim=1) * W.shape[1]
+        # self.kappa = self.kappa + 1000
 
     def sample(self, U):
         """ Draw data sample from this model and given parameters
