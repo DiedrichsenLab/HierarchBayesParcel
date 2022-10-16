@@ -548,11 +548,11 @@ Note that $\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}
 
 ### Emission model 3: Mixture of Von-Mises Distributions
 
-For a $M$-dimensional data $\mathbf{y} \in $ the probability density function of von Mises-Fisher distribution is defined as following, 
+For a $M$-dimensional data $\mathbf{y}$ the probability density function of von Mises-Fisher distribution is defined as following, 
 $$
 V_M(\mathbf{y}|\mathbf{v}_k,\kappa) = C_M(\kappa)exp(\kappa\mathbf{v}_k^{T}\mathbf{y})
 $$
-where $\mathbf{v}_k$ denotes the mean direction (unit vectors for each parcels), $\mathbf{y}$ has unit length,$\kappa$ indicates the concentration parameter ($\kappa\geqslant0$), which is joint over all parcels. $C_M(\kappa) = \frac{\kappa^{M/2-1}}{(2\pi)^{M/2}I_{M/2-1}(\kappa)}$ is the normalization constant where $I_r(.)$ refers to the modified Bessel function of the $r$ order. Thus, the *expected emission log-likelihood* of a mixture of $K$-classes von-Mises fisher distributions is defined as:
+where $\mathbf{v}_k$ denotes the mean direction for parcel k (a unit vector), $\mathbf{y}$ has unit length, $\kappa$ indicates the concentration parameter ($\kappa\geqslant0$), which is joint over all parcels. $C_M(\kappa) = \frac{\kappa^{M/2-1}}{(2\pi)^{M/2}I_{M/2-1}(\kappa)}$ is the normalization constant where $I_r(.)$ refers to the modified Bessel function of the $r$ order. Thus, the *expected emission log-likelihood* of a mixture of $K$-classes von-Mises fisher distributions is defined as:
 $$
 \begin{align*}
 \mathcal{L}_E &=\langle \sum_i \log p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)\rangle_q\\
@@ -566,9 +566,7 @@ $$
 =PJ\log C_N(\kappa)+\sum_{i}^P\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\sum_{j}^J\mathbf{y}_{i,j}
 \end{align*}
 $$
-Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$ The resultant summed vectors are not length 1 anymore, but with this preprocessing we can forget about the number of partitions.  
-
-
+Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$ The resultant summed vectors are not length 1 anymore.  
 
 Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in vn-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
 
