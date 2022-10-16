@@ -10,6 +10,7 @@ import numpy as np
 import torch as pt
 import generativeMRF.emissions as emi
 import generativeMRF.arrangements as arr
+import warnings
 
 
 class FullModel:
@@ -389,11 +390,18 @@ class FullMultiModel:
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             ll[i, 0] = pt.sum(ll_A)
             ll[i, 1] = pt.sum(ll_E)
-            # Check convergence
-            # ll_decrease_flag = (i > 0) and (ll[i, :].sum() - ll[i-1, :].sum() < 0)
-            # if i == iter-1 or ((i > 0) and (ll[i,:].sum() - ll[i-1,:].sum() < tol)) or ll_decrease_flag:
-            if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
+            # Check convergence: 
+            # This is what is here before. It ignores whether likelihood increased or decreased! 
+            # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
+            if i==iter-1:
                 break
+            elif i>1:
+                dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood 
+                if dl<0:
+                    warnings.warn(f'Likelihood decreased - terminating on iteration {i}')
+                    break
+                elif dl<tol:
+                    break
 
             # Updates the parameters
             Uhat_split = self.distribute_evidence(Uhat)
