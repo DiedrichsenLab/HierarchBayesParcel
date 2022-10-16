@@ -581,14 +581,24 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    \end{align*}
    $$
 
-2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions") in two options: **(A)** learn a common $\kappa$ :
+2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions") in two options: **(A)** learn a common $\kappa$ : <font color='red'>The red equations are suggested from original paper, where we suppose therei is no data repetitions, $N$ data points and each data points $\mathbf{y}_i$ has $M$ dimensions. </font>.
+   $$
+   \color{red}\kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\\color{red}\bar{r}=\frac{1}{N}\sum_k^K||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||
+   $$
+   Now when data partitioning happens, the common $\kappa$ estimation is:
+
+3. 
 
 $$
 \kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\
 \bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{P \times J}
 $$
 
-​		Or **(B)** learn $K$-class specific kappa $\kappa_k$ :
+​		Or **(B)** learn $K$-class specific kappa $\kappa_k$​ :
+$$
+\color{red}\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\color{red}\bar{r}_k=\frac{||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{\sum_i^N \langle u_i^{(k)} \rangle_q}
+$$
+​		with data partitioning, the $K$-class specific $\kappa$ estimation is:
 $$
 \kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\bar{r}_k=\frac{r_k}{J\sum_i \langle u_i^{(k)} \rangle_q}
 $$
