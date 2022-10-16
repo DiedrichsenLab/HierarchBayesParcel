@@ -702,7 +702,7 @@ class MixVMF(EmissionModel):
             else:
                 raise ValueError('Part_vec must be numpy ndarray or torch Tensor')
         else:
-            part_vec = None
+            self.part_vec = None
         
         super().__init__(K, N, P, data, X)
         self.random_params()
@@ -875,23 +875,18 @@ class MixVMF(EmissionModel):
         UU = pt.sum(this_U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
         r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
+        self.V = YU / r_norm
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
             r_bar = r_norm.sum() / self.num_part.sum()
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
         else:
             r_bar = r_norm / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
-        # self.kappa = self.kappa + 1000
 
     def Mstep_test(self, U_hat, signal_range=None):
         """ Performs the M-step on a specific U-hat. In this emission model,

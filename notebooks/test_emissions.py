@@ -16,7 +16,7 @@ import evaluation
 import os
 from full_model import FullModel
 from arrangements import ArrangeIndependent, expand_mn
-from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF, wMixVMF, VMFMixture
+from emissions import MixGaussianExp, MixGaussian, MixGaussianGamma, MixVMF, wMixVMF
 import time
 import copy
 import seaborn as sb
