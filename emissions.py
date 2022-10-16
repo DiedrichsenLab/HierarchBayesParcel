@@ -729,7 +729,6 @@ class MixVMF(EmissionModel):
                 used in M step 
         """
         super().initialize(data)
-        self.rss = pt.empty((self.num_subj, self.K, self.P))
 
         if self.part_vec is not None:
             # If self.part_vec is not None, meaning we need to split the data and making
@@ -745,10 +744,11 @@ class MixVMF(EmissionModel):
             Y = pt.empty((len(parts),self.num_subj,self.M,self.P))
             for i,p in enumerate(parts):
                 x = self.X[self.part_vec==p,:]
-                # TODO: We cannot use pt.linalg.solve() as x could be non-square matrix in
-                #  a single partition. Change to (X^T@X)-1 @ X^T doesn't hurt and always true
-                # Y[i,:,:,:]=pt.linalg.solve(x,self.Y[:,self.part_vec==p,:])
-                Y[i,:,:,:] = pt.matmul(pt.linalg.inv(x.T @ x) @ x.T, self.Y[:,self.part_vec==p,:])
+                # Y = (X^T@X)-1 @ X^T @ data: 
+                # Use pinv (pseudo inverse here)- equivalent to :
+                # pt.matmul(pt.linalg.inv(x.T @ x), x.T @ self.Y[:,self.part_vec==p,:])
+                # But numerically more stable (i.e. when (xT @ x) is not invertible)
+                Y[i,:,:,:] = pt.matmul(pt.linalg.pinv(x), self.Y[:,self.part_vec==p,:])
 
             # Length of vectors per partition, subject and voxel
             W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
@@ -764,7 +764,7 @@ class MixVMF(EmissionModel):
         else:
             # No data splitting
             # calculate (X^T*X)X^T*y to make the shape of Y is (num_sub, M, P)
-            Y = pt.matmul(pt.linalg.inv(self.X.T @ self.X) @ self.X.T, self.Y)
+            Y = pt.matmul(pt.linalg.pinv(self.X), self.Y)
 
             # calculate the data magnitude and get info of nan voxels
             W = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True)).unsqueeze(0)
@@ -1016,7 +1016,6 @@ class wMixVMF(EmissionModel):
             self.W: the weights associated to each data points
         """
         super().initialize(data)
-        self.rss = pt.empty((self.num_subj, self.K, self.P))
 
         if self.part_vec is not None:
             # If self.part_vec is not None, meaning we need to split the data and making
