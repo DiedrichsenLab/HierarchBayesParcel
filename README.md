@@ -324,7 +324,7 @@ $$
 $$
 In the E-step the emission model simply passes $p(\mathbf{y}_i|\mathbf{u}_i;\theta_E)$ as a message to the arrangement model. In the M-step, $q(\mathbf{u}_i) = \langle \mathbf{u}_i \rangle$ is passed back, and the emission model optimizes the above quantity in respect to $\theta_E $.
 
-### Emission model 0: Multinomial 
+### Emission model 1: Multinomial 
 A simple (but instructive) emission model is that the observed data simpy has a multinomial distribution, like the latent variables $\mathbf{u}$. The coupling between the latent and the observed variable is stochastic, using a Potts model between the two nodes: 
 $$
 p(\mathbf{y_i}|\mathbf{u}_i;\theta_E) =  \frac{\exp(\mathbf{y}_i^T \mathbf{u}_i w)}{(K-1)+\exp(w)}
@@ -362,7 +362,7 @@ w=\log(1-K+\frac{(K-1)}{1-\sum_{i}^P \mathbf{y}_i^T \langle \mathbf{u}_i \rangle
 $$
 
 
-### Emission model 1: Mixture of Gaussians
+### Emission model 2: Mixture of Gaussians
 
 Under the Gaussian mixture model, we model the emissions as a Gaussian with a parcel-specific mean ($\mathbf{v}_k$), and with equal isotropic variance across parcels and observations: 
 $$
@@ -398,7 +398,7 @@ Now, with the above expected emission log likelihood by hand, we can update the 
 
    The updated parameters $\theta_{k}^{(t)}$ from current $\mathbf{M}$-step will be passed to the next $\mathbf{E}$-step $(t+1)$  until convergence.
 
-### Emission model 2: Mixture of Gaussians with Exponential signal strength
+### Emission model 3a: Mixture of Gaussians with Exponential signal strength
 
 The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $N\times1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as $s_i \sim exponential(\beta_s)$. Therefore the probability model for gamma is defined as:
 $$
@@ -462,7 +462,7 @@ $$
 $$
 
 
-### Emission model 2b: Mixture of Gaussians with Gamma signal strength
+### Emission model 3b: Mixture of Gaussians with Gamma signal strength
 
 The emission model should depend on the type of data that is measured. A common application is that the data measured at location $i$ are the task activation in $N$ tasks, arranged in the $N\times1$ data vector $\mathbf{y}_i$. The averaged expected response for each of the parcels is $\mathbf{v}_k$. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as $s_i \sim Gamma(\theta_\alpha,\theta_{\beta s})$. Therefore the probability model for gamma is defined as:
 $$
@@ -546,7 +546,7 @@ $$
 $$
 Note that $\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q$ is given by Jensen's inequality.
 
-### Emission model 3: Mixture of Von-Mises Distributions
+### Emission model 4: Mixture of Von-Mises Distributions
 
 For a $M$-dimensional data $\mathbf{y}$ the probability density function of von Mises-Fisher distribution is defined as following, 
 $$
@@ -559,14 +559,14 @@ $$
 &=P\log C_M(\kappa)+\sum_{i}\sum_{k}\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{y}_i
 \end{align*}
 $$
-If the design has repeated measurements of the same $M$ conditions, the user can specify this over the $N \times M$ design matrix  $X$ ($N$ is number of observation, $M$ is number of conditions). If we combine across the different repetitions, the resultant data would be $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$, and then normalized. However, we can also treat the different repetitions as independent observations, meaning that the resultant data is normalized to length 1 for each of the $J$ independent partitions.  The likelihood is then the sum over partitions and voxels:
+If the design has repeated measurements of the same $M$ conditions, the user can specify this over the $N \times M$ design matrix  $X$ ($N$ is number of observation, $M$ is number of conditions). If we combine across the different repetitions, the resultant data would be $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$, and then normalized. However, we can also treat the different repetitions as independent observations, meaning that the resultant data is normalized to length 1 for each of the $J$ independent partitions.  The likelihood is then the sum over partitions and voxels :
 $$
 \begin{align*}
 \mathcal{L}_E=PJ\log C_N(\kappa)+\sum_{i}^P\sum_{j}^J\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\mathbf{y}_{i,j}\\
 =PJ\log C_N(\kappa)+\sum_{i}^P\sum_{k}^K\langle u_{i}^{(k)}\rangle\kappa\mathbf{v}_{k}^T\sum_{j}^J\mathbf{y}_{i,j}
 \end{align*}
 $$
-Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$ The resultant summed vectors are not length 1 anymore.  
+Effectively in the code, the user passes the unnormalized data, a design matrix, and a partition vector. We first compute $\mathbf{y}=(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\tilde{\mathbf{y}}$  for each partition and then normalize the resultant data in each partition. Finally, we sum the vectors across partitions. $\mathbf{y}_i = \sum_j \mathbf{y}_{i,j}$, and retain the number of observations for voxel i: $J_i$. The resultant summed vectors are not length 1 anymore, but will be fine as a sufficient statistics. 
 
 Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ step by maximizing $\mathcal{L}_E$  in respect to the parameters in vn-Mises mixture $\theta_{k}=\{\mathbf{v}_{k},\kappa\}$. (Note: the updates only consider a single subject).
 
@@ -579,29 +579,33 @@ Now, we update the parameters $\theta$ of the von-Mises mixture in the $\Mu$ ste
    \end{align*}
    $$
 
-2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions") in two options: **(A)** learn a common $\kappa$ : <font color='red'>The red equations are suggested from original paper, where we suppose therei is no data repetitions, $N$ data points and each data points $\mathbf{y}_i$ has $M$ dimensions. </font>.
+2. Updating concentration parameter $\kappa$ is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions"). If we have $N$ independent observations $\mathbf{y}_i$, each with $M$ dimensions, then we can **(A)** learn a common $\kappa$ across classes: 
    $$
-   \color{red}\kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\\color{red}\bar{r}=\frac{1}{N}\sum_k^K||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||
+   \kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\
+   \bar{r}=\frac{1}{N}\sum_k^K||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||
    $$
-   Now when data partitioning happens, the common $\kappa$ estimation is:
-
+   
 3. 
 
+Alternatively, we can **(B)** learn $K$-class specific kappa $\kappa_k$​ :
 $$
-\kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}\\
-\bar{r}=\frac{\sum_k||\sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{P \times J}
+\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\
+\bar{r}_k=\frac{||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{\sum_i^N \langle u_i^{(k)} \rangle_q}
 $$
 
-​		Or **(B)** learn $K$-class specific kappa $\kappa_k$​ :
-$$
-\color{red}\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\color{red}\bar{r}_k=\frac{||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{\sum_i^N \langle u_i^{(k)} \rangle_q}
-$$
-​		with data partitioning, the $K$-class specific $\kappa$ estimation is:
-$$
-\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}\\\bar{r}_k=\frac{r_k}{J\sum_i \langle u_i^{(k)} \rangle_q}
-$$
-The updated parameters from current $\mathbf{M}$-step will be passed to the $\mathbf{E}$-step of $(t+1)$ times for calculating the expectation.
+For our specific case, we want to integrate the evidence across $s={1,...,S}$ subjects each with $i={1,...,P}$ voxels. Each subject and voxel may have $J_{s,i}$ observations. Under this assumption, the estimates become:
 
+$$
+\bar{r}=\frac{\sum_k^K||\sum_{s}^S\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{s}^S\sum_{i}^PJ_{s,i}}
+$$
+
+
+
+
+and for class-specific $\kappa$ :
+$$
+\bar{r}_k=\frac{||\sum_{s}^S\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{s}^S\sum_{i}^PJ_{s,i}\langle u_{s,i}^{(k)} \rangle_q}
+$$
 ## Model Evaluation
 
 After model fitting, we need a fair way to quantitatively compare different emission models between a Gaussian mixture model (GMM), a Gaussian Mixture with exponential signal strength (GMM_exp), and a directional model (VMF). Unfortunately, the three models are defined in different space: the GMM and GMM_exp are defined in $\mathbb{R}^N$ state space while the VMF is defined in $(N-1)$-hypersphere surface. Therefore, the traditional marginal log-likelihood based criterion (BIC, Bayes Factor) cannot provide a fair comparison, as the probability densities would cover different spaces. The main purpose of this section is trying to find evaluation criteria  that would be suitable to compare model defined in different space.

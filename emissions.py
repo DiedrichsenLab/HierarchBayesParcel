@@ -867,12 +867,12 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        this_U_hat = self.num_part * U_hat
+        # Multiply the expectation by the number of observations 
+        JU_hat = self.num_part * U_hat
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat, dim=0)
+        UU = pt.sum(JU_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
         r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
