@@ -92,7 +92,7 @@ class EmissionModel(Model):
         pass
 
     def random_params(self):
-        """Sets all random parameters from a vector
+        """Sets parameters to random values
         """
         pass
 
@@ -867,12 +867,12 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        this_U_hat = self.num_part * U_hat
+        # Multiply the expectation by the number of observations 
+        JU_hat = self.num_part * U_hat
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat, dim=0)
+        UU = pt.sum(JU_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
         r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
@@ -888,50 +888,11 @@ class MixVMF(EmissionModel):
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
-    def Mstep_test(self, U_hat, signal_range=None):
-        """ Performs the M-step on a specific U-hat. In this emission model,
-            the parameters need to be updated are Vs (unit norm projected on
-            the N-1 sphere) and kappa (concentration value).
-        Args:
-            U_hat: the expected log likelihood from the arrangement model
-        Returns: Update all the object's parameters
-        """
-        if type(U_hat) is np.ndarray:
-            U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
-        if signal_range is not None:
-            Y = pt.where((self.W[0]>=signal_range[0])&(self.W[0]<signal_range[1]), self.Y, pt.nan)
-        else:
-            Y = self.Y
-
-        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
-        nan_voxIdx = Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
-        this_U_hat = pt.clone(U_hat)
-        this_U_hat[nan_voxIdx] = 0
-
-        YU = pt.sum(pt.matmul(pt.nan_to_num(Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
-        WYU = pt.sum(pt.matmul(pt.nan_to_num(Y)*self.W[0], pt.transpose(this_U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat * self.run, dim=0)
-
-        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
-        # where r_bar = ||V_k||/N*Uhat
-        if self.uniform_kappa:
-            r_bar = pt.sqrt(pt.sum(YU**2, dim=0)) / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
-            r_bar = pt.mean(r_bar)
-        else:
-            r_bar = pt.sqrt(pt.sum(YU**2, dim=0)) / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
-
-        kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
-        return kappa
-
     def sample(self, U):
         """ Draw data sample from this model and given parameters
         Args:
-            U: The prior arrangement U from arragnment model (tensor)
-        Returns: The samples data form this distribution
+            U(pt.tensor): num_subj x P arrangement for each subject  
+        Returns: The samples data from this distribution
         """
         if type(U) is np.ndarray:
             U = pt.tensor(U, dtype=pt.int)
@@ -940,24 +901,32 @@ class MixVMF(EmissionModel):
         else:
             raise ValueError('The given U must be numpy ndarray or torch Tensor!')
 
+        if self.part_vec is None:
+            num_parts = 1
+            ind = pt.arange(self.N)
+        else:
+            parts = pt.unique(self.part_vec)
+            num_parts = len(parts)
+    
         num_subj = U.shape[0]
+
         Y = pt.empty((num_subj, self.N, self.P))
         for s in range(num_subj):
             for p in range(self.P):
-                # Draw sample from the vmf distribution given the input U
-                # JD: Ideally re-write this routine to native Pytorch...
-                # So here the mean direction for sampling is the new V which
-                # calculated by X * V, shape of (N, k)
-                new_V = pt.matmul(self.X, self.V)
-                new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
-                if self.uniform_kappa:
-                    Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa),
-                        dtype=pt.get_default_dtype())
-                else:
-                    Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
-                        dtype=pt.get_default_dtype())
+                for j in range(num_parts):
+                    if self.uniform_kappa:
+                        y = pt.tensor(rand_von_mises_fisher(
+                                              self.V[:, U[s, p]],
+                                              self.kappa),
+                                     dtype=pt.get_default_dtype())
+                    else:
+                        y = pt.tensor(rand_von_mises_fisher(
+                                              self.V[:, U[s, p]],
+                                              self.kappa[U[s, p]]),
+                                     dtype=pt.get_default_dtype())
+                    if self.part_vec is not None:
+                        ind = self.part_vec==parts[j]
+                    Y[s,ind,p]=pt.matmul(self.X[ind,:],y.squeeze())
         return Y
 
 
