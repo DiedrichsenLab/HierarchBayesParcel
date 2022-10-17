@@ -888,45 +888,6 @@ class MixVMF(EmissionModel):
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
-    def Mstep_test(self, U_hat, signal_range=None):
-        """ Performs the M-step on a specific U-hat. In this emission model,
-            the parameters need to be updated are Vs (unit norm projected on
-            the N-1 sphere) and kappa (concentration value).
-        Args:
-            U_hat: the expected log likelihood from the arrangement model
-        Returns: Update all the object's parameters
-        """
-        if type(U_hat) is np.ndarray:
-            U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
-        if signal_range is not None:
-            Y = pt.where((self.W[0]>=signal_range[0])&(self.W[0]<signal_range[1]), self.Y, pt.nan)
-        else:
-            Y = self.Y
-
-        # Calculate YU - \sum_i\sum_k<u_i^k>y_i and UU - \sum_i\sum_k<u_i^k>
-        nan_voxIdx = Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
-        this_U_hat = pt.clone(U_hat)
-        this_U_hat[nan_voxIdx] = 0
-
-        YU = pt.sum(pt.matmul(pt.nan_to_num(Y), pt.transpose(this_U_hat, 1, 2)), dim=0)
-        WYU = pt.sum(pt.matmul(pt.nan_to_num(Y)*self.W[0], pt.transpose(this_U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat * self.run, dim=0)
-
-        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
-        # where r_bar = ||V_k||/N*Uhat
-        if self.uniform_kappa:
-            r_bar = pt.sqrt(pt.sum(YU**2, dim=0)) / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
-            r_bar = pt.mean(r_bar)
-        else:
-            r_bar = pt.sqrt(pt.sum(YU**2, dim=0)) / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
-
-        kappa = (r_bar * self.N - r_bar**3) / (1 - r_bar**2)
-        return kappa
-
     def sample(self, U):
         """ Draw data sample from this model and given parameters
         Args:
