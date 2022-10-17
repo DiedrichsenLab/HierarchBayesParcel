@@ -987,7 +987,7 @@ class wMixVMF(EmissionModel):
             else:
                 raise ValueError('Part_vec must be numpy ndarray or torch Tensor')
         else:
-            part_vec = None
+            self.part_vec = None
 
         super().__init__(K, N, P, data, X)
         self.random_params()
@@ -1047,6 +1047,7 @@ class wMixVMF(EmissionModel):
             # normalize in each partition
             Y = Y / W
             # Then sum over all the partitions
+            self.Y_raw = Y
             self.Y = Y.nansum(dim=0)
             # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
             self.M = self.Y.shape[1]
@@ -1058,27 +1059,33 @@ class wMixVMF(EmissionModel):
             # calculate the data magnitude and get info of nan voxels
             W = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True)).unsqueeze(0)
             self.num_part = pt.sum(~W.isnan(), dim=0)
-            self.W = W
+
+            if signal is not None:  # The weighting is given outside
+                self.W = signal
+            else:  # several weighting options
+                if self.weighting == 1:  # 1. weights are the magnitude
+                    self.W = W
+                elif self.weighting == 2:  # 2. weights are the normalized magnitude
+                    W = (W - np.nanmin(W, axis=3, keepdims=True)) / (np.nanmax(
+                        W, axis=3, keepdims=True) - np.nanmin(W, axis=3, keepdims=True))
+                    self.W = W
+                elif self.weighting ==3:  # 3. weights are the density + magnitude
+                    W = (W - np.nanmin(W, axis=3, keepdims=True)) / (np.nanmax(
+                        W, axis=3, keepdims=True) - np.nanmin(W, axis=3, keepdims=True))
+                    # use data density as weights
+                    density = self._init_weights(self.Y, crit='cosine')
+                    density = pt.nan_to_num_(density, neginf=pt.nan)
+                    density = (density - np.nanmin(density, axis=2, keepdims=True)) / (np.nanmax(
+                        density, axis=2, keepdims=True) - np.nanmin(density, axis=2, keepdims=True))
+
+                    self.W = density.unsqueeze(0) + W
+                else:  # if no weighting is given, restore VMF
+                    self.W = pt.ones(W.shape)
 
             # Normalized data with nan value
             self.Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
+            self.Y_raw = self.Y.unsqueeze(0)
             self.M = self.Y.shape[1]
-
-            # if self.weighting == 1:  # weights are the magnitude
-            #     self.W = W
-            # elif self.weighting == 2:  # weights are the normalized magnitude
-            #     W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
-            #         W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
-            #     self.W = W
-            # elif self.weighting == 3:  # weights are the density
-            #     self.W = density
-            # elif self.weighting ==4:  # weights are the density + magnitude
-            #     W = (W - np.nanmin(W, axis=2, keepdims=True)) / (np.nanmax(
-            #         W, axis=2, keepdims=True) - np.nanmin(W, axis=2, keepdims=True))
-            #     self.W = density + W
-            # else:  # if no weighting is given, restore VMF
-            #     self.W = pt.mean(pt.ones(self.Y.shape), dim=1, keepdim=True)
-
 
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
@@ -1202,29 +1209,32 @@ class wMixVMF(EmissionModel):
         # Making the U_hat to 0 for the NaN voxels (for handling missing data)
         this_U_hat = self.num_part * U_hat
 
-        # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
-        YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y * self.W), pt.transpose(U_hat, 1, 2)), dim=0)
+        # Calculate weighted YU = \sum_i\sum_k<u_i^k>*w_i*y_i and UU = \sum_i\sum_k<u_i^k>
+        Y = pt.nan_to_num(self.Y_raw * self.W).sum(dim=0)
+        YU = pt.sum(pt.matmul(Y, pt.transpose(U_hat, 1, 2)), dim=0)
         UU = pt.sum(this_U_hat, dim=0)
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        self.V = YU / pt.sqrt(pt.sum(YU ** 2, dim=0))
         r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
+        self.V = YU / r_norm
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
-            r_bar = r_norm.sum() / self.num_part.sum()
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
+            r_bar = r_norm.sum() / pt.nan_to_num(self.W).sum()
+            r_bar[r_bar > 0.95] = 0.95
+            r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
         else:
             r_bar = r_norm / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
+            r_bar[r_bar > 0.95] = 0.95
+            r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
         if self.kappa.any() < 0:  # - Debug flag
-            print(self.kappa)
+            warnings.warn(f'Kappa has negative value - {self.kappa}')
+
+        # Regularizer - kappa is forced to be large (meaning concentrated)
         # self.kappa = self.kappa + 1000
 
     def sample(self, U):

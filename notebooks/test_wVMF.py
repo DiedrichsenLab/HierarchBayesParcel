@@ -23,7 +23,7 @@ import scipy.stats as spst
 from scipy.cluster.vq import kmeans, vq
 
 def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, beta=0.5, sigma2=1.0,
-                                    uniform_kappa=True, plot_weight=False, plot=False):
+                                    uniform_kappa=True, plot_ll=True, plot_weight=False, plot=False):
     """Simulation function used for testing GME model recovery from VMF data
     Args:
         K: the number of clusters
@@ -41,6 +41,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True)
     emissionT.sigma2 = pt.tensor(sigma2)
     emissionT.beta = pt.tensor(beta)
+
     # Step 2: Generate data by sampling from the above model
     T = FullModel(arrangeT, emissionT)
     U = arrangeT.sample(num_subj=num_sub)
@@ -54,16 +55,25 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     # Step 4: Generate new models for fitting
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False,
                                   remove_redundancy=False)
+    # model 1 - use data magnitude as weights (default)
     emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=2)
-    emissionM2 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=4)
+    # model 2 - use normalized data magnitude + density as weights
+    emissionM2 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=3)
+    # model 3 - use true data signal
     emissionM3 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
+    # model 4 - wVMF as VMF
     emissionM4 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=None)
+    # model 5 - true VMF comparison
     emVMF = MixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
 
     emissionM2.V = pt.clone(emissionM1.V)
     emissionM3.V = pt.clone(emissionM1.V)
     emissionM4.V = pt.clone(emissionM1.V)
     emVMF.V = pt.clone(emissionM1.V)
+    emissionM2.kappa = pt.clone(emissionM1.kappa)
+    emissionM3.kappa = pt.clone(emissionM1.kappa)
+    emissionM4.kappa = pt.clone(emissionM1.kappa)
+    emVMF.kappa = pt.clone(emissionM1.kappa)
 
     M1 = FullModel(arrangeM, emissionM1)
     M2 = FullModel(arrangeM, emissionM2)
@@ -78,14 +88,15 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     M2, ll2, theta2, Uhat_fit_2 = M2.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                             fit_arrangement=False)
 
-    M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal_normal, iter=max_iter, tol=0.0001,
+    M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal.unsqueeze(1).unsqueeze(0),
+                                            iter=max_iter, tol=0.0001,
                                             fit_arrangement=False)
 
-    M4, ll4, theta4, Uhat_fit_4 = M_vmf.fit_em(Y=Y, iter=max_iter, tol=0.0001,
+    M4, ll4, theta4, Uhat_fit_4 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
+                                            fit_arrangement=False)
+
+    M0, ll0, theta0, Uhat_fit_0 = M_vmf.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                                fit_arrangement=False)
-
-    M0, ll0, theta0, Uhat_fit_0 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                            fit_arrangement=False)
 
     U_recon_1, this_uerr_1 = ev.matching_U(U, Uhat_fit_1)
     U_recon_2, this_uerr_2 = ev.matching_U(U, Uhat_fit_2)
@@ -107,6 +118,27 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         plt.title('True magnitude')
 
         plt.suptitle('The distribution of the data magnitude')
+        plt.show()
+
+    if plot_ll:
+        plt.figure(figsize=(20, 4))
+        plt.subplot(151)
+        plt.plot(ll1)
+        plt.title('data magnitude')
+        plt.subplot(152)
+        plt.plot(ll2)
+        plt.title('wVMF magnitude + density')
+        plt.subplot(153)
+        plt.plot(ll3)
+        plt.title('True magnitude')
+        plt.subplot(154)
+        plt.plot(ll4)
+        plt.title('wVMF as VMF')
+        plt.subplot(155)
+        plt.plot(ll0)
+        plt.title('True VMF')
+
+        plt.suptitle('The ll of different models')
         plt.show()
 
     if plot:
@@ -141,7 +173,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         Y_masked = Y * mask.unsqueeze(1)
         fig = make_subplots(rows=1, cols=4,
                             specs=[[{'type': 'surface'}, {'type': 'surface'}, {'type': 'surface'}, {'type': 'surface'}]],
-                            subplot_titles=["GME data", "wVMF reconstruction", "wVMF recon - true signal", "standard VMF"])
+                            subplot_titles=["GME data", "wVMF data mag", "wVMF recon - true signal", "standard VMF"])
 
         fig.add_trace(go.Scatter3d(x=Y_masked[0, 0, :], y=Y_masked[0, 1, :], z=Y_masked[0, 2, :],
                                    mode='markers', marker=dict(size=3, opacity=0.7, color=U[0])),
@@ -190,7 +222,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         fig.update_layout(title_text='Visualization of data generation')
         fig.show()
 
-    return this_uerr_1, this_uerr_2, this_uerr_3, this_uerr_4, this_uerr_true
+    return this_uerr_1, this_uerr_2, this_uerr_3, this_uerr_4, this_uerr_0, this_uerr_true
 
 
 def _simulate_VMF_and_wVMF_from_VMF(K=5, P=100, N=40, num_sub=10, max_iter=50,
@@ -368,16 +400,16 @@ def trim_locmin(T1, T2):
 
 
 if __name__ == '__main__':
-    A, B ,C, D, E = [], [], [], [], []
+    A, B ,C, D, E, F = [], [], [], [], [], []
 
     # a,b = _check_VMF_and_wVMF_equivalent(K=5, P=5000, N=20, num_sub=1, max_iter=100,
     #                                      kappa=30, plot=True)
-    iter = 100
+    iter = 1000
     dof = np.sqrt(iter)
     for i in range(iter):
-        a, b, c, d, e = _simulate_VMF_and_wVMF_from_GME(K=5, P=5000, N=20, num_sub=1, max_iter=500,
-                                                        beta=0.5, sigma2=0.01,
-                                                        plot_weight=False, plot=False)
+        a, b, c, d, e, f = _simulate_VMF_and_wVMF_from_GME(K=5, P=5000, N=20, num_sub=1, max_iter=500,
+                                                           beta=2.0, sigma2=0.01, plot_ll=True,
+                                                           plot_weight=True, plot=True)
         # a, b, = _simulate_VMF_and_wVMF_from_VMF(K=5, P=5000, N=20, num_sub=1, max_iter=100,
         #                                              kappa=30, plot=True)
         A.append(a)
@@ -385,20 +417,22 @@ if __name__ == '__main__':
         C.append(c)
         D.append(d)
         E.append(e)
+        F.append(f)
 
     A = pt.stack(A).reshape(-1)
     B = pt.stack(B).reshape(-1)
     C = pt.stack(C).reshape(-1)
     D = pt.stack(D).reshape(-1)
     E = pt.stack(E).reshape(-1)
+    F = pt.stack(F).reshape(-1)
 
     plt.bar(['wVMF \n length', 'wVMF \n length+density','wVMF \n true signal', 'VMF'],
             [A.mean(), B.mean(), C.mean(), D.mean()],
             yerr=[A.std()/dof, B.std()/dof, C.std()/dof, D.std()/dof],
             color=['red', 'green', 'blue', 'orange'])
-    plt.axhline(y=E.mean(), color='k', linestyle=':')
+    plt.axhline(y=F.mean(), color='k', linestyle=':')
     # plt.ylim(0.6, 0.7)
-    plt.title('simulation on GME data, max_length=EXP E[X]=2.0')
+    plt.title('simulation on GME data, max_length=EXP E[X]=0.5')
     plt.show()
 
     res = trim_locmin(C, D)
