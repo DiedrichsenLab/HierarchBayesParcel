@@ -273,48 +273,6 @@ class FullMultiModel:
             Y.append(this_Y)
         return U, Y
 
-    def pre_train(self, Y, iter=10, emi_idx=None, prior=None, fit_arrangement=False):
-        """Correcting the init parameters for all emission models by sampling from
-           a prior or learnt from one of the emission models
-        Args:
-            Y: data
-            iter: the number of iterations for fine-tuning the params
-            emi_idx: the index of which emission model params should be used
-            prior: if not None, correcting the inits from prior. shape (K, P)
-            fit_arrangement: if True, fit arrangement model
-        Returns:
-
-        """
-        # Initialize data to all emission models
-        for n, e in enumerate(self.emissions):
-            e.initialize(Y[n])
-
-        # learn prior from the dataset with the highest dimensions?
-        # or with the most subjects?
-        if emi_idx is None:
-            # dims = [e.V.shape[0] for e in self.emissions]  # dims
-            dims = [e.num_subj for e in self.emissions]  # num_subj
-            emi_idx = dims.index(max(dims))
-
-        ground_em = self.emissions[emi_idx]
-        if prior is None:
-            for i in range(iter):
-                # Get the (approximate) posterior p(U|Y)
-                emloglik = ground_em.Estep()
-                Uhat, _ = self.arrange.Estep(emloglik)
-                ground_em.Mstep(Uhat)
-
-                if fit_arrangement:
-                    self.arrange.Mstep()
-
-            Uhat = pt.mean(Uhat, dim=0)
-            for em in self.emissions:
-                if em is not ground_em:
-                    em.Mstep(Uhat.unsqueeze(0).repeat(em.num_subj, 1, 1))
-        else:
-            for em in self.emissions:
-                em.Mstep(prior.unsqueeze(0).repeat(em.num_subj, 1, 1))
-
     def Estep(self, Y=None, signal=None, separate_ll=False):
         """E step for full model. Run a full process of EM procedure once
            on both arrangement and emission models.
@@ -347,7 +305,7 @@ class FullMultiModel:
             return Uhat, ll_a.sum()+ll_e
 
     def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False,
-               fit_emission=True, fit_arrangement=True):
+               fit_emission=True, fit_arrangement=True,first_evidence=True):
         """ Run the EM-algorithm on a full model
             this demands that both the Emission and Arrangement model
             have a full Estep and Mstep and can calculate the likelihood,
@@ -361,6 +319,14 @@ class FullMultiModel:
                     Otherwise, freeze it
             fit_arrangement: If True, fit the arrangement model.
                     Otherwise, freeze it
+            first_evidence (bool or list of bool): Determines whether evidence
+                    is passed from emission models to arrangement model on the
+                    first iteration. Usually set to True. However, to improve alignment
+                    between emission models from random starting values, you may want to start from
+                    False.  Setting one of the emission models to True can be thought
+                    of as a very short pretraining phase
+                    with that model alone.
+
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
@@ -369,6 +335,8 @@ class FullMultiModel:
         """
         if not hasattr(fit_emission, "__len__"):
             fit_emission = [fit_emission]*len(self.emissions)
+        if not hasattr(first_evidence, "__len__"):
+            first_evidence = [first_evidence]*len(self.emissions)
 
         # Initialize the tracking
         ll = np.zeros((iter, 2))
@@ -390,20 +358,32 @@ class FullMultiModel:
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = [e.Estep() for e in self.emissions]
-            emloglik_comb = self.collect_evidence(emloglik)  # concatenate vertically
+            emloglik_comb = self.collect_evidence(emloglik)  # Combine subjects
 
-            Uhat, ll_A = self.arrange.Estep(emloglik_comb)
+            # If first iteration, only pass the desired emission models (pretraining)
+            if i==0:
+                emloglik_c = deepcopy(emloglik)
+                for j,emLL in enumerate(emloglik_c):
+                    if not first_evidence[j]:
+                        emLL[:,:,:]=0
+                Uhat, ll_A = self.arrange.Estep(self.collect_evidence(emloglik_c))
+            # Otherwise pass all evidence to arrangement model:
+            else:
+                Uhat, ll_A = self.arrange.Estep(emloglik_comb)
+
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             ll[i, 0] = pt.sum(ll_A)
             ll[i, 1] = pt.sum(ll_E)
-            # Check convergence: 
-            # This is what was here before. It ignores whether likelihood increased or decreased! 
+            if np.isnan(ll[i,:].sum()):
+                raise(NameError('Likelihood returned a NaN'))
+            # Check convergence:
+            # This is what was here before. It ignores whether likelihood increased or decreased!
             # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
             if i==iter-1:
                 break
             elif i>1:
-                dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood 
+                dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood
                 # Check if likelihood decreases more than tolerance
                 if dl<-tol:
                     warnings.warn(f'Likelihood decreased - terminating on iteration {i}')
@@ -413,23 +393,24 @@ class FullMultiModel:
 
             # Updates the parameters
             Uhat_split = self.distribute_evidence(Uhat)
+            if fit_arrangement:
+                self.arrange.Mstep()
             for em, Us in enumerate(Uhat_split):
                 if fit_emission[em]:
                     self.emissions[em].Mstep(Us)
-            if fit_arrangement:
-                self.arrange.Mstep()
 
         if seperate_ll:
             return self, ll[0:i+1], theta[0:i+1, :], Uhat
         else:
             return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
 
-    def fit_em_ninits(self, Y=None, n_inits=20, first_iter=20, iter=30, tol=0.01,
+    def fit_em_ninits(self, Y=None, n_inits=20, first_iter=7, iter=30, tol=0.01,
                       fit_emission=True, fit_arrangement=True,
-                      init_emission=True, init_arrangement=True):
-        """Run the EM-algorithm on a full model starting with n_inits multiple 
+                      init_emission=True, init_arrangement=True,
+                      align = 'arrange'):
+        """Run the EM-algorithm on a full model starting with n_inits multiple
            random initialization values and escape from local maxima by selecting
-           the model with the highest likelihood after first_iter. 
+           the model with the highest likelihood after first_iter.
            This demands that both the Emission and
            Arrangement model have a full Estep and Mstep and can calculate the
            likelihood, including the partition function
@@ -442,6 +423,12 @@ class FullMultiModel:
             tol: Tolerance on overall likelihood (def: 0.01)
             fit_emission (list): If True, fit emission model. Otherwise, freeze it
             fit_arrangement: If True, fit arrangement model. Otherwise, freeze it
+            align: (None,'arrange', or int): Alignment one first step is performed
+                None: Not performed - Emission models may not get aligned
+                'arrange': from the arrangement model only (works only if spatially
+                        non-flat (i.e. random) initialization)
+                int: from emission model with number i. Works with spatially flat
+                        initialization of arrangement model
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of best full model as function of iteration
@@ -452,18 +439,29 @@ class FullMultiModel:
                        after first_iter runs
         """
         max_ll = np.array([-np.inf])
-        first_lls = np.full((n_inits,iter),np.nan)
+        first_lls = np.full((n_inits,first_iter),np.nan)
+        # Set the first passing of evidence based on alignment pretraining:
+        if align is None:
+            first_ev = [True]*len(self.emissions)
+        elif align=='arrange':
+            first_ev = [False]*len(self.emissions)
+        else:
+            first_ev = [False]*len(self.emissions)
+            first_ev[align]=True
+
         for i in range(n_inits):
             # Making the new set of emission models with random initializations
             fm = deepcopy(self)
-            if init_arrangement: 
+            if init_arrangement:
                 fm.arrange.random_params()
             if init_emission:
                 for em in fm.emissions:
                     em.random_params()
+
             fm, this_ll, theta, _ = fm.fit_em(Y, iter=first_iter, tol=tol, seperate_ll=False,
                                            fit_emission=fit_emission,
-                                           fit_arrangement=fit_arrangement)
+                                           fit_arrangement=fit_arrangement,
+                                           first_evidence=first_ev)
             first_lls[i,:len(this_ll)]=this_ll
             if this_ll[-1] > max_ll[-1]:
                 max_ll = this_ll
@@ -471,10 +469,11 @@ class FullMultiModel:
                 best_theta = theta
         self, ll, theta, U_hat = self.fit_em(Y, iter=iter-first_iter, tol=tol, seperate_ll=False,
                                            fit_emission=fit_emission,
-                                           fit_arrangement=fit_arrangement)
-        ll = np.r_[max_ll,ll[1:]]
-        theta = np.r_[best_theta,theta[1:, :]]
-        return self, ll, theta, U_hat, first_lls
+                                           fit_arrangement=fit_arrangement,
+                                           first_evidence=True)
+        ll_n = np.r_[max_ll,ll[1:]]
+        theta_n = np.r_[best_theta,theta[1:, :]]
+        return self, ll_n, theta_n, U_hat, first_lls
 
     def get_params(self):
         """Get the concatenated parameters from arrangemenet + emission model
@@ -530,7 +529,7 @@ class FullMultiModelSymmetric(FullMultiModel):
         self.K_sym = arrange.K
         self.K = self.emissions[0].K
         self.P = self.emissions[0].P
-        
+
         if indx_full.shape[1]!=self.P_sym:
             raise(NameError('index_full must be of size 2 x P_sym'))
         if indx_reduced.shape[0]!=self.emissions[0].P:

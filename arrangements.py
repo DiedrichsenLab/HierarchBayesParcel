@@ -70,7 +70,10 @@ class ArrangeIndependent(ArrangementModel):
             self.estep_Uhat = Uhat
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         pi = pt.softmax(self.logpi,dim=0)
-        ll_A = pt.sum(Uhat * pt.log(pi))
+        lpi = pt.nan_to_num(pt.log(pi),neginf=0) # Prevent underflow 
+        ll_A = pt.sum(Uhat * lpi)
+        if pt.isnan(ll_A):
+            raise(NameError('likelihood is nan'))
         return Uhat, ll_A
 
     def Mstep(self):
@@ -87,6 +90,7 @@ class ArrangeIndependent(ArrangementModel):
         self.logpi = log(pi)
         if self.rem_red:
             self.logpi = self.logpi-self.logpi[-1,:]
+        self.logpi=pt.nan_to_num(self.logpi)
 
     def sample(self, num_subj=10):
         """
