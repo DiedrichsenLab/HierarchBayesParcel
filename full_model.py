@@ -368,6 +368,8 @@ class FullMultiModel:
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             ll[i, 0] = pt.sum(ll_A)
             ll[i, 1] = pt.sum(ll_E)
+            if np.isnan(ll[i,:].sum()):
+                raise(NameError('Likelihood returned a NaN'))
             # Check convergence:
             # This is what was here before. It ignores whether likelihood increased or decreased!
             # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
@@ -395,7 +397,7 @@ class FullMultiModel:
         else:
             return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
 
-    def fit_em_ninits(self, Y=None, n_inits=20, first_iter=20, iter=30, tol=0.01,
+    def fit_em_ninits(self, Y=None, n_inits=20, first_iter=7, iter=30, tol=0.01,
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
                       align = 'arrange'):
@@ -430,7 +432,7 @@ class FullMultiModel:
                        after first_iter runs
         """
         max_ll = np.array([-np.inf])
-        first_lls = np.full((n_inits,iter),np.nan)
+        first_lls = np.full((n_inits,first_iter),np.nan)
         # Set the first passing of evidence based on alignment pretraining:
         if align is None:
             first_ev = [True]*len(self.emissions)
