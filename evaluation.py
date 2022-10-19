@@ -95,6 +95,13 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """
     # standardise V and data to unit length
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+    
+    # If U and Y are 2-dimensional (1 subject), add the first dimension
+    if Y.dim() == 2: 
+        Y = Y.unsqueeze(0)
+    if U.dim() == 2: 
+        U = U.unsqueeze(0)
+    
     Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
     Ynorm = pt.sqrt(Ynorm2)
 

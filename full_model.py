@@ -297,7 +297,7 @@ class FullMultiModel:
         else:
             return Uhat, ll_a.sum()+ll_e
 
-    def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False,
+    def fit_em(self, Y=None, iter=30, tol=0.01, seperate_ll=False,
                fit_emission=True, fit_arrangement=True,first_evidence=True):
         """ Run the EM-algorithm on a full model
             this demands that both the Emission and Arrangement model
