@@ -585,9 +585,12 @@ class FullMultiModelSymmetric(FullMultiModel):
             Prob (pt.tensor): KxP marginal probabilities
         """
         Pr =  self.arrange.marginal_prob()
-        Prob = pt.zeros((self.K,self.P))
-        Prob[:self.K_sym,self.indx_full[0]]=Pr
-        Prob[self.K_sym:,self.indx_full[1]]=Pr
+        if self.same_parcels:
+            Prob = Pr[:,self.indx_reduced]
+        else:
+            Prob = pt.zeros((self.K,self.P))
+            Prob[:self.K_sym,self.indx_full[0]]=Pr
+            Prob[self.K_sym:,self.indx_full[1]]=Pr
         return Prob
 
     def sample(self, num_subj=None):
