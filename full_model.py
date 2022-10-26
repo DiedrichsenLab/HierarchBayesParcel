@@ -244,6 +244,15 @@ class FullMultiModel:
         """
         Usplit = pt.split(Uhat, self.nsub_list, dim=0)
         return Usplit
+    
+    def marginal_prob(self):
+        """Convenience function that returns 
+        marginal probability for the full model 
+
+        Returns:
+            Prob (pt.tensor): KxP marginal probabilities
+        """
+        return self.arrange.marginal_prob()
 
     def sample(self, num_subj=None):
         """Take in the number of subjects to sample for each emission model
@@ -568,6 +577,18 @@ class FullMultiModelSymmetric(FullMultiModel):
         Usplit = pt.split(Uhat_full, self.nsub_list, dim=0)
         return Usplit
 
+    def marginal_prob(self):
+        """Convenience function that returns 
+        marginal probability for the full model 
+        Unpacks the symmetric model to full space 
+        Returns:
+            Prob (pt.tensor): KxP marginal probabilities
+        """
+        Pr =  self.arrange.marginal_prob()
+        Prob = pt.zeros((self.K,self.P))
+        Prob[:self.K_sym,self.indx_full[0]]=Pr
+        Prob[self.K_sym:,self.indx_full[1]]=Pr
+        return Prob
 
     def sample(self, num_subj=None):
         """Sample data from each emission model (different subjects)
