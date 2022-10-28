@@ -120,7 +120,10 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
         cos_distance = pt.sum(cos_distance * U_max, dim=1)
 
-    return pt.nanmean(cos_distance, dim=1)
+    if adjusted:
+        return pt.nansum(cos_distance, dim=1)/Ynorm[:,0,:].nansum(dim=1)
+    else:
+        return pt.nanmean(cos_distance, dim=1)
 
 
 def homogeneity_rest(Y, U_hat, soft_assign=False, z_transfer=False,
