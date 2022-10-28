@@ -221,6 +221,17 @@ class FullMultiModel:
         """
         for em in self.emissions:
             em.clear()
+    
+    def remap_evidence(self,Uhat):
+        """Placeholder function of remapping evidence from an 
+        arrangement space to a emission space (here it doesn't do anything)
+
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        return Uhat
 
     def collect_evidence(self,emloglik):
         """Collects evidence over the different data sets
@@ -252,7 +263,7 @@ class FullMultiModel:
         Returns:
             Prob (pt.tensor): KxP marginal probabilities
         """
-        return self.arrange.marginal_prob()
+        return self.remap_evidence(self.arrange.marginal_prob())
 
     def sample(self, num_subj=None):
         """Take in the number of subjects to sample for each emission model
@@ -334,6 +345,9 @@ class FullMultiModel:
             ll (ndarray): Log-likelihood of full model as function of iteration
                 If seperate_ll, the first column is ll_A, the second ll_E
             theta (ndarray): History of the parameter vector
+            Uhat (pt.tensor): (n_subj,K,P) matrix of estimates - note that this is in the 
+                space of arrangement model - call distribute_evidence(Uhat) to get this 
+                in the space of emission model
         """
         if not hasattr(fit_emission, "__len__"):
             fit_emission = [fit_emission]*len(self.emissions)
@@ -540,6 +554,30 @@ class FullMultiModelSymmetric(FullMultiModel):
             if self.K_sym*2 != self.K:
                 raise(NameError('K in emission models must be twice K in arrangement model'))
 
+    def remap_evidence(self,Uhat):
+        """Placeholder function of remapping evidence from an 
+        arrangement space to a emission space (here it doesn't do anything)
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        if Uhat.ndim == 3:
+            if self.same_parcels:
+                Umap = Uhat[:,:,self.indx_reduced]
+            else:
+                Umap = pt.zeros((Uhat.shape[0],self.K,self.P))
+                Umap[:,:self.K_sym,self.indx_full[0]]=Uhat
+                Umap[:,self.K_sym:,self.indx_full[1]]=Uhat
+        elif Uhat.ndim==2:
+            if self.same_parcels:
+                Umap = Uhat[:,self.indx_reduced]
+            else:
+                Umap = pt.zeros((self.K,self.P))
+                Umap[:self.K_sym,self.indx_full[0]]=Uhat
+                Umap[self.K_sym:,self.indx_full[1]]=Uhat
+        return Umap
+
     def collect_evidence(self,emloglik):
         """Collects evidence over the different data sets
         and across the two hemispheres
@@ -567,31 +605,10 @@ class FullMultiModelSymmetric(FullMultiModel):
         Returns:
             Usplit (list): List of Uhats (per emission model)
         """
-        if self.same_parcels:
-            Uhat_full = Uhat[:,:,self.indx_reduced]
-        else:
-            Uhat_full = pt.zeros((Uhat.shape[0],self.K,self.P))
-            Uhat_full[:,:self.K_sym,self.indx_full[0]]=Uhat
-            Uhat_full[:,self.K_sym:,self.indx_full[1]]=Uhat
+        Uhat_full = self.remap_evidence(Uhat)
         # Distribute over data sets
         Usplit = pt.split(Uhat_full, self.nsub_list, dim=0)
         return Usplit
-
-    def marginal_prob(self):
-        """Convenience function that returns 
-        marginal probability for the full model 
-        Unpacks the symmetric model to full space 
-        Returns:
-            Prob (pt.tensor): KxP marginal probabilities
-        """
-        Pr =  self.arrange.marginal_prob()
-        if self.same_parcels:
-            Prob = Pr[:,self.indx_reduced]
-        else:
-            Prob = pt.zeros((self.K,self.P))
-            Prob[:self.K_sym,self.indx_full[0]]=Pr
-            Prob[self.K_sym:,self.indx_full[1]]=Pr
-        return Prob
 
     def sample(self, num_subj=None):
         """Sample data from each emission model (different subjects)
