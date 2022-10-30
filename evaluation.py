@@ -119,7 +119,6 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         idx = pt.argmax(U, dim=1, keepdim=True)
         U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
         cos_distance = pt.sum(cos_distance * U_max, dim=1)
-
     if adjusted:
         return pt.nansum(cos_distance, dim=1)/Ynorm2[:,0,:].nansum(dim=1)
     else:
