@@ -95,13 +95,13 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """
     # standardise V and data to unit length
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-    
+
     # If U and Y are 2-dimensional (1 subject), add the first dimension
-    if Y.dim() == 2: 
+    if Y.dim() == 2:
         Y = Y.unsqueeze(0)
-    if U.dim() == 2: 
+    if U.dim() == 2:
         U = U.unsqueeze(0)
-    
+
     Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
     Ynorm = pt.sqrt(Ynorm2)
 
@@ -121,7 +121,7 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         cos_distance = pt.sum(cos_distance * U_max, dim=1)
 
     if adjusted:
-        return pt.nansum(cos_distance, dim=1)/Ynorm[:,0,:].nansum(dim=1)
+        return pt.nansum(cos_distance, dim=1)/Ynorm2[:,0,:].nansum(dim=1)
     else:
         return pt.nanmean(cos_distance, dim=1)
 
@@ -407,9 +407,9 @@ def evaluate_full_arr(emM,data,Uhat,crit='cos_err'):
     elif crit == 'u_abserr':
         U = data
         critM = u_abserr(U,Uhat)
-    elif crit == 'cos_err': 
+    elif crit == 'cos_err':
         critM = coserr(data, emM.V, Uhat, adjusted=False, soft_assign=False)
-    elif crit == 'Ecos_err': 
+    elif crit == 'Ecos_err':
         critM = coserr(data, emM.V, Uhat, adjusted=False, soft_assign=True)
     return critM.mean().item()
 
@@ -418,13 +418,13 @@ def evaluate_completion_arr(arM,emM,data,part,crit='Ecos_err',Utrue=None):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
     Args:
-        arM (ArrangementModel): arrangement model 
-        emloglik (tensor): Emission log-liklihood 
+        arM (ArrangementModel): arrangement model
+        emloglik (tensor): Emission log-liklihood
         part (Partitions): P tensor with partition indices
         crit (str): 'logpY','u_abserr','cos_err'
-        Utrue (tensor): For u_abserr you need to provide the true U's 
+        Utrue (tensor): For u_abserr you need to provide the true U's
     Returns:
-        mean evaluation citerion 
+        mean evaluation citerion
     """
     emloglik=emM.Estep(data)
     num_subj = emloglik.shape[0]
@@ -442,10 +442,10 @@ def evaluate_completion_arr(arM,emM,data,part,crit='Ecos_err',Utrue=None):
             py = pt.sum(pyu[:,:,ind] * Uhat[:,:,ind],dim=1)
             critM[ind] = pt.mean(pt.log(py),dim=0)
         elif crit=='cos_err':
-            critM[ind] = coserr(data[:,:,ind], emM.V, Uhat[:,:,ind], 
+            critM[ind] = coserr(data[:,:,ind], emM.V, Uhat[:,:,ind],
                         adjusted=False, soft_assign=False).mean(dim=0)
         elif crit=='Ecos_err':
-            critM[ind] = coserr(data[:,:,ind], emM.V, Uhat[:,:,ind], 
+            critM[ind] = coserr(data[:,:,ind], emM.V, Uhat[:,:,ind],
                         adjusted=False, soft_assign=True).mean(dim=0)
     return pt.mean(critM).item()  # average across vertices
 
@@ -522,46 +522,46 @@ def matching_U(U_true, U_predict):
 
 def matching_greedy(Y_target, Y_source):
     """ Matches the rows of two Y_source matrix to Y_target
-    Using row-wise correlation and matching the highest pairs 
-    consecutively 
+    Using row-wise correlation and matching the highest pairs
+    consecutively
     Args:
-        Y_target: Matrix to align to 
+        Y_target: Matrix to align to
         Y_source: Matrix that is being aligned
     Returns:
         indx: New indices, so that YSource[indx,:]~=Y_target
     """
     K = Y_target.shape[0]
-    # Compute the row x row correlation matrix 
+    # Compute the row x row correlation matrix
     Y_tar = Y_target - Y_target.mean(dim=1,keepdim=True)
     Y_sou = Y_source - Y_source.mean(dim=1,keepdim=True)
     Cov = pt.matmul(Y_tar,Y_sou.t())
     Var1 = pt.sum(Y_tar*Y_tar,dim=1)
     Var2 = pt.sum(Y_sou*Y_sou,dim=1)
     Corr = Cov / pt.sqrt(pt.outer(Var1,Var2))
-    
-    # Initialize index array 
+
+    # Initialize index array
     indx = np.empty((K,),np.int)
     for i in range(K):
         ind = np.unravel_index(np.nanargmax(Corr),Corr.shape)
         indx[ind[0]]=ind[1]
         Corr[ind[0],:]=pt.nan
         Corr[:,ind[1]]=pt.nan
-    return indx 
+    return indx
 
 def calc_consistency(params,dim_rem = None):
-    """Calculates consistency across a number of different solutions 
+    """Calculates consistency across a number of different solutions
     to a problem (after alignment of the rows/columns)
-    Computes cosine similarities across the entire matrix of 
-    params 
+    Computes cosine similarities across the entire matrix of
+    params
     Args:
         params (pt.tensor): n_sol x N x P array of data
         dim_rem (int): Dimension along which to remove the mean
-            None: No mean removal 
+            None: No mean removal
             0: Remove the overall mean of the matrices
-            1: Remove the row mean 
+            1: Remove the row mean
             2: Remove the column mean
     Returns:
-        R (pt.tensory): n_sol x n_sol matrix of cosine similarites 
+        R (pt.tensory): n_sol x n_sol matrix of cosine similarites
     """
     data = params.clone()
     n_sol = data.shape[0]
