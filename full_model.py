@@ -255,6 +255,7 @@ class FullMultiModel:
                 raise(NameError("subj_ind needs to be an array/list, 'separate', or None"))
         # Overall number of unique subjects
         self.nsubj = max([max(i) for i in self.subj_ind]).item()+1
+        self.ds_weight = pt.ones((self.n_emission,)) # Experimental dataset weighting
 
     def clear(self):
         """Clears the data from all emission models
@@ -289,7 +290,7 @@ class FullMultiModel:
             raise(NameError('subj_ind not found. Call model.initialize() first.'))
         emlog = pt.zeros(self.nsubj,self.arrange.K,self.arrange.P)
         for i,eml in enumerate(emloglik):
-            emlog[self.subj_ind[i]]+=eml
+            emlog[self.subj_ind[i]]+=eml*self.ds_weight[i]
         return emlog
 
     def distribute_evidence(self,Uhat):
