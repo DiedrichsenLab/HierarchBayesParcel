@@ -126,34 +126,36 @@ class FullModel:
         """
         # Initialize the tracking
         ll = np.zeros((iter,2))
-        theta = np.zeros((iter, self.emission.nparams+self.arrange.nparams))
+        theta = np.zeros((iter, self.nparams))
         self.emission.initialize(Y)
         for i in range(iter):
+            print(f'start: {i}')
             # Track the parameters
-            theta[i, :] = np.concatenate([self.arrange.get_params(),self.emission.get_params()])
+            theta[i, :] = self.get_params()
 
             # Get the (approximate) posterior p(U|Y)
             emloglik = self.emission.Estep()
             if estep=='sample':
-                Uhat,ll_A = self.arrange.epos_sample(emloglik,num_chains=self.arrange.epos_numchains)
-                self.arrange.eneg_sample(num_chains=self.arrange.eneg_numchains)
+                Uhat,_ = self.arrange.Estep(emloglik)
+                if hasattr(self.arrange, 'Eneg'):
+                    self.arrange.Eneg(emission_model=self.emission)
+
             elif estep=='ssa':
                 Uhat,ll_A = self.arrange.epos_ssa(emloglik)
                 self.arrange.eneg_ssa()
 
             # Compute the expected complete logliklihood
-            ll_E = np.sum(Uhat * emloglik,axis=(1,2))
-            ll[i,0]=np.sum(ll_A)
-            ll[i,1]=np.sum(ll_E)
+            ll_E = pt.sum(Uhat * emloglik, dim=(1, 2))
+            ll[i, 0] = pt.sum(ll_E)
 
             # Run the Mstep
             self.emission.Mstep(Uhat)
-            self.arrange.Mstep(stepsize)
+            self.arrange.Mstep()
 
         if seperate_ll:
-            return self,ll[:i+1,:], theta[:i+1,:]
+            return self, ll[0:i + 1], theta[0:i + 1, :], Uhat
         else:
-            return self,ll[:i+1,:].sum(axis=1), theta[:i+1,:]
+            return self, ll[0:i + 1].sum(axis=1), theta[0:i + 1, :], Uhat
 
     def ELBO(self,Y):
         """Evidence lower bound of the data under the full model

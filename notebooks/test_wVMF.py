@@ -56,7 +56,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False,
                                   remove_redundancy=False)
     # model 1 - use data magnitude as weights (default)
-    emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=2)
+    emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=1)
     # model 2 - use normalized data magnitude + density as weights
     emissionM2 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=3)
     # model 3 - use true data signal
@@ -66,44 +66,86 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     # model 5 - true VMF comparison
     emVMF = MixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
 
-    emissionM2.V = pt.clone(emissionM1.V)
-    emissionM3.V = pt.clone(emissionM1.V)
-    emissionM4.V = pt.clone(emissionM1.V)
-    emVMF.V = pt.clone(emissionM1.V)
-    emissionM2.kappa = pt.clone(emissionM1.kappa)
-    emissionM3.kappa = pt.clone(emissionM1.kappa)
-    emissionM4.kappa = pt.clone(emissionM1.kappa)
-    emVMF.kappa = pt.clone(emissionM1.kappa)
+    list_M1, list_M2, list_M3, list_M4, list_M0 = [],[],[],[],[]
+    lls_1, lls_2, lls_3, lls_4, lls_0 = [],[],[],[],[]
+    Ufit_1, Ufit_2, Ufit_3, Ufit_4, Ufit_0 = [], [], [], [], []
+    max_1, max_2, max_3, max_4, max_0 = np.NINF, np.NINF, np.NINF, np.NINF, np.NINF
+    for j in range(50):
+        emissionM1.random_params()
+        emissionM2.random_params()
+        emissionM3.random_params()
+        emissionM4.random_params()
+        emVMF.random_params()
 
-    M1 = FullModel(arrangeM, emissionM1)
-    M2 = FullModel(arrangeM, emissionM2)
-    M3 = FullModel(arrangeM, emissionM3)
-    M4 = FullModel(arrangeM, emissionM4)
-    M_vmf = FullModel(arrangeM, emVMF)
+        M1 = FullModel(arrangeM, emissionM1)
+        M2 = FullModel(arrangeM, emissionM2)
+        M3 = FullModel(arrangeM, emissionM3)
+        M4 = FullModel(arrangeM, emissionM4)
+        M_vmf = FullModel(arrangeM, emVMF)
 
-    # Step 5: Estimate the parameter thetas to fit the new model using EM
-    M1, ll1, theta1, Uhat_fit_1 = M1.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                            fit_arrangement=False)
+        # Step 5: Estimate the parameter thetas to fit the new model using EM
+        M1, ll1, theta1, Uhat_fit_1 = M1.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
+                                                fit_arrangement=False)
+        if max_1 < ll1[-1]:
+            max_1 = ll1[-1]
+            j_1 = j
 
-    M2, ll2, theta2, Uhat_fit_2 = M2.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                            fit_arrangement=False)
+        list_M1.append(M1)
+        lls_1.append(ll1)
+        Ufit_1.append(Uhat_fit_1)
 
-    M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal.unsqueeze(1).unsqueeze(0),
-                                            iter=max_iter, tol=0.0001,
-                                            fit_arrangement=False)
+        M2, ll2, theta2, Uhat_fit_2 = M2.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
+                                                fit_arrangement=False)
+        if max_2 < ll2[-1]:
+            max_2 = ll2[-1]
+            j_2 = j
 
-    M4, ll4, theta4, Uhat_fit_4 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                            fit_arrangement=False)
+        list_M2.append(M2)
+        lls_2.append(ll2)
+        Ufit_2.append(Uhat_fit_2)
 
-    M0, ll0, theta0, Uhat_fit_0 = M_vmf.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                               fit_arrangement=False)
+        M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal.unsqueeze(1).unsqueeze(0),
+                                                iter=max_iter, tol=0.0001,
+                                                fit_arrangement=False)
+        if max_3 < ll3[-1]:
+            max_3 = ll3[-1]
+            j_3 = j
 
-    U_recon_1, this_uerr_1 = ev.matching_U(U, Uhat_fit_1)
-    U_recon_2, this_uerr_2 = ev.matching_U(U, Uhat_fit_2)
-    U_recon_3, this_uerr_3 = ev.matching_U(U, Uhat_fit_3)
-    U_recon_4, this_uerr_4 = ev.matching_U(U, Uhat_fit_4)
-    U_recon_0, this_uerr_0 = ev.matching_U(U, Uhat_fit_0)
+        list_M3.append(M3)
+        lls_3.append(ll3)
+        Ufit_3.append(Uhat_fit_3)
+
+        M4, ll4, theta4, Uhat_fit_4 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
+                                                fit_arrangement=False)
+        if max_4 < ll4[-1]:
+            max_4 = ll4[-1]
+            j_4 = j
+
+        list_M4.append(M4)
+        lls_4.append(ll4)
+        Ufit_4.append(Uhat_fit_4)
+
+        M0, ll0, theta0, Uhat_fit_0 = M_vmf.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
+                                                   fit_arrangement=False)
+        if max_0 < ll0[-1]:
+            max_0 = ll0[-1]
+            j_0 = j
+
+        list_M0.append(M0)
+        lls_0.append(ll0)
+        Ufit_0.append(Uhat_fit_0)
+
+    U_recon_1, this_uerr_1 = ev.matching_U(U, Ufit_1[j_1])
+    U_recon_2, this_uerr_2 = ev.matching_U(U, Ufit_2[j_2])
+    U_recon_3, this_uerr_3 = ev.matching_U(U, Ufit_3[j_3])
+    U_recon_4, this_uerr_4 = ev.matching_U(U, Ufit_4[j_4])
+    U_recon_0, this_uerr_0 = ev.matching_U(U, Ufit_0[j_0])
     U_recon_true, this_uerr_true = ev.matching_U(U, Uhat_true)
+    M1 = list_M1[j_1]
+    M2 = list_M2[j_2]
+    M3 = list_M3[j_3]
+    M4 = list_M4[j_4]
+    M0 = list_M0[j_0]
 
     if plot_weight:
         plt.figure(figsize=(12, 4))
@@ -407,9 +449,10 @@ if __name__ == '__main__':
     iter = 1000
     dof = np.sqrt(iter)
     for i in range(iter):
+        print(f'iter - {i}')
         a, b, c, d, e, f = _simulate_VMF_and_wVMF_from_GME(K=5, P=5000, N=20, num_sub=1, max_iter=500,
-                                                           beta=2.0, sigma2=0.01, plot_ll=True,
-                                                           plot_weight=True, plot=True)
+                                                           beta=2.0, sigma2=0.01, plot_ll=False,
+                                                           plot_weight=False, plot=False)
         # a, b, = _simulate_VMF_and_wVMF_from_VMF(K=5, P=5000, N=20, num_sub=1, max_iter=100,
         #                                              kappa=30, plot=True)
         A.append(a)

@@ -753,7 +753,7 @@ def sample_multinomial(p,shape=None,kdim=0,compress=False):
     shapeR[out_kdim]=1 # Set the probability dimension to 1
     r = pt.empty(shapeR).uniform_(0,1)
     cdf_v = p.cumsum(dim=kdim)
-    sample = (r < cdf_v).float()
+    sample = (r < cdf_v).to(pt.get_default_dtype())
     if compress:
         return sample.argmax(dim=out_kdim)
     else:
