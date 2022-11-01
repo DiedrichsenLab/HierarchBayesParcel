@@ -288,7 +288,7 @@ class FullMultiModel:
         """
         if not hasattr(self,'subj_ind'):
             raise(NameError('subj_ind not found. Call model.initialize() first.'))
-        emlog = pt.zeros(self.nsubj,self.arrange.K,self.arrange.P)
+        emlog = pt.zeros(self.nsubj,self.K,self.P)
         for i,eml in enumerate(emloglik):
             emlog[self.subj_ind[i]]+=eml*self.ds_weight[i]
         return emlog
