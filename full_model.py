@@ -232,6 +232,9 @@ class FullMultiModel:
         """
         self.n_emission = len(self.emissions)
         self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
+        self.K = self.emissions[0].K
+        self.P = self.emissions[0].P
+
         self.nsubj_list = []
 
         if subj_ind is not None:
