@@ -223,82 +223,170 @@ class FullMultiModel:
         """
         self.arrange = arrange
         self.emissions = emission
+        self.n_emission = len(self.emissions)
         self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
+        self.K = self.arrange.K
+        self.P = self.arrange.P
+
+    def initialize(self,Y=None,subj_ind='separate'):
+        """ Initializes the model for fitting.
+        If Y or subj_ind is given, it replaces the existing.
+        If set to None, the old existing will be used.
+
+        Args:
+            Y (list): List of (numsubj x N x numvoxel) arrays of data
+            subj_ind (list): List of unique subject indicators OR
+                'separate': sets seperate subjs for each data set OR
+                None: Don't change anything
+        """
+        self.n_emission = len(self.emissions)
+        self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
+        self.K = self.emissions[0].K
+        self.P = self.emissions[0].P
+
+        self.nsubj_list = []
+
+        if subj_ind is not None:
+            self.subj_ind = []
+
+        # Got through emission models and initialize
+        sbj = 0
+        for i,em in enumerate(self.emissions):
+            if Y is not None:
+                em.initialize(Y[i])
+            self.nsubj_list.append(em.num_subj)
+            if isinstance(subj_ind,(list,np.ndarray)):
+                if len(subj_ind[i])!=self.nsubj_list[i]:
+                    raise(NameError(f"length of subj_ind[{i}] does not match number of subjects: {self.n_subj_list[i]}"))
+                else:
+                    self.subj_ind.append(subj_ind[i])
+            elif subj_ind == 'separate':
+                self.subj_ind.append(pt.arange(sbj,self.nsubj_list[i]+sbj))
+                sbj = sbj + self.nsubj_list[i]
+            elif subj_ind is not None:
+                raise(NameError("subj_ind needs to be an array/list, 'separate', or None"))
+        # Overall number of unique subjects
+        self.nsubj = max([max(i) for i in self.subj_ind]).item()+1
+        self.ds_weight = pt.ones((self.n_emission,)) # Experimental dataset weighting
 
     def clear(self):
         """Clears the data from all emission models
         """
         for em in self.emissions:
             em.clear()
+        if hasattr(self,'self_ind'):
+            delattr(self,'self_ind')
+
+    def remap_evidence(self,Uhat):
+        """Placeholder function of remapping evidence from an
+        arrangement space to a emission space (here it doesn't do anything)
+
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        return Uhat
 
     def collect_evidence(self,emloglik):
         """Collects evidence over the different data sets
-        This is a function here to make inheritance easier
+        For subjects that are in multiple datasets, it sums the
+        log evidence.
 
         Args:
             emloglik (list): List of emissionlogliklihoods
         Returns:
             emloglik_comb (ndarray): ndarray of emission logliklihoods
         """
-        return pt.cat(emloglik, dim=0)
+        if not hasattr(self,'subj_ind'):
+            raise(NameError('subj_ind not found. Call model.initialize() first.'))
+        emlog = pt.zeros(self.nsubj,self.K,self.P)
+        for i,eml in enumerate(emloglik):
+            emlog[self.subj_ind[i]]+=eml*self.ds_weight[i]
+        return emlog
 
     def distribute_evidence(self,Uhat):
         """Splits the evidence to the different emission models
-        This is a function here to make inheritance easier
 
         Args:
-            Uhat (ndarray): ndarrays of estimated arrangement
+            Uhat (pt.tensor): tensor of estimated or arrangement
         Returns:
             Usplit (list): List of Uhats (per emission model)
         """
-        Usplit = pt.split(Uhat, self.nsub_list, dim=0)
+        if not hasattr(self,'subj_ind'):
+            raise(NameError('subj_ind not found. Call model.initialize() first.'))
+        Usplit = []
+        for i,s in enumerate(self.subj_ind):
+            Usplit.append(Uhat[s])
         return Usplit
+
+    def marginal_prob(self):
+        """Convenience function that returns
+        marginal probability for the full model
+
+        Returns:
+            Prob (pt.tensor): KxP marginal probabilities
+        """
+        return self.remap_evidence(self.arrange.marginal_prob())
+
+    def set_num_subj(self,num_subj=None):
+        """Sets the number of subjects for simulations
+        Args:
+            num_subj: list of subjects number. i.e [2, 3, 4] for
+                            Separate subejcts per dataset OR
+                      list of subject indices [[0,1,2],[0,1,2],[2,3,4]]
+        """
+        if num_subj is None:
+            num_subj = [10] * len(self.emissions)
+        # Independent subjects in all data sets
+        if isinstance(num_subj[0],int):
+            for i,em in enumerate(self.emissions):
+                em.num_subj = num_subj[i]
+            self.initialize(Y=None,subj_ind='separate')
+        # Specific overlap between data sets
+        elif isinstance(num_subj[0],(list,np.ndarray,pt.tensor)):
+            for i,em in enumerate(self.emissions):
+                em.num_subj = len(num_subj[i])
+            self.initialize(Y=None,subj_ind=num_subj)
+        else:
+            raise(NameError('num_subj needs to be a list of ints or a list of array/lists'))
 
     def sample(self, num_subj=None):
         """Take in the number of subjects to sample for each emission model
         Args:
-            num_subj: list of subjects number. i.g [2, 3, 4]
+            num_subj: list of subjects number. i.e [2, 3, 4] Or
+                      list of subject indices [[0,1,2],[0,1,2],[2,3,4]]
         Returns:
             U: the true Us of all subjects concatenated vertically,
                shape(num_subs, P)
             Y: data sampled from emission models, shape (num_subs, N, P)
         """
-        if num_subj is None:
-            # If number of subject not given, then generate 10
-            # subjects data per each emission model
-            num_subj = [10] * len(self.emissions)
+        # If number of subject not given, then generate 10
+        # subjects data per each emission model
+        self.set_num_subj(num_subj)
 
-        U = self.arrange.sample(sum(num_subj))
+        U = self.arrange.sample(self.nsubj)
         Y = []
-        for em, Us in enumerate(pt.split(U, num_subj, dim=0)):
+
+        for em, Us in enumerate(self.distribute_evidence(U)):
             this_Y = self.emissions[em].sample(Us)
             Y.append(this_Y)
         return U, Y
 
-    def Estep(self, Y=None, signal=None, separate_ll=False):
+    def Estep(self, separate_ll=False):
         """E step for full model. Run a full process of EM procedure once
            on both arrangement and emission models.
         Args:
-            Y: data
-            signal: the ground truth signal strength if applied.
             separate_ll: if True, return separte ll_A and ll_E
         Returns:
             Uhat: the prediction U_hat
             ll: the log-likelihood for arrangement and emission models
         """
-        if Y is not None:
-            for n, em in enumerate(self.emissions):
-                em.initialize(Y[n])
-
-        # Comment: Remove this special case and deal with signal over initialization
-        # of that particular emission model.
-        if signal is not None:  # for GMM with signal strength
-            emloglik = [e.Estep(signal=signal) for e in self.emissions]
-        else:
-            emloglik = [e.Estep() for e in self.emissions]
+        # Run E-step
+        emloglik = [e.Estep() for e in self.emissions]
 
         # Collect the evidence and broadcast to arrangement mode
-        emloglik_comb = self.collect_evidence(emloglik)  # concatenate all emloglike
+        emloglik_comb = self.collect_evidence(emloglik)  # combine the log-liklihoods
         Uhat, ll_a = self.arrange.Estep(emloglik_comb)
         ll_e = (Uhat * emloglik_comb).sum()
         if separate_ll:
@@ -306,14 +394,15 @@ class FullMultiModel:
         else:
             return Uhat, ll_a.sum()+ll_e
 
-    def fit_em(self, Y, iter=30, tol=0.01, seperate_ll=False,
-               fit_emission=True, fit_arrangement=True,first_evidence=True):
+    def fit_em(self,iter=30, tol=0.01, seperate_ll=False,
+            fit_emission=True,
+            fit_arrangement=True,
+            first_evidence=True):
         """ Run the EM-algorithm on a full model
             this demands that both the Emission and Arrangement model
             have a full Estep and Mstep and can calculate the likelihood,
             including the partition function
         Args:
-            Y (3d-ndarray): numsubj x N x numvoxel array of data
             iter (int): Maximal number of iterations (def:30)
             tol (double): Tolerance on overall likelihood (def: 0.01)
             seperate_ll (bool): Return arrangement and emission LL separetely
@@ -334,6 +423,9 @@ class FullMultiModel:
             ll (ndarray): Log-likelihood of full model as function of iteration
                 If seperate_ll, the first column is ll_A, the second ll_E
             theta (ndarray): History of the parameter vector
+            Uhat (pt.tensor): (n_subj,K,P) matrix of estimates - note that this is in the
+                space of arrangement model - call distribute_evidence(Uhat) to get this
+                in the space of emission model
         """
         if not hasattr(fit_emission, "__len__"):
             fit_emission = [fit_emission]*len(self.emissions)
@@ -344,16 +436,7 @@ class FullMultiModel:
         ll = np.zeros((iter, 2))
         theta = np.zeros((iter, self.nparams))
 
-        # Intialize the emission model
-        if Y is not None:
-            for n, em in enumerate(self.emissions):
-                em.initialize(Y[n])
-
-        # Get the number of subjects per emission model
-        self.nsub_list = []
-        for n, em in enumerate(self.emissions):
-            self.nsub_list.append(em.num_subj)
-
+        # Run number of iterations
         for i in range(iter):
             # Track the parameters
             theta[i, :] = self.get_params()
@@ -406,7 +489,7 @@ class FullMultiModel:
         else:
             return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
 
-    def fit_em_ninits(self, Y=None, n_inits=20, first_iter=7, iter=30, tol=0.01,
+    def fit_em_ninits(self, n_inits=20, first_iter=7, iter=30, tol=0.01,
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
                       align = 'arrange'):
@@ -417,7 +500,6 @@ class FullMultiModel:
            Arrangement model have a full Estep and Mstep and can calculate the
            likelihood, including the partition function
         Args:
-            Y: data
             n_inits: the number of random inits
             first_iter: the first few iterations for the random inits to find
                         the inits parameters with maximal likelihood
@@ -425,6 +507,8 @@ class FullMultiModel:
             tol: Tolerance on overall likelihood (def: 0.01)
             fit_emission (list): If True, fit emission model. Otherwise, freeze it
             fit_arrangement: If True, fit arrangement model. Otherwise, freeze it
+            init_emission (list or bool): Randomly initialize emission models before fitting?
+            init_arrangement (bool): Randomly initialize arrangement model before fitting?
             align: (None,'arrange', or int): Alignment one first step is performed
                 None: Not performed - Emission models may not get aligned
                 'arrange': from the arrangement model only (works only if spatially
@@ -460,7 +544,7 @@ class FullMultiModel:
                 for em in fm.emissions:
                     em.random_params()
 
-            fm, this_ll, theta, _ = fm.fit_em(Y, iter=first_iter, tol=tol, seperate_ll=False,
+            fm, this_ll, theta, _ = fm.fit_em(first_iter, tol=tol, seperate_ll=False,
                                            fit_emission=fit_emission,
                                            fit_arrangement=fit_arrangement,
                                            first_evidence=first_ev)
@@ -469,7 +553,7 @@ class FullMultiModel:
                 max_ll = this_ll
                 self = fm
                 best_theta = theta
-        self, ll, theta, U_hat = self.fit_em(Y, iter=iter-first_iter, tol=tol, seperate_ll=False,
+        self, ll, theta, U_hat = self.fit_em(iter=iter-first_iter, tol=tol, seperate_ll=False,
                                            fit_emission=fit_emission,
                                            fit_arrangement=fit_arrangement,
                                            first_evidence=True)
@@ -540,6 +624,30 @@ class FullMultiModelSymmetric(FullMultiModel):
             if self.K_sym*2 != self.K:
                 raise(NameError('K in emission models must be twice K in arrangement model'))
 
+    def remap_evidence(self,Uhat):
+        """Placeholder function of remapping evidence from an
+        arrangement space to a emission space (here it doesn't do anything)
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        if Uhat.ndim == 3:
+            if self.same_parcels:
+                Umap = Uhat[:,:,self.indx_reduced]
+            else:
+                Umap = pt.zeros((Uhat.shape[0],self.K,self.P))
+                Umap[:,:self.K_sym,self.indx_full[0]]=Uhat
+                Umap[:,self.K_sym:,self.indx_full[1]]=Uhat
+        elif Uhat.ndim==2:
+            if self.same_parcels:
+                Umap = Uhat[:,self.indx_reduced]
+            else:
+                Umap = pt.zeros((self.K,self.P))
+                Umap[:self.K_sym,self.indx_full[0]]=Uhat
+                Umap[self.K_sym:,self.indx_full[1]]=Uhat
+        return Umap
+
     def collect_evidence(self,emloglik):
         """Collects evidence over the different data sets
         and across the two hemispheres
@@ -549,7 +657,7 @@ class FullMultiModelSymmetric(FullMultiModel):
         Returns:
             emloglik_comb (ndarray): ndarray of emission logliklihoods
         """
-        emloglik_comb = pt.cat(emloglik, dim=0)  # concatenate all emloglike
+        emloglik_comb = super().collect_evidence(emloglik)  # concatenate all emloglike
         # Combine emission log-likelihoods across left and right sides
         if self.same_parcels:
             emloglik_comb = emloglik_comb[:,:,self.indx_full[0]] + emloglik_comb[:,:,self.indx_full[1]]
@@ -567,39 +675,9 @@ class FullMultiModelSymmetric(FullMultiModel):
         Returns:
             Usplit (list): List of Uhats (per emission model)
         """
-        if self.same_parcels:
-            Uhat_full = Uhat[:,:,self.indx_reduced]
-        else:
-            Uhat_full = pt.zeros((Uhat.shape[0],self.K,self.P))
-            Uhat_full[:,:self.K_sym,self.indx_full[0]]=Uhat
-            Uhat_full[:,self.K_sym:,self.indx_full[1]]=Uhat
+        # Map the evidence back to the orginal space
+        Uhat_full = self.remap_evidence(Uhat)
         # Distribute over data sets
-        Usplit = pt.split(Uhat_full, self.nsub_list, dim=0)
+        Usplit = emloglik_comb = super().distribute_evidence(Uhat_full)
         return Usplit
-
-
-    def sample(self, num_subj=None):
-        """Sample data from each emission model (different subjects)
-        Args:
-            num_subj: list of subjects numbers per emission model e.g [2, 3, 4]
-        Returns:
-            U: the true Us of all subjects concatenated vertically,
-               shape(num_subs, P)
-            Y: data sampled from emission models, shape (num_subs, N, P)
-        """
-        if num_subj is None:
-            # If number of subject not given, then generate 10
-            # subjects data per each emission model
-            num_subj = [10] * len(self.emissions)
-
-        U = self.arrange.sample(sum(num_subj))
-        U = U[:,self.index_reduced]
-        # Label all right sided parcels higher
-        if not self.same_parcels:
-            U[:,self.indx_full[1]]=U[:,self.indx_full[1]]+self.K_sym
-        Y = []
-        for em, Us in enumerate(pt.split(U, num_subj, dim=0)):
-            this_Y = self.emissions[em].sample(Us)
-            Y.append(this_Y)
-        return U, Y
 

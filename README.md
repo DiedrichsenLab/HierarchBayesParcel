@@ -668,27 +668,28 @@ where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using t
 
 A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the squared length of the data vector:
 $$
-\bar{\epsilon}_{Acosine} = \frac{1}{P}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||) \label{ref1}
+\bar{\epsilon}_{Acosine} = \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||) \label{ref1}
 $$
 where $||\mathbf{y}_i||$ is the length of the data at brain location $i$, $\mathbf{v}_\underset{k}{\operatorname{argmax}}$ represents the $\mathbf{v_k}$ with the maximum expectation. We then compute the mean cosine distance across all $P$ brain locations. Another option is to calculate the *expected* mean cosine distance under the $q(\mathbf{u}_i)$ which defined as below:
 $$
-\langle\bar{\epsilon}_{Acosine}\rangle_q = \frac{1}{P}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
+\langle\bar{\epsilon}_{Acosine}\rangle_q = \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
 $$
-where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model. This effectively calculates the mean squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\mathbf{v}_k||\mathbf{y}_i||$): 
+where $\hat{u}_i^{(k)}$ is the inferred expectation on the training data using the fitted model.  
 
-**Proof of the adjusted cosine distance is equivalent to MSE**   
+**Proof of the adjusted cosine distance is equivalent to $1-R^2$**
 
-For simplicity, we use $\mathbf{v}_k$ to represent the most likely predicted mean direction ${\mathbf{v}_\underset{k}{\operatorname{argmax}}}$ for each voxel in the following proof. And the mean squared error (MSE) between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\mathbf{v}_k||\mathbf{y}_i||$) is defined as:
+Weighting the error by the length of the vector effectively calculates squared error between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\mathbf{v}_k||\mathbf{y}_i||$). For simplicity, we use $\mathbf{v}_k$ to represent the most likely predicted mean direction ${\mathbf{v}_\underset{k}{\operatorname{argmax}}}$ for each voxel in the following proof. $1-R^2$ between $\mathbf{y}_i$ and the prediction scaled to the amplitude of the data ($\mathbf{v}_k||\mathbf{y}_i||$) is defined as:
 $$
 \begin{align*}
-\bar{\epsilon}_{MSE} &= \frac{1}{P}\sum_i (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2\\
-&=\frac{1}{P}\sum_i[(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
-&=\frac{1}{P}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2)\\
-&=\frac{1}{P}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
-&=\frac{2}{P}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||)
+1-R^2 &= \frac{RSS}{TSS}\\
+&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2\\
+&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i[(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
+&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2)\\
+&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
+&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||)
 \end{align*}
 $$
-By equation $(\ref{ref1})$, we can see that $\bar{\epsilon}_{MSE} = 2\bar{\epsilon}_{Acosine}$, and similarly we can easily proof below equation:
+By equation $(\ref{ref1})$, we can see that $1-R^2 = 2\bar{\epsilon}_{Acosine}$, and similarly we can easily proof below equation:
 $$
 \begin{align*}
 \langle\bar{\epsilon}_{MSE}\rangle_q &= \frac{1}{P}\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2=2\langle\bar{\epsilon}_{Acosine}\rangle_q
