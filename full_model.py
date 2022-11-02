@@ -336,8 +336,10 @@ class FullMultiModel:
                             Separate subejcts per dataset OR
                       list of subject indices [[0,1,2],[0,1,2],[2,3,4]]
         """
+        # Default - assign 10 subjects per dataset
         if num_subj is None:
             num_subj = [10] * len(self.emissions)
+
         # Independent subjects in all data sets
         if isinstance(num_subj[0],int):
             for i,em in enumerate(self.emissions):
@@ -349,7 +351,7 @@ class FullMultiModel:
                 em.num_subj = len(num_subj[i])
             self.initialize(Y=None,subj_ind=num_subj)
         else:
-            raise(NameError('num_subj needs to be a list of ints or a list of array/lists'))
+            raise NameError('num_subj needs to be a list of ints or a list of array/lists')
 
     def sample(self, num_subj=None):
         """Take in the number of subjects to sample for each emission model
@@ -361,9 +363,11 @@ class FullMultiModel:
                shape(num_subs, P)
             Y: data sampled from emission models, shape (num_subs, N, P)
         """
-        # If number of subject not given, then generate 10
+        # If number of subject is given or current nsubj in the model is None,
+        # then we overwrite the
         # subjects data per each emission model
-        self.set_num_subj(num_subj)
+        if (num_subj is not None) or (self.nsubj is None):
+            self.set_num_subj(num_subj)
 
         U = self.arrange.sample(self.nsubj)
         Y = []
