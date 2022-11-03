@@ -232,6 +232,9 @@ class FullMultiModel:
         """
         self.n_emission = len(self.emissions)
         self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
+        self.K = self.emissions[0].K
+        self.P = self.emissions[0].P
+
         self.nsubj_list = []
 
         if subj_ind is not None:
@@ -400,11 +403,7 @@ class FullMultiModel:
                     Otherwise, freeze it
             first_evidence (bool or list of bool): Determines whether evidence
                     is passed from emission models to arrangement model on the
-                    first iteration. Usually set to True. However, to improve alignment
-                    between emission models from random starting values, you may want to start from
-                    False.  Setting one of the emission models to True can be thought
-                    of as a very short pretraining phase
-                    with that model alone.
+                    first iteration. Usually set to True. If a list of bools, it determines this for each emission model seperately. To improve alignment between emission models from random starting values, only pass evidence from one or none of the emission models. 
 
         Returns:
             model (Full Model): fitted model (also updated)
