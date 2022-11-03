@@ -579,88 +579,97 @@ def calc_consistency(params,dim_rem = None):
             R[j,i]=R[i,j]
     return R
 
-def align_fits(models,inplace=True):
-    """Aligns the prior probabilities and emission models
-    across different model fits, returns parameters in aligned form
-    if Inplace==True, it also aignes the model parameters in the models themselves
-    Cannot deal with models that have different numbers of emission models
+def extract_marginal_prob(models):
+    """Extracts marginal probability values 
 
     Args:
-        models (list): List of full models
-        inplace (bool): If true (default), it al
+        models (list): List of FullMultiModel
     Returns:
-        Prop: Prior Probabilites as 3d-arrays (aligned)
-        V: List of Mean vectors as 3d-arrays (aligned)
-    """
-    n_iter = len(models)
-    K = models[0].arrange.K
-    K_em = models[0].emissions[0].K
-    n_vox = models[0].arrange.P
-
-    # Intialize data arrays
-    Prop = pt.zeros((n_iter,K,n_vox))
-    V = []
-
-    for i,M in enumerate(models):
-
-        pp = M.arrange.logpi.softmax(axis=0)
-        if i == 0:
-            indx = np.arange(K)
-        else:
-            indx = matching_greedy(Prop[0,:,:],pp)
-        Prop[i,:,:]=pp[indx,:]
-        if inplace:
-            models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
-
-        # Now switch the emission models accordingly:
-        for j,em in enumerate(M.emissions):
-            if i==0:
-                V.append(pt.zeros((n_iter,em.M,K_em)))
-            if K == K_em: # non-symmetric model
-                V[j][i,:,:]=em.V[:,indx]
-            else:
-                V[j][i,:,:]=em.V[:,np.concatenate([indx,indx+K])]
-            if inplace:
-                em.V=em.V[:,indx]
-                if not em.uniform_kappa:
-                    em.kappa = em.kappa[indx]
-    return Prop, V
-
-
-def align_models(models,inplace=True):
-    """Aligns the prior probabilities and emission models
-    across different models
-    if Inplace==True, it also aignes the model parameters in the models themselves
-    Can deal with models that have different numbers of emission models
-
-    Args:
-        models (list): List of full models
-        inplace (bool): If true (default), it al
-    Returns:
-        Prop: Prior Probabilites as 3d-arrays (aligned)
+        ndarray: n_models x K x n_vox array
     """
     n_models = len(models)
-    K = models[0].arrange.K
-    n_vox = models[0].arrange.P
+    K = models[0].emissions[0].K
+    n_vox = models[0].emission[0].P
+    
+    # Intialize data arrays
+    Prop = pt.zeros((n_models,K,n_vox))
+
+    for i,M in enumerate(models):
+        pp = M.marginal_prob()
+        if (pp.shape[0]!=K) | (pp.shape[1]!=n_vox):
+            raise(NameError('Number of K and voxels need to be the same across models'))
+
+        Prop[i,:,:] = pp
+    return Prop
+
+def extract_V(models):
+    """ Extracts emission models vectors from a list of models 
+
+    Args:
+        models (list): List of FullMultiModel
+    Returns:
+        list: of ndarrays (n_models x M x K) for each emission model
+    """
+    n_models = len(models)
+    K = models[0].emissions[0].K
+    n_vox = models[0].emission[0].P
+    
+    V = [] 
+
+    for i,M in enumerate(models):
+         for j,em in enumerate(M.emissions):
+            if i==0:
+                V.append(pt.zeros((n_models,em.M,K)))
+            V[j][i,:,:]=em.V
+    return V
+
+def extract_kappa(model):
+    """ Summarizes Kappas from a model  
+    All emission models need to be either uniform or non-uniform
+
+    Args:
+        model (FullMultiModel): Model to extract kapps from
+    Returns:
+        pt_tensor: (n_emission,K) matrix or (n_emission,) vector
+    """
+    n_emission = len(model.emissions)
+    K = model.emissions[0].K
+    if model.emission[0].uniform_kappa:
+        Kappa = pt.zeros((n_emission,))
+    else 
+        Kappa = pt.zeros((n_emission,K))
+    for j,em in enumerate(M.emissions):
+        Kappa[j]=em.kappa
+    return Kappa
+
+def align_models(models):
+    """Aligns the prior probabilities and emission models
+    across different models in place... Note that the models will be changed!
+    Args:
+        models (list): List of full models
+    """
+    n_models = len(models)
+    K = models[0].emission[0].K
+    n_vox = models[0].emission[0].P
 
     # Intialize data arrays
     Prop = pt.zeros((n_models,K,n_vox))
 
     for i,M in enumerate(models):
 
-        pp = M.arrange.logpi.softmax(axis=0)
+        pp = M.marginal_prob()
+        if (pp.shape[0]!=K) | (pp.shape[1]!=n_vox):
+            raise(NameError('Number of K and voxels need to be the same across models'))
         if i == 0:
             indx = np.arange(K)
         else:
             indx = matching_greedy(Prop[0,:,:],pp)
         Prop[i,:,:]=pp[indx,:]
-        if inplace:
-            models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
+        models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
 
-        # Now switch the emission models accordingly:
+        # Now switch the emission models accordingly
         for j,em in enumerate(M.emissions):
-            if inplace:
-                em.V=em.V[:,indx]
-                if not em.uniform_kappa:
-                    em.kappa = em.kappa[indx]
-    return Prop
+            em.V=em.V[:,indx]
+            if not em.uniform_kappa:
+                em.kappa = em.kappa[indx]
+    
