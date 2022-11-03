@@ -52,6 +52,18 @@ def make_full_model(K=5,P=100,
                     M=[5,5], # Number of conditions per data set
                     num_part=3,
                     common_kappa=False):
+    """Making a full model contains an arrangement model and one or more
+       emission models with desired settings
+    Args:
+        K: the number of clusers
+        P: the number of voxels
+        nsubj_list: the number of subjects in emission models
+        M: the number of conditions per emission model
+        num_part: the number of partitions per emission model
+        common_kappa: if True, using common kappa. Otherwise, separate kappas
+    Returns:
+        M: the full model object
+    """
     A = ar.ArrangeIndependent(K,P,spatial_specific=True,remove_redundancy=False)
     A.random_params()
     emissions =[]
@@ -125,6 +137,15 @@ def do_simulation_sessFusion(K=5, nsubj_list=None,width = 10):
     pass
 
 def plot_uerr(D, plot=True, save=False):
+    """The helper function to plot the U prediction error
+    Args:
+        D (list): data structure of U_pred. e.g [[uerr1, uerr2, uerr3],...
+                                                [uerr1, uerr2, uerr3]]
+        plot: if True, plot the figure
+        save: if True, save the plot as .eps file
+    Returns:
+        Figure plot
+    """
     fig, axs = plt.subplots(1, len(D), figsize=(6*len(D), 6))
 
     for i, data in enumerate(D):
@@ -152,7 +173,17 @@ def plot_uerr(D, plot=True, save=False):
     else:
         pass
 
-def plot_result(grid, MM, ylabels=["common Kappa", "separate Kappas"], save=False):
+def plot_result(grid, MM, ylabels=["common Kappa", "separate Kappas"],
+                save=False):
+    """The helper function to plot the fitted group prior
+    Args:
+        grid (object): the markov random field grid obj
+        MM (list): the list of propulation map
+        ylabels: the labels of plot
+        save: if True, save the plot
+    Returns:
+        Figure plot
+    """
     # Plotting results
     names = ["True", "Dataset 1", "Dataset 2", "Dataset 1+2"]
     row = len(MM)
@@ -175,7 +206,21 @@ def plot_result(grid, MM, ylabels=["common Kappa", "separate Kappas"], save=Fals
 
 def _plot_maps(U, cmap='tab20', grid=None, offset=1, dim=(30, 30),
                vmax=19, row_labels=None, save=True):
-    # Step 7: Plot fitting results
+    """The helper function to plot the individual maps
+    Args:
+        U (pt.Tensor or np.ndarray): the individual maps,
+                                     shape (num_subj, P)
+        cmap: the color map of parcels
+        grid: the grid layout of plot. e.g. [3, 4] means
+              the maps will be displayed in 3 rows 4 columns
+        offset: offset of figures
+        dim: the dimensionality of the map. (width of MRF)
+        vmax: the data range that the colormap covers for plotting
+        row_labels: the labels of each row
+        save: if True, save the figure
+    Returns:
+        Figure plot
+    """
     N, P = U.shape
     if grid is None:
         grid = np.zeros((2,), np.int32)
@@ -305,14 +350,17 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
 
     return grid, U, U_indv, Uerrors, Props
 
-if __name__ == '__main__':
-    # nsub_list = np.array([10, 8])
-    # do_simulation_sessFusion(5, nsub_list)
-    # pass
-
-    width = 30
-    nsub_list = np.array([12,8])
-    M = np.array([10,10],dtype=int)
+def simulation_1(width=30,
+                 nsub_list=np.array([12,8]),
+                 M=np.array([10,10],dtype=int)):
+    """Simulation of common kappa vs. separate kappas across subjects
+    Args:
+        width: The width and height of MRF grid
+        nsub_list: the list of number of subject per dataset (emission model)
+        M: The number of conditions per dataset (emission model)
+    Returns:
+        Simulation result plots
+    """
     grid, U, U_indv, Uerrors, Props = do_simulation_sessFusion_dz(K=5, M=M, nsubj_list=nsub_list,
                                                                   width=width, low_kappa=3,
                                                                   high_kappa=30, plot_trueU=True)
@@ -330,4 +378,12 @@ if __name__ == '__main__':
             _plot_maps(us[j], cmap='tab20', dim=(width, width),
                        row_labels=labels[i]+names[j], save=True)
 
+    pass
+
+if __name__ == '__main__':
+    # nsub_list = np.array([10, 8])
+    # do_simulation_sessFusion(5, nsub_list)
+    # pass
+
+    simulation_1()
     pass
