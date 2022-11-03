@@ -585,7 +585,7 @@ def extract_marginal_prob(models):
     Args:
         models (list): List of FullMultiModel
     Returns:
-        ndarray: n_models x K x n_vox array
+        Marginal probability: (n_models x K x n_vox) tensor
     """
     n_models = len(models)
     K = models[0].emissions[0].K
@@ -642,34 +642,39 @@ def extract_kappa(model):
         Kappa[j]=em.kappa
     return Kappa
 
-def align_models(models):
-    """Aligns the prior probabilities and emission models
-    across different models in place... Note that the models will be changed!
+def align_models(models, in_place=True):
+    """Aligns the marginal probabilities across different models
+    if in_place = True, it changes arrangement and emission models
+    ... Note that the models will be changed!
     Args:
         models (list): List of full models
+        in_place (bool): Changes the models in place 
+    Returns:
+        Marginal probability: (n_models x K x n_vox) tensor
+
     """
     n_models = len(models)
     K = models[0].emission[0].K
     n_vox = models[0].emission[0].P
 
     # Intialize data arrays
-    Prop = pt.zeros((n_models,K,n_vox))
+    Prob = pt.zeros((n_models,K,n_vox))
 
     for i,M in enumerate(models):
-
         pp = M.marginal_prob()
         if (pp.shape[0]!=K) | (pp.shape[1]!=n_vox):
             raise(NameError('Number of K and voxels need to be the same across models'))
         if i == 0:
             indx = np.arange(K)
         else:
-            indx = matching_greedy(Prop[0,:,:],pp)
+            indx = matching_greedy(Prob[0,:,:],pp)
         Prop[i,:,:]=pp[indx,:]
-        models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
+        if in_place: 
+            models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
 
-        # Now switch the emission models accordingly
-        for j,em in enumerate(M.emissions):
-            em.V=em.V[:,indx]
-            if not em.uniform_kappa:
-                em.kappa = em.kappa[indx]
-    
+            # Now switch the emission models accordingly
+            for j,em in enumerate(M.emissions):
+                em.V=em.V[:,indx]
+                if not em.uniform_kappa:
+                    em.kappa = em.kappa[indx]
+    return Prob
