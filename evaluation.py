@@ -592,15 +592,15 @@ def extract_marginal_prob(models):
     n_vox = models[0].emission[0].P
     
     # Intialize data arrays
-    Prop = pt.zeros((n_models,K,n_vox))
+    Prob = pt.zeros((n_models,K,n_vox))
 
     for i,M in enumerate(models):
         pp = M.marginal_prob()
         if (pp.shape[0]!=K) | (pp.shape[1]!=n_vox):
             raise(NameError('Number of K and voxels need to be the same across models'))
 
-        Prop[i,:,:] = pp
-    return Prop
+        Prob[i,:,:] = pp
+    return Prob
 
 def extract_V(models):
     """ Extracts emission models vectors from a list of models 
@@ -634,11 +634,11 @@ def extract_kappa(model):
     """
     n_emission = len(model.emissions)
     K = model.emissions[0].K
-    if model.emission[0].uniform_kappa:
+    if model.emissions[0].uniform_kappa:
         Kappa = pt.zeros((n_emission,))
-    else 
+    else:
         Kappa = pt.zeros((n_emission,K))
-    for j,em in enumerate(M.emissions):
+    for j,em in enumerate(model.emissions):
         Kappa[j]=em.kappa
     return Kappa
 
@@ -654,8 +654,8 @@ def align_models(models, in_place=True):
 
     """
     n_models = len(models)
-    K = models[0].emission[0].K
-    n_vox = models[0].emission[0].P
+    K = models[0].emissions[0].K
+    n_vox = models[0].emissions[0].P
 
     # Intialize data arrays
     Prob = pt.zeros((n_models,K,n_vox))
@@ -668,7 +668,7 @@ def align_models(models, in_place=True):
             indx = np.arange(K)
         else:
             indx = matching_greedy(Prob[0,:,:],pp)
-        Prop[i,:,:]=pp[indx,:]
+        Prob[i,:,:]=pp[indx,:]
         if in_place: 
             models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
 
