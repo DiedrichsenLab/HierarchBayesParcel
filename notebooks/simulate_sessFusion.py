@@ -124,10 +124,11 @@ def do_simulation_sessFusion(K=5, nsubj_list=None,width = 10):
     print(Kappa.round(1))
     pass
 
-def plot_uerr(D, plot=True):
+def plot_uerr(D, plot=True, save=False):
     fig, axs = plt.subplots(1, len(D), figsize=(6*len(D), 6))
 
     for i, data in enumerate(D):
+        A, B, C = data[0], data[1], data[2]
         axs[i].bar(['dataset 1', 'dataset 2', 'fusion'],
                    [A.mean(), B.mean(), C.mean()],
                    yerr=[A.std() / np.sqrt(len(A)),
@@ -135,7 +136,7 @@ def plot_uerr(D, plot=True):
                          C.std() / np.sqrt(len(C))],
                    color=['red', 'green', 'blue'],
                    capsize=10)
-        min_err = max([A.mean(), B.mean(), C.mean()])
+        min_err = min([A.mean(), B.mean(), C.mean()])
         axs[i].axhline(y=min_err, color='k', linestyle=':')
         axs[i].set_ylabel(f'U reconstruction error')
         # plt.ylim(0.6, 0.7)
@@ -143,10 +144,57 @@ def plot_uerr(D, plot=True):
     fig.suptitle('Simulation common kappa vs. separate kappas')
     plt.tight_layout()
 
+    if save:
+        plt.savefig('Uerr.eps', format='eps')
     if plot:
         plt.show()
+        plt.clf()
     else:
         pass
+
+def plot_result(grid, MM, ylabels=["common Kappa", "separate Kappas"], save=False):
+    # Plotting results
+    names = ["True", "Dataset 1", "Dataset 2", "Dataset 1+2"]
+    row = len(MM)
+    col = MM[0].shape[0]
+
+    for i, m in enumerate(MM):
+        for j in range(len(m)):
+            plt.subplot(row, col, i*col+j+1)
+            parcel = np.argmax(m[j, :, :], axis=0)
+            grid.plot_maps(parcel, vmax=5)
+            if i == 0:
+                plt.title(names[j])
+            if j == 0:
+                plt.ylabel(ylabels[i])
+
+    if save:
+        plt.savefig('group_results.eps', format='eps')
+    plt.show()
+    plt.clf()
+
+def _plot_maps(U, cmap='tab20', grid=None, offset=1, dim=(30, 30),
+               vmax=19, row_labels=None, save=True):
+    # Step 7: Plot fitting results
+    N, P = U.shape
+    if grid is None:
+        grid = np.zeros((2,), np.int32)
+        grid[0] = np.ceil(np.sqrt(N))
+        grid[1] = np.ceil(N / grid[0])
+
+    for n in range(N):
+        ax = plt.subplot(grid[0], grid[1], n+offset)
+        ax.imshow(U[n].reshape(dim), cmap='tab20', interpolation='nearest', vmax=vmax)
+        ax.axes.xaxis.set_visible(False)
+        ax.axes.yaxis.set_visible(False)
+        if (row_labels is not None) and (n % N == 0):
+            ax.axes.yaxis.set_visible(True)
+            ax.set_yticks([])
+            # ax.set_ylabel(row_labels[int(n / num_sub)])
+
+    if save:
+        plt.savefig(f'{row_labels}.eps', format='eps')
+    plt.show()
 
 def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=None,
                                 width=10, low_kappa=3, high_kappa=30, plot_trueU=False):
@@ -172,8 +220,11 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
 
     if plot_trueU:
         grid.plot_maps(pt.argmax(pm.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
+        plt.savefig('trueU.eps', format='eps')
         plt.show()
+        plt.clf()
         grid.plot_maps(pt.exp(pm.logpi), cmap='jet', vmax=1, grid=(1, K), offset=1)
+        plt.savefig('true_prior.eps', format='eps')
         plt.show()
 
     # Initialize all kappas to be the high value
@@ -204,6 +255,7 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
     # Sampling individual Us and data
     U,Y = T.sample()
 
+    Uerrors, U_indv, figs, Props = [], [], [], []
     for common_kappa in [True, False]:
         models = []
         em_indx = [[0, 1], [0], [1], [0, 1]]
@@ -228,6 +280,8 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
         # Align full models to the true
         MM = [T]+models
         Prop = ev.align_models(MM)
+        figs.append(U_fit)
+        Props.append(Prop)
 
         # Calculate and plot U reconstruction error
         U1 = U[T.subj_ind[0],:]
@@ -239,16 +293,8 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
         U_recon, uerr = ev.matching_U(U, U_fit[2])
         # TODO: Option 2: Using matching greedy
 
-        plot_uerr()
-
-        # Plotting results
-        names = ["True", "Dataset 1", "Dataset 2", "Dataset 1+2"]
-        for i in range(len(MM)):
-            plt.subplot(2,2,i+1)
-            parcel = np.argmax(Prop[i,:,:],axis=0)
-            grid.plot_maps(parcel,vmax=5)
-            plt.title(names[i])
-        plt.show()
+        U_indv.append([U_recon_1, U_recon_2, U_recon])
+        Uerrors.append([uerr_1, uerr_2, uerr])
 
         # Printing kappa fitting
         Kappa = np.zeros((2,4,K))
@@ -257,15 +303,31 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
                 Kappa[i,j,:]=MM[j].emissions[k].kappa
         print(Kappa.round(1))
 
-    pass
+    return grid, U, U_indv, Uerrors, Props
 
 if __name__ == '__main__':
     # nsub_list = np.array([10, 8])
     # do_simulation_sessFusion(5, nsub_list)
     # pass
 
+    width = 30
     nsub_list = np.array([12,8])
     M = np.array([10,10],dtype=int)
-    do_simulation_sessFusion_dz(K=5, M=M, nsubj_list=nsub_list, width=30, low_kappa=3,
-                                high_kappa=30, plot_trueU=True)
+    grid, U, U_indv, Uerrors, Props = do_simulation_sessFusion_dz(K=5, M=M, nsubj_list=nsub_list,
+                                                                  width=width, low_kappa=3,
+                                                                  high_kappa=30, plot_trueU=True)
+    plot_uerr(Uerrors, save=True)
+    plot_result(grid, Props, save=True)
+
+    # Plot all true individual maps
+    _plot_maps(U, cmap='tab20', dim=(width, width), row_labels='True', save=True)
+
+    # Plot fitted and aligned individual maps in dataset1, 2 and fusion
+    labels = ["commonKappa_", "separateKappa_"]
+    names = ["Dataset 1", "Dataset 2", "Dataset 1+2"]
+    for i, us in enumerate(U_indv):
+        for j in range(len(us)):
+            _plot_maps(us[j], cmap='tab20', dim=(width, width),
+                       row_labels=labels[i]+names[j], save=True)
+
     pass
