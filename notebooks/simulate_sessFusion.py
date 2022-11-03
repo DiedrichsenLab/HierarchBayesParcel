@@ -5,7 +5,7 @@ Explores the fusion of different sessions for the same subjects and the fusion o
 Especially it  script of simulating the generative model training when across dataset,
 and test the model recovery ability.
 
-Author: Joern Diedrichsen
+Author: Joern Diedrichsen, dzhi
 """
 import numpy as np
 import torch as pt
@@ -124,6 +124,30 @@ def do_simulation_sessFusion(K=5, nsubj_list=None,width = 10):
     print(Kappa.round(1))
     pass
 
+def plot_uerr(D, plot=True):
+    fig, axs = plt.subplots(1, len(D), figsize=(6*len(D), 6))
+
+    for i, data in enumerate(D):
+        axs[i].bar(['dataset 1', 'dataset 2', 'fusion'],
+                   [A.mean(), B.mean(), C.mean()],
+                   yerr=[A.std() / np.sqrt(len(A)),
+                         B.std() / np.sqrt(len(B)),
+                         C.std() / np.sqrt(len(C))],
+                   color=['red', 'green', 'blue'],
+                   capsize=10)
+        min_err = max([A.mean(), B.mean(), C.mean()])
+        axs[i].axhline(y=min_err, color='k', linestyle=':')
+        axs[i].set_ylabel(f'U reconstruction error')
+        # plt.ylim(0.6, 0.7)
+
+    fig.suptitle('Simulation common kappa vs. separate kappas')
+    plt.tight_layout()
+
+    if plot:
+        plt.show()
+    else:
+        pass
+
 def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=None,
                                 width=10, low_kappa=3, high_kappa=30, plot_trueU=False):
     """Run the missing data simulation at given missing rate
@@ -143,14 +167,14 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
     pm = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
     pm.random_smooth_pi(grid.Dist, theta_mu=20)
 
+    T = make_full_model(K=K, P=grid.P, nsubj_list=nsubj_list, M=M)
+    T.arrange.logpi = pm.logpi
+
     if plot_trueU:
         grid.plot_maps(pt.argmax(pm.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
         plt.show()
         grid.plot_maps(pt.exp(pm.logpi), cmap='jet', vmax=1, grid=(1, K), offset=1)
         plt.show()
-
-    T = make_full_model(K=K, P=grid.P, nsubj_list=nsubj_list, M=M)
-    T.arrange.logpi = pm.logpi
 
     # Initialize all kappas to be the high value
     for em in T.emissions:
@@ -205,8 +229,17 @@ def do_simulation_sessFusion_dz(K=5, M=np.array([5,5],dtype=int), nsubj_list=Non
         MM = [T]+models
         Prop = ev.align_models(MM)
 
-        # TODO: Calculate U reconstruction error
+        # Calculate and plot U reconstruction error
+        U1 = U[T.subj_ind[0],:]
+        U2 = U[T.subj_ind[1],:]
 
+        # Option 1: Using matching_U
+        U_recon_1, uerr_1 = ev.matching_U(U1, U_fit[0])
+        U_recon_2, uerr_2 = ev.matching_U(U2, U_fit[1])
+        U_recon, uerr = ev.matching_U(U, U_fit[2])
+        # TODO: Option 2: Using matching greedy
+
+        plot_uerr()
 
         # Plotting results
         names = ["True", "Dataset 1", "Dataset 2", "Dataset 1+2"]
@@ -233,6 +266,6 @@ if __name__ == '__main__':
 
     nsub_list = np.array([12,8])
     M = np.array([10,10],dtype=int)
-    do_simulation_sessFusion_dz(K=6, M=M, nsubj_list=nsub_list, width=30, low_kappa=3,
+    do_simulation_sessFusion_dz(K=5, M=M, nsubj_list=nsub_list, width=30, low_kappa=3,
                                 high_kappa=30, plot_trueU=True)
     pass
