@@ -621,7 +621,7 @@ def align_fits(models,inplace=True):
             else:
                 V[j][i,:,:]=em.V[:,np.concatenate([indx,indx+K])]
             if inplace:
-                em.V=em.V[:,indx]
+                em.V=V[j][i,:,:]
                 if not em.uniform_kappa:
                     em.kappa = em.kappa[indx]
     return Prop, V
@@ -641,6 +641,7 @@ def align_models(models,inplace=True):
     """
     n_models = len(models)
     K = models[0].arrange.K
+    K_em = models[0].emissions[0].K
     n_vox = models[0].arrange.P
 
     # Intialize data arrays
@@ -660,7 +661,10 @@ def align_models(models,inplace=True):
         # Now switch the emission models accordingly:
         for j,em in enumerate(M.emissions):
             if inplace:
-                em.V=em.V[:,indx]
+                if K == K_em: # non-symmetric model
+                    em.V=em.V[:,indx]
+                else:
+                    em.V=em.V[:,np.concatenate([indx,indx+K])]
                 if not em.uniform_kappa:
                     em.kappa = em.kappa[indx]
     return Prop
