@@ -18,6 +18,13 @@ class ArrangementModel(Model):
         self.K = K  # Number of states
         self.P = P  # Number of nodes
 
+    def clear(self): 
+        """Removes temporary fields from 
+        object: Use this before saving with pickle to 
+        redice memory size
+        """
+        if hasattr(self,'estep_Uhat'):
+            delattr(self,'estep_Uhat')
 
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment

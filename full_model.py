@@ -262,7 +262,9 @@ class FullMultiModel:
 
     def clear(self):
         """Clears the data from all emission models
+        and temporary statistics from the arrangement model
         """
+        self.arrange.clear()
         for em in self.emissions:
             em.clear()
         if hasattr(self,'self_ind'):
