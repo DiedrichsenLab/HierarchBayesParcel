@@ -9,15 +9,16 @@ import torch as pt
 import matplotlib.pyplot as plt
 import Functional_Fusion.matrix as matrix
 # for testing and evaluating models
-import evaluation as ev
-import arrangements as ar 
-import emissions as em
+import generativeMRF.evaluation as ev
+import generativeMRF.arrangements as ar 
+import generativeMRF.emissions as em
 
 def make_joined(K=5,P=100,
                 n_cond = 4,
                 n_sess = 2,
                 n_part = 2,
-                n_subj = 10):
+                n_subj = 10,
+                W = pt.tensor([0,0.1,0.5,0.8,1])):
     N = n_cond * n_sess * n_part
     U=np.kron(np.ones(int(P/K),),np.arange(K))
     U=np.kron(np.ones((n_subj,1)),U.reshape(1,-1))
@@ -38,7 +39,7 @@ def make_joined(K=5,P=100,
         Vi.append(pt.randn(n_cond, K))
         Vi[-1] = Vi[-1] / pt.sqrt(pt.sum(Vi[-1] ** 2, dim=0))
     
-    W = pt.tensor([0,0.1,0.5,0.8,1])
+
     V = pt.concat([Vi[0]*W,Vi[1]*(1-W)],dim=0)
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
 
@@ -48,10 +49,10 @@ def make_joined(K=5,P=100,
     return Y,U,sess_vec,cond_vec,part_vec,emM
 
 def simulate_split(K=5,P=100,
-                n_cond = 3,
+                n_cond = 10,
                 n_sess = 2,
                 n_part = 2,
-                n_subj = 200):
+                n_subj = 100):
     Y,U,sess_vec,cond_vec,part_vec,emT = make_joined(K,P,n_cond,
                                             n_sess,n_part,n_subj)
     emM =[]
@@ -120,7 +121,7 @@ def simulate_split(K=5,P=100,
     pass
 
 if __name__ == '__main__':
-    simulate_split()
+    simulate_split(n_cond=20)
     
 
 
