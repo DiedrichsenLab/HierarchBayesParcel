@@ -13,15 +13,16 @@ import generativeMRF.evaluation as ev
 import generativeMRF.arrangements as ar
 import generativeMRF.emissions as em
 
-def sim_gaussian(M,N,kappa=5,mean=1):
-    mu = pt.ones((M,1))*mean
+def sim_gaussian(M,N,kappa=5,mu=None):
+    if (mu is None):
+        mu = pt.ones((M,1))
     eps = pt.randn((M,N))/np.sqrt(kappa)
     Y = mu + eps
     Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=0))
     y = pt.sum(Y,dim=1)/N
-    r_norm = pt.sqrt(pt.sum(y ** 2, dim=0))
-    V = y / r_norm
-    kappa = (r_norm * M - r_norm**3) / (1 - r_norm**2)
+    r_bar= pt.sqrt(pt.sum(y ** 2, dim=0))
+    V = y / r_bar
+    kappa = (r_bar * M - r_bar**3) / (1 - r_bar**2)
     return kappa
 
 
@@ -142,15 +143,19 @@ def simulate_split(K=5,P=100,
 
 if __name__ == '__main__':
     # simulate_split(n_cond=500,n_sess=3)
-    M=np.arange(31)+1
+    M=np.arange(15)+1
+
     kappa = np.zeros(M.shape)
+    r = np.zeros(M.shape)
     k=2.0
-    m=1
+    mean=2
     for i,m in enumerate(M):
-        kappa[i] = sim_gaussian(m,400,kappa=k,mean=m)
+        mu = pt.ones((m,1))*mean
+        r[i] = pt.sqrt(pt.sum(mu**2))
+        kappa[i] = sim_gaussian(m,400,kappa=k,mu=2)
 
     plt.plot(M,kappa,'r')
-    plt.plot(M,k*M*(m**2),'k')
+    plt.plot(M,k*r**2,'k')
 
 
     pass
