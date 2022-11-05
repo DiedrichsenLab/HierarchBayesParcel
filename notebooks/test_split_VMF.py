@@ -150,12 +150,12 @@ if __name__ == '__main__':
     k=2.0
     mean=2
     for i,m in enumerate(M):
-        mu = pt.ones((m,1))*mean
+        mu = pt.randn((m,1))*mean
         r[i] = pt.sqrt(pt.sum(mu**2))
-        kappa[i] = sim_gaussian(m,400,kappa=k,mu=2)
+        kappa[i] = sim_gaussian(m,400,kappa=k,mu=mu)
 
     plt.plot(M,kappa,'r')
-    plt.plot(M,k*r**2,'k')
+    plt.plot(M,k*(r**2),'k')
 
 
     pass
