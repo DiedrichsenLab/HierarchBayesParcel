@@ -13,6 +13,18 @@ import generativeMRF.evaluation as ev
 import generativeMRF.arrangements as ar
 import generativeMRF.emissions as em
 
+def sim_gaussian(M,N,kappa=5,mean=1):
+    mu = pt.ones((M,1))*mean
+    eps = pt.randn((M,N))/np.sqrt(kappa)
+    Y = mu + eps
+    Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=0))
+    y = pt.sum(Y,dim=1)/N
+    r_norm = pt.sqrt(pt.sum(y ** 2, dim=0))
+    V = y / r_norm
+    kappa = (r_norm * M - r_norm**3) / (1 - r_norm**2)
+    return kappa
+
+
 def make_joined(K=5,P=100,
                 n_cond = 4,
                 n_sess = 2,
@@ -129,8 +141,16 @@ def simulate_split(K=5,P=100,
     pass
 
 if __name__ == '__main__':
-    simulate_split(n_cond=500,n_sess=3)
+    # simulate_split(n_cond=500,n_sess=3)
+    M=np.arange(31)+1
+    kappa = np.zeros(M.shape)
+    k=2.0
+    m=1
+    for i,m in enumerate(M):
+        kappa[i] = sim_gaussian(m,400,kappa=k,mean=m)
 
+    plt.plot(M,kappa,'r')
+    plt.plot(M,k*M*(m**2),'k')
 
 
     pass
