@@ -8,6 +8,7 @@ from generativeMRF.sample_vmf import rand_von_mises_fisher
 from generativeMRF.model import Model
 from generativeMRF.depreciated.AIS_test import rejection_sampling
 import generativeMRF.arrangements as ar
+from copy import copy, deepcopy
 
 PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
 log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
@@ -40,6 +41,27 @@ class EmissionModel(Model):
 
         if data is not None:
             self.initialize(data)
+    
+    def __deepcopy__(self, memo):
+        """ Overwrites deepcopy behavior such that attached data (Y)
+        is only copied shallow, but not deep. This saves memory
+
+        Args:
+            memo (dictionary): already copied objects to avoid recursion
+
+        Returns:
+            _type_: _description_
+        """
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if k == 'Y':
+                setattr(result, k, v)
+            else:
+                setattr(result, k, deepcopy(v, memo))
+        return result
+
 
     def initialize(self, data, X=None):
         """Initializes the emission model with data set. 
