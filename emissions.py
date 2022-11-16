@@ -1180,9 +1180,10 @@ class wMixVMF(EmissionModel):
                  self._log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.uniform_kappa:
-            LL = logCnK * self.num_part + self.kappa * YV
+            LL = logCnK * self.W.nansum(dim=0) + self.kappa * YV
         else:
-            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.W.nansum(dim=0)\
+                 + self.kappa.unsqueeze(1) * YV
 
         return pt.nan_to_num(LL)
 
