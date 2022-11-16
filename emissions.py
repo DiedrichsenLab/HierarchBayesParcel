@@ -209,13 +209,10 @@ class MixGaussian(EmissionModel):
         specify which subject to optimize
         return: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
-        if Y is not None:
-            self.initialize(Y)
-        n_subj = self.Y.shape[0]
         if sub is None:
-            sub = range(n_subj)
+            sub = sub = range(self.Y.shape[0])
 
-        LL = pt.empty((n_subj, self.K, self.P))
+        LL = pt.empty((self.Y.shape[0], self.K, self.P))
         uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
         YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2*YV + uVVu.reshape((self.K, 1))
@@ -827,20 +824,9 @@ class MixVMF(EmissionModel):
             LL (pt.tensor): the expected log likelihood for emission model,
             shape (nSubject * K * P)
         """
-        # TODO: Make consistent across all emission models that Estep does not take data, but you call initialize before. 
-        if Y is not None:
-            self.initialize(Y)
-
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
-
-        # JD: I think this should really not be done in the E-step functon 
-        # but in initialize?  
-        if type(self.V) is np.ndarray:
-            self.V = pt.tensor(self.V, dtype=pt.get_default_dtype())
-        if type(self.kappa) is np.ndarray:
-            self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
@@ -852,7 +838,7 @@ class MixVMF(EmissionModel):
         else:
             LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
 
-        return pt.nan_to_num(LL)
+        return pt.nan_to_num(LL[sub])
 
     def Mstep(self, U_hat):
         """ Performs the M-step on a specific U-hat. In this emission model,
@@ -929,7 +915,7 @@ class MixVMF(EmissionModel):
         return Y
 
 
-class wMixVMF(EmissionModel):
+class wMixVMF(MixVMF):
     """ Mixture of von-Mises Fisher distribution weighted by SNR. 
     This implementation follows the Model1: if a data point as a weight of w, 
     we treat it as if it had been observed w times. 
@@ -950,24 +936,12 @@ class wMixVMF(EmissionModel):
                            cluster-specific kappa
             weighting: the weighting strategy, default 1 is data magnitude
         """
-        self.uniform_kappa = uniform_kappa
-        if part_vec is not None:
-            if isinstance(part_vec, (np.ndarray, pt.Tensor)):
-                self.part_vec = pt.tensor(part_vec, dtype=pt.int)
-            else:
-                raise ValueError('Part_vec must be numpy ndarray or torch Tensor')
-        else:
-            self.part_vec = None
+        super().__init__(K, N, P, data, X, part_vec, params, uniform_kappa)
 
-        super().__init__(K, N, P, data, X)
-        self.random_params()
-        self.set_param_list(['V', 'kappa'])
         self.name = 'wVMF'
         self.weighting=weighting
-        if params is not None:
-            self.set_params(params)
 
-    def initialize(self, data, W=None):
+    def initialize(self, data, signal=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
             and allocates memory for the sufficient stats that does. For the VMF,
             it length-standardizes the data to length one. If part_vec is exist, then
@@ -978,15 +952,16 @@ class wMixVMF(EmissionModel):
             Note: The shape of X (N, M) - N is # of observations, M is # of conditions
         Args:
             data: the input data array (or torch tensor). shape (n_subj, N, P)
-            W: pass in the weight for each data points is given
+            signal: pass in the weight for each data points is given
 
         Returns: None. Store the data in emission model itself.
 
         Class attributes added:
             self.num_part: the number of partitions (usually runs)
+                           shape (n_subj, 1, P)
             self.W: the weights associated to each data points
         """
-        super().initialize(data)
+        super(MixVMF, self).initialize(data)
 
         if self.part_vec is not None:
             # If self.part_vec is not None, meaning we need to split the data and making
@@ -1008,73 +983,77 @@ class wMixVMF(EmissionModel):
                 # But numerically more stable (i.e. when (xT @ x) is not invertible)
                 Y[i, :, :, :] = pt.matmul(pt.linalg.pinv(x), self.Y[:, self.part_vec == p, :])
 
-            # Length of vectors per partition, subject and voxel
-            l = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
-            # Keep track of how many available partions per voxels
-            self.num_part = pt.sum(~l.isnan(), dim=0)
-            self.W = W
-
-            # normalize in each partition
-            Y = Y / l
-            # Then sum over all the partitions
-            self.Y_raw = Y
-            self.Y = Y.nansum(dim=0)
-            # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
-            self.M = self.Y.shape[1]
         else:
             # No data splitting
             # calculate (X^T*X)X^T*y to make the shape of Y is (num_sub, M, P)
-            Y = pt.matmul(pt.linalg.pinv(self.X), self.Y)
+            Y = pt.matmul(pt.linalg.pinv(self.X), self.Y).unsqueeze(0)
 
-            # calculate the data magnitude and get info of nan voxels
-            l = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
-            self.num_part = pt.sum(~W.isnan(), dim=0)
-            self.Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
+        # To consistent, the Y now has shape (part, n_subj, M, P) whether split or not
+        # calculate the data magnitude
+        l = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
 
-            if signal is not None:  # The weighting is given outside
-                self.W = signal
-            else:  # several weighting options
-                if self.weighting == 1:  # 1. weights are the magnitude
-                    self.W = W
-                elif self.weighting == 2:  # 2. weights are the normalized magnitude
-                    W = (W - np.nanmin(W, axis=3, keepdims=True)) / (np.nanmax(
-                        W, axis=3, keepdims=True) - np.nanmin(W, axis=3, keepdims=True))
-                    self.W = W
-                elif self.weighting ==3:  # 3. weights are the density + magnitude
-                    W = (W - np.nanmin(W, axis=3, keepdims=True)) / (np.nanmax(
-                        W, axis=3, keepdims=True) - np.nanmin(W, axis=3, keepdims=True))
-                    # use data density as weights
-                    density = self._init_weights(self.Y, crit='cosine')
-                    density = pt.nan_to_num_(density, neginf=pt.nan)
-                    density = (density - np.nanmin(density, axis=2, keepdims=True)) / (np.nanmax(
-                        density, axis=2, keepdims=True) - np.nanmin(density, axis=2, keepdims=True))
+        # Calculate the weighting per voxel, partition, and subject
+        self.W = self._cal_weights(Y, signal, type='lsquare_sum2one')
+        # Keep track of weighted length per voxel, fill 0 is missing voxel
+        self.num_part = pt.sum(self.W, dim=0)
 
-                    self.W = density.unsqueeze(0) + W
-                else:  # if no weighting is given, restore VMF
-                    self.W = pt.ones(W.shape)
+        # normalize in each partition, then multiply weights
+        # Now, the self.W has shape (part, subj, 1, P)
+        Y = (Y / l) * self.W
+        # Then nansum over all the partitions
+        self.Y = Y.nansum(dim=0)
+        # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
+        self.M = self.Y.shape[1]
 
-            # Normalized data with nan value
-            self.Y_raw = self.Y.unsqueeze(0)
-            self.M = self.Y.shape[1]
+    def _cal_weights(self, Y, signal, type='lsquare_sum2one'):
+        # Calculate the weighting per voxel, partition, and subject
+        if signal is not None:  # The weighting is given outside
+            return signal
+        else:  # several weighting options
+            d_magnitude = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
+            d_magnitude = pt.nan_to_num(d_magnitude)
+            if type == 'length':
+                # 1. weights are the magnitude squared
+                return d_magnitude
+            elif type == 'length_sum2one':
+                # 2. weights are the magnitude squared and make it
+                # sum to one in each partition
+                W = d_magnitude
+                ratio = W.size(dim=3) / pt.sum(W, dim=3, keepdim=True)
+                return W * ratio
+            elif type == 'lsquare':
+                # 1. weights are the magnitude squared
+                return d_magnitude ** 2
+            elif type == 'lsquare_sum2one':
+                # 2. weights are the magnitude squared and make it
+                # sum to one in each partition
+                W = d_magnitude ** 2
+                ratio = W.size(dim=3) / pt.sum(W, dim=3, keepdim=True)
+                return W * ratio
+            elif type == 'lsquare_normalized':
+                # 3. weights are the normalized magnitude squared
+                W = (d_magnitude - np.nanmin(d_magnitude, axis=3, keepdims=True)) / \
+                    (np.nanmax(d_magnitude, axis=3, keepdims=True) -
+                     np.nanmin(d_magnitude, axis=3, keepdims=True))
+                return W
+            elif type == '+density':
+                # 4. weights are the density + magnitude
+                W = (d_magnitude - np.nanmin(d_magnitude, axis=3, keepdims=True)) / \
+                    (np.nanmax(d_magnitude, axis=3, keepdims=True) -
+                     np.nanmin(d_magnitude, axis=3, keepdims=True))
+                # use data density as weights
+                density = self._init_weights(Y, crit='cosine')
+                density = pt.nan_to_num_(density, neginf=pt.nan)
+                density = (density - np.nanmin(density, axis=2, keepdims=True)) / \
+                          (np.nanmax(density, axis=2, keepdims=True) -
+                           np.nanmin(density, axis=2, keepdims=True))
 
-    def random_params(self):
-        """ In this mixture vmf model, the parameters are parcel-specific direction V_k
-            and concentration value kappa_k.
-        Returns: None, just passes the random parameters to the model
-        """
-        # standardise V to unit length
-        V = pt.randn(self.M, self.K)
-        self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-
-        # VMF doesn't work properly for small kappa (let's say smaller than 8),
-        # This is because the data will be very spread on the p-1 sphere, making the
-        # model recovery difficult. Also, a small kappa cannot reflect to the real data
-        # as the real parcels are likely to have concentrated within-parcel data.
-
-        if self.uniform_kappa:
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample()
-        else:
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
+                return density.unsqueeze(0) + W
+            elif type == 'ones':
+                # 5. ones, restore VMF
+                return pt.ones(d_magnitude.shape)
+            else:
+                raise ValueError('Unknown type of weights!')
 
     def _init_weights(self, Y, q=20, sigma=100, crit='euclidean'):
         """ Compute the initial weights of data based on gaussian kernel
@@ -1103,85 +1082,6 @@ class wMixVMF(EmissionModel):
             raise NameError('The input criterion must be either euclidean or cosine!')
 
         return W
-
-    def Estep(self, Y=None, sub=None):
-        """ Estep: Returns log p(Y|U) for each value of U, up to a constant
-            Collects the sufficient statistics for the M-step
-        Args:
-            Y : Data (optional)
-            sub: specify which subject to optimize (optional)
-        Returns:
-            the expected log likelihood for emission model,
-            shape (nSubject * K * P)
-        """
-        if Y is not None:
-            self.initialize(Y)
-
-        if sub is None:
-            sub = range(self.Y.shape[0])
-        LL = pt.empty((self.Y.shape[0], self.K, self.P))
-
-        if type(self.V) is np.ndarray:
-            self.V = pt.tensor(self.V, dtype=pt.get_default_dtype())
-        if type(self.kappa) is np.ndarray:
-            self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
-
-        # Calculate log-likelihood
-        # YV = pt.matmul(self.V.T, self.Y)
-        YV = pt.matmul(self.V.T, self.W * self.Y_raw).nansum(dim=0)
-        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
-                 self._log_bessel_function(self.M/2 - 1, self.kappa)
-
-        if self.uniform_kappa:
-            LL = logCnK * self.W.nansum(dim=0) + self.kappa * YV
-        else:
-            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.W.nansum(dim=0)\
-                 + self.kappa.unsqueeze(1) * YV
-
-        return pt.nan_to_num(LL)
-
-    def Mstep(self, U_hat):
-        """ Performs the M-step on a specific U-hat. In this emission model,
-            the parameters need to be updated are Vs (unit norm projected on
-            the N-1 sphere) and kappa (concentration value).
-        Args:
-            U_hat: the expected log likelihood from the arrangement model
-        Returns:
-            Update all the object's parameters
-        """
-        if type(U_hat) is np.ndarray:
-            U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
-
-        # Making the U_hat to 0 for the NaN voxels (for handling missing data)
-        this_U_hat = self.num_part * U_hat
-
-        # Calculate weighted YU = \sum_i\sum_k<u_i^k>*w_i*y_i and UU = \sum_i\sum_k<u_i^k>
-        Y = pt.nan_to_num(self.Y_raw * self.W).sum(dim=0)
-        YU = pt.sum(pt.matmul(Y, pt.transpose(U_hat, 1, 2)), dim=0)
-        UU = pt.sum(this_U_hat, dim=0)
-
-        # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
-        self.V = YU / r_norm
-
-        # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
-        # where r_bar = ||V_k||/N*Uhat
-        if self.uniform_kappa:
-            r_bar = r_norm.sum() / pt.nan_to_num(self.W).sum()
-            r_bar[r_bar > 0.95] = 0.95
-            r_bar[r_bar < 0.05] = 0.05
-            r_bar = pt.mean(r_bar)
-        else:
-            r_bar = r_norm / pt.sum(UU, dim=1)
-            r_bar[r_bar > 0.95] = 0.95
-            r_bar[r_bar < 0.05] = 0.05
-
-        self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
-        if self.kappa.any() < 0:  # - Debug flag
-            warnings.warn(f'Kappa has negative value - {self.kappa}')
-
-        # Regularizer - kappa is forced to be large (meaning concentrated)
-        # self.kappa = self.kappa + 1000
 
     def sample(self, U):
         """ Draw data sample from this model and given parameters
@@ -1220,35 +1120,6 @@ class wMixVMF(EmissionModel):
         Y = Y * self.W
 
         return Y
-
-    def sample_new(self, U):
-        """ Draw data sample from this model and given parameters
-        Args:
-            U: The prior arrangement U from arragnment model (tensor)
-        Returns: The samples data form this distribution
-        """
-        if type(U) is np.ndarray:
-            U = pt.tensor(U, dtype=pt.int)
-        elif type(U) is pt.Tensor:
-            U = U.int()
-        else:
-            raise ValueError('The given U must be numpy ndarray or torch Tensor!')
-
-        num_subj = U.shape[0]
-        Y = pt.empty((num_subj, self.N, self.P))
-        new_V = pt.matmul(self.X, self.V)
-        new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
-
-        for s in range(num_subj):
-            Y[s, :, :] = new_V[:, U[s, :].long()] * self.W
-
-        W = self.W.expand(Y.shape)
-        noise_far = pt.normal(0, pt.sqrt(pt.tensor(0.005)), Y.shape)
-        noise_near = pt.normal(0, pt.sqrt(pt.tensor(0.1)), Y.shape)
-        Y = pt.where(W == self.minlength, Y + noise_near, Y + noise_far)
-
-        return Y
-
 
 class MixGaussianGamma(EmissionModel):
     """
