@@ -141,10 +141,8 @@ def simulate_split(K=5,P=100,
     plt.imshow(U2,vmin=0,vmax=1)
     pass
 
-if __name__ == '__main__':
-    # simulate_split(n_cond=500,n_sess=3)
+def increase_dimensions():    
     M=np.arange(15)+1
-
     kappa = np.zeros(M.shape)
     r = np.zeros(M.shape)
     k=2.0
@@ -158,4 +156,22 @@ if __name__ == '__main__':
     plt.plot(M,k*(r**2),'k')
 
 
+def increase_length():
+    mean=np.linspace(0,6,20)
+    M=30 # Dimensionalitu 
+    kappa = np.zeros(mean.shape)
+    r = np.zeros(mean.shape)
+    k=2.0
+    for i,l in enumerate(mean):
+        mu = pt.ones((M,1))*l
+        r[i] = pt.sqrt(pt.sum(mu**2))
+        kappa[i] = sim_gaussian(M,400,kappa=k,mu=mu)
+
+    plt.plot(mean,kappa,'r')
+    plt.plot(mean,k*(r**2),'k')
+
+
+if __name__ == '__main__':
+    # simulate_split(n_cond=500,n_sess=3)
+    increase_length()
     pass

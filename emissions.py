@@ -1491,3 +1491,18 @@ def loglik2prob(loglik, dim=0):
         prob = pt.exp(loglik)
         prob = prob/pt.sum(prob, dim=1).reshape(a)
     return prob
+
+def log_bessel_function(order, kappa):
+    """ The log of modified bessel function of the first kind of real order
+    Args:
+        order: the real order
+        kappa: the input value
+    Returns: The values of log of modified bessel function
+    """
+    frac = kappa / order
+    square = 1 + frac**2
+    root = np.sqrt(square)
+    eta = root + np.log(frac) - np.log(1 + root)
+    approx = - np.log(np.sqrt(2 * np.pi * order)) + order * eta - 0.25*np.log(square)
+
+    return approx
