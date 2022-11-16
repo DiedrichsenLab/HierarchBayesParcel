@@ -1006,13 +1006,11 @@ class wMixVMF(MixVMF):
         # Reshape back to (num_sub, M, P) - basically take the nansum across partitions
         self.M = self.Y.shape[1]
 
-    def _cal_weights(self, Y, signal, type='lsquare_sum2P'):
+    def _cal_weights(self, Y, type='lsquare_sum2P'):
         """Calculate the weights per each of the independent observation
            (per voxel, partition, and subject)
         Args:
             Y (pt.Tensor): the input data, shape (partition, n_sub, M, P)
-            signal (pt.Tensor): the input weights from outside is given.
-                                shape of (partition, n_sub, 1, P)
             type: the tupe to calculate the weights
                 'length': the data raw magnitude
                 'length_sum2P': the data raw magnitude and make them sum
@@ -1029,59 +1027,56 @@ class wMixVMF(MixVMF):
         Returns:
             the weights associated to each independent observation
         """
-        if signal is not None:  # The weighting is given outside
-            return signal
-        else:  # several weighting options
-            d_magnitude = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
-            num_part = pt.sum(~d_magnitude.isnan(), dim=0)
-            d_magnitude = pt.nan_to_num(d_magnitude)
-            if type == 'length':
-                # weights are the magnitude
-                return d_magnitude
-            elif type == 'length_sum2P':
-                # weights are the magnitude and make it
-                # sum to P in each partition
-                W = d_magnitude
-                ratio = W.size(dim=3) / pt.sum(W, dim=3, keepdim=True)
-                return W * ratio
-            elif type == 'lsquare':
-                # weights are the magnitude squared
-                return d_magnitude ** 2
-            elif type == 'lsquare_sum2P':
-                # weights are the magnitude squared and make it
-                # sum to P in each partition
-                W = d_magnitude ** 2
-                ratio = W.size(dim=3) / pt.sum(W, dim=3, keepdim=True)
-                return W * ratio
-            elif type == 'lsquare_sum2PJ':
-                # weights are the magnitude squared and make it
-                # sum to P*J globally
-                W = d_magnitude ** 2
-                ratio = W.numel() / W.sum()
-                return W * ratio
-            elif type == 'length_normalized':
-                # weights are the normalized magnitude squared
-                W = (d_magnitude - pt.min(d_magnitude, dim=3, keepdims=True)) / \
-                    (pt.max(d_magnitude, dim=3, keepdims=True) -
-                     pt.min(d_magnitude, dim=3, keepdims=True))
-                return W
-            elif type == '+density':
-                # weights are the density + magnitude
-                W = (d_magnitude - pt.min(d_magnitude, dim=3, keepdims=True)) / \
-                    (pt.max(d_magnitude, dim=3, keepdims=True) -
-                     pt.min(d_magnitude, dim=3, keepdims=True))
-                # use data density as weights
-                density = self._init_weights(Y, crit='cosine')
-                density = pt.nan_to_num_(density, neginf=pt.nan)
-                density = (density - np.nanmin(density, axis=2, keepdims=True)) / \
-                          (np.nanmax(density, axis=2, keepdims=True) -
-                           np.nanmin(density, axis=2, keepdims=True))
-                return density.unsqueeze(0) + W
-            elif type == 'ones':
-                # ones, restore VMF
-                return pt.ones(d_magnitude.shape)
-            else:
-                raise ValueError('Unknown type of weights!')
+        d_magnitude = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
+        num_part = pt.sum(~d_magnitude.isnan(), dim=0)
+        d_magnitude = pt.nan_to_num(d_magnitude)
+        if type == 'length':
+            # weights are the magnitude
+            return d_magnitude
+        elif type == 'length_sum2P':
+            # weights are the magnitude and make it
+            # sum to P in each partition
+            W = d_magnitude
+            ratio = W.size(dim=3) / pt.sum(W, dim=3, keepdim=True)
+            return W * ratio
+        elif type == 'lsquare':
+            # weights are the magnitude squared
+            return d_magnitude ** 2
+        elif type == 'lsquare_sum2P':
+            # weights are the magnitude squared and make it
+            # sum to P in each partition
+            W = d_magnitude ** 2
+            ratio = W.size(dim=3) / pt.sum(W, dim=3, keepdim=True)
+            return W * ratio
+        elif type == 'lsquare_sum2PJ':
+            # weights are the magnitude squared and make it
+            # sum to P*J globally
+            W = d_magnitude ** 2
+            ratio = W.numel() / W.sum()
+            return W * ratio
+        elif type == 'length_normalized':
+            # weights are the normalized magnitude squared
+            W = (d_magnitude - pt.min(d_magnitude, dim=3, keepdims=True)) / \
+                (pt.max(d_magnitude, dim=3, keepdims=True) -
+                    pt.min(d_magnitude, dim=3, keepdims=True))
+            return W
+        elif type == '+density':
+            # weights are the density + magnitude
+            W = (d_magnitude - pt.min(d_magnitude, dim=3, keepdims=True)) / \
+                (pt.max(d_magnitude, dim=3, keepdims=True) -
+                    pt.min(d_magnitude, dim=3, keepdims=True))
+            # use data density as weights
+            density = self._init_weights(Y, crit='cosine')
+            density = pt.nan_to_num_(density, neginf=pt.nan)
+            density = (density - np.nanmin(density, axis=2, keepdims=True)) / \
+                        (np.nanmax(density, axis=2, keepdims=True) -
+                        np.nanmin(density, axis=2, keepdims=True))
+            return density.unsqueeze(0) + W
+        elif type == 'ones':
+            # ones, restore VMF
+            return pt.ones(d_magnitude.shape)
+        else:
+            raise ValueError('Unknown type of weights!')
 
     def _init_weights(self, Y, q=20, sigma=100, crit='euclidean'):
         """ Compute the initial weights of data based on gaussian kernel
