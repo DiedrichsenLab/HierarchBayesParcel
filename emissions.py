@@ -815,32 +815,6 @@ class MixVMF(EmissionModel):
         else:
             self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
 
-    def _bessel_function(self, order, kappa):
-        """ The modified bessel function of the first kind of real order
-        Args:
-            order: the real order
-            kappa: the input value
-        Returns: The values of modified bessel function
-        """
-        # res = np.empty(kappa.shape)
-        res = special.iv(order, kappa)
-        return res
-
-    def _log_bessel_function(self, order, kappa):
-        """ The log of modified bessel function of the first kind of real order
-        Args:
-            order: the real order
-            kappa: the input value
-        Returns: The values of log of modified bessel function
-        """
-        frac = kappa / order
-        square = 1 + frac**2
-        root = np.sqrt(square)
-        eta = root + np.log(frac) - np.log(1 + root)
-        approx = - np.log(np.sqrt(2 * np.pi * order)) + order * eta - 0.25*np.log(square)
-
-        return approx
-
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each voxel and value of U, 
         up to a constant
@@ -853,6 +827,7 @@ class MixVMF(EmissionModel):
             LL (pt.tensor): the expected log likelihood for emission model,
             shape (nSubject * K * P)
         """
+        # TODO: Make consistent across all emission models that Estep does not take data, but you call initialize before. 
         if Y is not None:
             self.initialize(Y)
 
@@ -860,6 +835,8 @@ class MixVMF(EmissionModel):
             sub = range(self.Y.shape[0])
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
 
+        # JD: I think this should really not be done in the E-step functon 
+        # but in initialize?  
         if type(self.V) is np.ndarray:
             self.V = pt.tensor(self.V, dtype=pt.get_default_dtype())
         if type(self.kappa) is np.ndarray:
@@ -868,7 +845,7 @@ class MixVMF(EmissionModel):
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
-                 self._log_bessel_function(self.M/2 - 1, self.kappa)
+                 log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.uniform_kappa:
             LL = logCnK * self.num_part + self.kappa * YV
@@ -953,10 +930,12 @@ class MixVMF(EmissionModel):
 
 
 class wMixVMF(EmissionModel):
-    """ Mixture of von-Mises Fisher distribution weighted by SNR
+    """ Mixture of von-Mises Fisher distribution weighted by SNR. 
+    This implementation follows the Model1: if a data point as a weight of w, 
+    we treat it as if it had been observed w times. 
     """
     def __init__(self, K=4, N=10, P=20, data=None, X=None, part_vec=None,
-                 params=None, uniform_kappa=True, weighting=1):
+                 params=None, uniform_kappa=True, weighting='lsquare'):
         """ Constructor
         Args:
             K (int): the number of clusters
@@ -988,7 +967,7 @@ class wMixVMF(EmissionModel):
         if params is not None:
             self.set_params(params)
 
-    def initialize(self, data, signal=None):
+    def initialize(self, data, W=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
             and allocates memory for the sufficient stats that does. For the VMF,
             it length-standardizes the data to length one. If part_vec is exist, then
@@ -999,12 +978,12 @@ class wMixVMF(EmissionModel):
             Note: The shape of X (N, M) - N is # of observations, M is # of conditions
         Args:
             data: the input data array (or torch tensor). shape (n_subj, N, P)
-            signal: pass in the signal for data points is given
+            W: pass in the weight for each data points is given
 
         Returns: None. Store the data in emission model itself.
 
         Class attributes added:
-            self.run: the number of partitions (usually runs)
+            self.num_part: the number of partitions (usually runs)
             self.W: the weights associated to each data points
         """
         super().initialize(data)
@@ -1030,13 +1009,13 @@ class wMixVMF(EmissionModel):
                 Y[i, :, :, :] = pt.matmul(pt.linalg.pinv(x), self.Y[:, self.part_vec == p, :])
 
             # Length of vectors per partition, subject and voxel
-            W = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
+            l = pt.sqrt(pt.sum(Y ** 2, dim=2, keepdim=True))
             # Keep track of how many available partions per voxels
-            self.num_part = pt.sum(~W.isnan(), dim=0)
+            self.num_part = pt.sum(~l.isnan(), dim=0)
             self.W = W
 
             # normalize in each partition
-            Y = Y / W
+            Y = Y / l
             # Then sum over all the partitions
             self.Y_raw = Y
             self.Y = Y.nansum(dim=0)
@@ -1048,8 +1027,9 @@ class wMixVMF(EmissionModel):
             Y = pt.matmul(pt.linalg.pinv(self.X), self.Y)
 
             # calculate the data magnitude and get info of nan voxels
-            W = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True)).unsqueeze(0)
+            l = pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
             self.num_part = pt.sum(~W.isnan(), dim=0)
+            self.Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
 
             if signal is not None:  # The weighting is given outside
                 self.W = signal
@@ -1074,7 +1054,6 @@ class wMixVMF(EmissionModel):
                     self.W = pt.ones(W.shape)
 
             # Normalized data with nan value
-            self.Y = Y / pt.sqrt(pt.sum(Y ** 2, dim=1, keepdim=True))
             self.Y_raw = self.Y.unsqueeze(0)
             self.M = self.Y.shape[1]
 
@@ -1124,32 +1103,6 @@ class wMixVMF(EmissionModel):
             raise NameError('The input criterion must be either euclidean or cosine!')
 
         return W
-
-    def _bessel_function(self, order, kappa):
-        """ The modified bessel function of the first kind of real order
-        Args:
-            order: the real order
-            kappa: the input value
-        Returns: The values of modified bessel function
-        """
-        # res = np.empty(kappa.shape)
-        res = special.iv(order, kappa)
-        return res
-
-    def _log_bessel_function(self, order, kappa):
-        """ The log of modified bessel function of the first kind of real order
-        Args:
-            order: the real order
-            kappa: the input value
-        Returns: The values of log of modified bessel function
-        """
-        frac = kappa / order
-        square = 1 + frac**2
-        root = np.sqrt(square)
-        eta = root + np.log(frac) - np.log(1 + root)
-        approx = - np.log(np.sqrt(2 * np.pi * order)) + order * eta - 0.25*np.log(square)
-
-        return approx
 
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
@@ -1492,6 +1445,18 @@ def loglik2prob(loglik, dim=0):
         prob = pt.exp(loglik)
         prob = prob/pt.sum(prob, dim=1).reshape(a)
     return prob
+
+
+def bessel_function(self, order, kappa):
+    """ The modified bessel function of the first kind of real order
+    Args:
+        order: the real order
+        kappa: the input value
+    Returns: The values of modified bessel function
+    """
+    # res = np.empty(kappa.shape)
+    res = special.iv(order, kappa)
+    return res
 
 def log_bessel_function(order, kappa):
     """ The log of modified bessel function of the first kind of real order
