@@ -9,7 +9,6 @@ import numpy as np
 from sklearn import metrics
 import matplotlib.pyplot as plt
 
-
 def nmi(U,Uhat):
     """Compute the normalized mutual information score
     Args:
@@ -19,7 +18,6 @@ def nmi(U,Uhat):
         the normalized mutual information score
     """
     return 1-metrics.normalized_mutual_info_score(U, Uhat)
-
 
 def ARI(U, Uhat, sparse=True):
     """Compute the 1 - (adjusted rand index) between the two parcellations
@@ -51,6 +49,20 @@ def ARI(U, Uhat, sparse=True):
 
     return 1 - 2.0*(n_11*n_00 - n_10*n_01)/((n_11+n_10)*(n_10+n_00)+(n_11+n_01)*(n_01+n_00))
 
+def BIC(loglik, N, d):
+    """Bayesian Information Criterion
+    Args:
+        loglik: the log-likelihood of the model
+        N: the number of examples in the training dataset
+        d: the number of parameters in the model
+    Returns:
+        BIC statistic
+    References:
+        Page 235, The Elements of Statistical Learning, 2016.
+        BIC = -2 * LL + log(N) * k
+    """
+    bic = -2 * loglik + pt.log(N) * d
+    return bic
 
 def u_abserr(U,uhat):
     """Absolute error on U

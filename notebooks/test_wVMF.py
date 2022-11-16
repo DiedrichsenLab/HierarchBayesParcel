@@ -69,8 +69,8 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
     list_M1, list_M2, list_M3, list_M4, list_M0 = [],[],[],[],[]
     lls_1, lls_2, lls_3, lls_4, lls_0 = [],[],[],[],[]
     Ufit_1, Ufit_2, Ufit_3, Ufit_4, Ufit_0 = [], [], [], [], []
-    max_1, max_2, max_3, max_4, max_0 = np.NINF, np.NINF, np.NINF, np.NINF, np.NINF
-    for j in range(50):
+    max_1, max_2, max_3, max_4, max_0 = 1,1,1,1,1
+    for j in range(20):
         emissionM1.random_params()
         emissionM2.random_params()
         emissionM3.random_params()
@@ -86,8 +86,9 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         # Step 5: Estimate the parameter thetas to fit the new model using EM
         M1, ll1, theta1, Uhat_fit_1 = M1.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                                 fit_arrangement=False)
-        if max_1 < ll1[-1]:
-            max_1 = ll1[-1]
+        _, uerr_1 = ev.matching_U(U, Uhat_fit_1)
+        if max_1 > uerr_1:
+            max_1 = uerr_1
             j_1 = j
 
         list_M1.append(M1)
@@ -96,8 +97,9 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
 
         M2, ll2, theta2, Uhat_fit_2 = M2.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                                 fit_arrangement=False)
-        if max_2 < ll2[-1]:
-            max_2 = ll2[-1]
+        _, uerr_2 = ev.matching_U(U, Uhat_fit_2)
+        if max_2 > uerr_2:
+            max_2 = uerr_2
             j_2 = j
 
         list_M2.append(M2)
@@ -107,8 +109,9 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal.unsqueeze(1).unsqueeze(0),
                                                 iter=max_iter, tol=0.0001,
                                                 fit_arrangement=False)
-        if max_3 < ll3[-1]:
-            max_3 = ll3[-1]
+        _, uerr_3 = ev.matching_U(U, Uhat_fit_3)
+        if max_3 > uerr_3:
+            max_3 = uerr_3
             j_3 = j
 
         list_M3.append(M3)
@@ -117,8 +120,9 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
 
         M4, ll4, theta4, Uhat_fit_4 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                                 fit_arrangement=False)
-        if max_4 < ll4[-1]:
-            max_4 = ll4[-1]
+        _, uerr_4 = ev.matching_U(U, Uhat_fit_4)
+        if max_4 > uerr_4:
+            max_4 = uerr_4
             j_4 = j
 
         list_M4.append(M4)
@@ -127,8 +131,9 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
 
         M0, ll0, theta0, Uhat_fit_0 = M_vmf.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
                                                    fit_arrangement=False)
-        if max_0 < ll0[-1]:
-            max_0 = ll0[-1]
+        _, uerr_0 = ev.matching_U(U, Uhat_fit_0)
+        if max_0 > uerr_0:
+            max_0 = uerr_0
             j_0 = j
 
         list_M0.append(M0)
@@ -446,7 +451,7 @@ if __name__ == '__main__':
 
     # a,b = _check_VMF_and_wVMF_equivalent(K=5, P=5000, N=20, num_sub=1, max_iter=100,
     #                                      kappa=30, plot=True)
-    iter = 1000
+    iter = 100
     dof = np.sqrt(iter)
     for i in range(iter):
         print(f'iter - {i}')

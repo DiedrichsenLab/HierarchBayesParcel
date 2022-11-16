@@ -1152,7 +1152,8 @@ class wMixVMF(EmissionModel):
             self.kappa = pt.tensor(self.kappa, dtype=pt.get_default_dtype())
 
         # Calculate log-likelihood
-        YV = pt.matmul(self.V.T, self.Y)
+        # YV = pt.matmul(self.V.T, self.Y)
+        YV = pt.matmul(self.V.T, self.W * self.Y_raw).nansum(dim=0)
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
                  self._log_bessel_function(self.M/2 - 1, self.kappa)
 
