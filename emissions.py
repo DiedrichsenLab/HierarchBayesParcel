@@ -992,7 +992,7 @@ class wMixVMF(MixVMF):
 
         # Calculate the weighting per voxel, partition, and subject
         if weight is None:
-            self.W = self._cal_weights(Y, type='lsquare_sum2P')
+            self.W = self._cal_weights(Y, type=self.weighting)
         else:
             self.W = weight.unsqueeze(0).unsqueeze(2)
         # Keep track of weighted length per voxel, fill 0 is missing voxel

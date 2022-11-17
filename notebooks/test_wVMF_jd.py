@@ -19,7 +19,7 @@ from emissions import MixGaussianExp, MixVMF, wMixVMF
 import evaluation as ev
 
 def simulate_from_GME(K=5, P=100, N=40, num_sub=10,
-                sigma2 = 1,
+                sigma2 = 0.2,
                 signal_distrib='discrete',
                 signal_param=[0.5,0.4,0.1]):
     """Simulation function used for testing GME model recovery from VMF data
@@ -75,9 +75,15 @@ def build_model(model_type,Y,signal,arrangeT,uniform_kappa=True):
     if model_type == 'VMF':
         emissionM = MixVMF(K=arrangeT.K, N = N, P=arrangeT.P, X=None, uniform_kappa=uniform_kappa)
         emissionM.initialize(Y)
+    elif model_type == 'wVMF_ones':
+        emissionM = wMixVMF(K=arrangeT.K, N = N, P=arrangeT.P, X=None, uniform_kappa=uniform_kappa,weighting='ones')
+        emissionM.initialize(Y)
     elif model_type == 'wVMF_t2':
         emissionM = wMixVMF(K=arrangeT.K, N = N, P=arrangeT.P, X=None, uniform_kappa=uniform_kappa)
         emissionM.initialize(Y,weight=signal**2)
+    elif model_type == 'wVMF_l2':
+        emissionM = wMixVMF(K=arrangeT.K, N = N, P=arrangeT.P, X=None, uniform_kappa=uniform_kappa,weighting='lsquare_sum2PJ')
+        emissionM.initialize(Y)
     else: 
         raise(NameError('Unknown model type'))
     emissionM.random_params()
@@ -85,18 +91,15 @@ def build_model(model_type,Y,signal,arrangeT,uniform_kappa=True):
     fm.initialize()
     return fm
 
-def do_sim(K=5,N=10,num_sim=10): 
+def do_sim(num_sim=10,**sim_param): 
     # different types of fitting models 
-    model_type = ['VMF','wVMF_t2'] # ,'wVMF_y2','wVMF_y']
-
+    model_type = ['VMF','wVMF_ones','wVMF_t2','wVMF_l2']
+    K = sim_param['K']
     # Generate training data 
     results = pd.DataFrame()
     for n in range(num_sim):
         print(f'simulation {n}')
-        Y,U,signal,arrangeT,emissionT = simulate_from_GME(K=K,
-                    N=N,
-                    num_sub=10,
-                    sigma2=0.3)
+        Y,U,signal,arrangeT,emissionT = simulate_from_GME(**sim_param)
 
         # Get independent test data
         Y_test = emissionT.sample(U,signal=signal)
@@ -135,6 +138,11 @@ def plot_results(results):
 
 if __name__ == '__main__':
     # simulate_split(n_cond=500,n_sess=3)
-    results = do_sim()
+    sim_param={'K':5,
+               'N':10,
+               'sigma2':0.1,
+               'signal_distrib':'exp',
+               'signal_param':1.0}
+    results = do_sim(num_sim=10,**sim_param)
     plot_results(results)
     pass
