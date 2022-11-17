@@ -1361,8 +1361,8 @@ def log_bessel_function(order, kappa):
     """
     frac = kappa / order
     square = 1 + frac**2
-    root = np.sqrt(square)
-    eta = root + np.log(frac) - np.log(1 + root)
-    approx = - np.log(np.sqrt(2 * np.pi * order)) + order * eta - 0.25*np.log(square)
+    root = sqrt(square)
+    eta = root + log(frac) - log(1 + root)
+    approx = - log(sqrt(2 * PI * order)) + order * eta - 0.25*log(square)
 
     return approx

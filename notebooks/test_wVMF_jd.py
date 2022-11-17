@@ -18,6 +18,11 @@ from arrangements import ArrangeIndependent, expand_mn, sample_multinomial
 from emissions import MixGaussianExp, MixVMF, wMixVMF
 import evaluation as ev
 
+# pytorch cuda global flag
+pt.set_default_tensor_type(pt.cuda.FloatTensor
+                           if pt.cuda.is_available() else
+                           torch.FloatTensor)
+
 def simulate_from_GME(K=5, P=100, N=40, num_sub=10,
                 sigma2 = 0.2,
                 signal_distrib='discrete',
@@ -106,7 +111,7 @@ def do_sim(num_sim=10,**sim_param):
 
         for mt in model_type:
             fm = build_model(mt,Y,signal,arrangeT)
-            fm, ll, theta, U_hat = fm.fit_em(iter=100, tol=0.0001,
+            fm, ll, theta, U_hat = fm.fit_em(iter=100, tol=0.01,
                                     fit_arrangement=False,
                                     first_evidence=False)
             uerr = ev.u_abserr(expand_mn(U,K), U_hat)
@@ -135,6 +140,8 @@ def plot_results(results):
     sb.barplot(data=results,x='model_type',y='coserr')
     plt.subplot(1,3,3)
     sb.barplot(data=results,x='model_type',y='wcoserr')
+
+    plt.show()
 
 if __name__ == '__main__':
     # simulate_split(n_cond=500,n_sess=3)

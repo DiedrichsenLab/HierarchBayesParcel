@@ -20,9 +20,9 @@ def mul_torch(x, y, n):
     return z
 
 def mul_numpy(x, y, n):
-    z = x * y
+    z = np.multiply(x, y)
     for i in range(n-1):
-        z += x * y
+        z += np.multiply(x, y)
     return z
 
 if __name__ == '__main__':
@@ -40,13 +40,15 @@ if __name__ == '__main__':
     print(f"Time of torch multiplication {toc - tic:0.4f} seconds")
 
     tic = time.perf_counter()
-    x_ = x.data.cpu().numpy()
-    y_ = y.data.cpu().numpy()
+    x_ = x.data.cpu()
+    y_ = y.data.cpu()
     z_ = mul_numpy(x_, y_, 100)
     toc = time.perf_counter()
     print(f"Time of torch multiplication {toc - tic:0.4f} seconds")
 
     tic = time.perf_counter()
+    x_ = x.data.cpu().numpy()
+    y_ = y.data.cpu().numpy()
     z_ = mul_numpy(x_, y_, 100)
     toc = time.perf_counter()
     print(f"Time of torch multiplication {toc - tic:0.4f} seconds")

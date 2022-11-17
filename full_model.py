@@ -435,8 +435,8 @@ class FullMultiModel:
             first_evidence = [first_evidence]*len(self.emissions)
 
         # Initialize the tracking
-        ll = np.zeros((iter, 2))
-        theta = np.zeros((iter, self.nparams))
+        ll = pt.zeros((iter, 2))
+        theta = pt.zeros((iter, self.nparams))
 
         # Run number of iterations
         for i in range(iter):
@@ -462,7 +462,7 @@ class FullMultiModel:
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             ll[i, 0] = pt.sum(ll_A)
             ll[i, 1] = pt.sum(ll_E)
-            if np.isnan(ll[i,:].sum()):
+            if pt.isnan(ll[i,:].sum()):
                 raise(NameError('Likelihood returned a NaN'))
             # Check convergence:
             # This is what was here before. It ignores whether likelihood increased or decreased!
@@ -526,8 +526,8 @@ class FullMultiModel:
             first_lls: the log-likelihoods for the n_inits random parameters
                        after first_iter runs
         """
-        max_ll = np.array([-np.inf])
-        first_lls = np.full((n_inits,first_iter),np.nan)
+        max_ll = pt.tensor([-pt.inf])
+        first_lls = pt.full((n_inits,first_iter), pt.nan)
         # Set the first passing of evidence based on alignment pretraining:
         if align is None:
             first_ev = [True]*len(self.emissions)
@@ -559,8 +559,8 @@ class FullMultiModel:
                                            fit_emission=fit_emission,
                                            fit_arrangement=fit_arrangement,
                                            first_evidence=True)
-        ll_n = np.r_[max_ll,ll[1:]]
-        theta_n = np.r_[best_theta,theta[1:, :]]
+        ll_n = pt.cat([max_ll,ll[1:]])
+        theta_n = pt.cat([best_theta,theta[1:, :]])
         return self, ll_n, theta_n, U_hat, first_lls
 
     def get_params(self):
@@ -569,7 +569,7 @@ class FullMultiModel:
             theta (ndarrap)
         """
         emi_params = [i.get_params() for i in self.emissions]
-        return np.concatenate([self.arrange.get_params(), pt.cat(emi_params)])
+        return pt.cat([self.arrange.get_params(), pt.cat(emi_params)])
 
     def get_param_indices(self, name):
         """Return the indices for the full model theta vector
@@ -600,7 +600,7 @@ class FullMultiModelSymmetric(FullMultiModel):
     """ Full generative model contains arrangement model and multiple
        emission models for training across dataset
     """
-    def __init__(self, arrange, emission,indx_full,indx_reduced,same_parcels=False):
+    def __init__(self, arrange, emission, indx_full, indx_reduced, same_parcels=False):
         """Constructor
         Args:
             arrange: the arrangement model with P_sym nodes
@@ -611,6 +611,12 @@ class FullMultiModelSymmetric(FullMultiModel):
         """
         super().__init__(arrange, emission)
         self.same_parcels = same_parcels
+        if type(indx_full) is np.ndarray:
+            indx_full = pt.tensor(indx_full, dtype=pt.get_default_dtype()).long()
+
+        if type(indx_reduced) is np.ndarray:
+            indx_reduced = pt.tensor(indx_reduced, dtype=pt.get_default_dtype()).long()
+
         self.indx_full = indx_full
         self.indx_reduced = indx_reduced
         self.P_sym = arrange.P
