@@ -531,6 +531,26 @@ def matching_U(U_true, U_predict):
 
     return U_match, pred_err
 
+def unravel_index(index, shape):
+    """Equalavent function of np.unravel_index()
+    that support Pytorch tensors
+    Args:
+        index: An integer array whose elements are indices
+               into the flattened version of an array of
+               dimensions shape.
+        shape: the shape of the Tensor to use for unraveling
+               indices.
+    Returns:
+        unraveled coords - Each array in the tuple has
+        the same shape as the indices tensor.
+    """
+    out = []
+    ind = pt.clone(index)
+    for dim in reversed(shape):
+        out.append(ind % dim)
+        ind = pt.div(ind, dim, rounding_mode='floor')
+    return tuple(reversed(out))
+
 def matching_greedy(Y_target, Y_source):
     """ Matches the rows of two Y_source matrix to Y_target
     Using row-wise correlation and matching the highest pairs
@@ -549,14 +569,18 @@ def matching_greedy(Y_target, Y_source):
     Var1 = pt.sum(Y_tar*Y_tar,dim=1)
     Var2 = pt.sum(Y_sou*Y_sou,dim=1)
     Corr = Cov / pt.sqrt(pt.outer(Var1,Var2))
+    # convert nan to -inf if any
+    pt.nan_to_num_(Corr, -pt.inf)
 
     # Initialize index array
-    indx = np.empty((K,),np.int)
+    indx = pt.empty((K,), dtype=pt.long)
     for i in range(K):
-        ind = np.unravel_index(np.nanargmax(Corr),Corr.shape)
+        ind = unravel_index(pt.argmax(Corr), Corr.shape)
+        # ind = pt.tensor(np.unravel_index(np.nanargmax(Corr.cpu().numpy()),Corr.cpu().numpy().shape))
         indx[ind[0]]=ind[1]
-        Corr[ind[0],:]=pt.nan
-        Corr[:,ind[1]]=pt.nan
+        Corr[ind[0],:]=-pt.inf
+        Corr[:,ind[1]]=-pt.inf
+
     return indx
 
 def calc_consistency(params,dim_rem = None):
@@ -601,7 +625,7 @@ def extract_marginal_prob(models):
     """
     n_models = len(models)
     K = models[0].emissions[0].K
-    n_vox = models[0].emission[0].P
+    n_vox = models[0].emissions[0].P
     
     # Intialize data arrays
     Prob = pt.zeros((n_models,K,n_vox))

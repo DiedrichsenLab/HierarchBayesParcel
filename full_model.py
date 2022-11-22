@@ -444,12 +444,14 @@ class FullMultiModel:
             theta[i, :] = self.get_params()
 
             # Get the (approximate) posterior p(U|Y)
-            emloglik = [e.Estep() for e in self.emissions]
-            emloglik_comb = self.collect_evidence(emloglik)  # Combine subjects
+            # emloglik = [e.Estep() for e in self.emissions]
+            # Pass emlogliks immediately to collect evidence function,
+            # rathen than save a local variable `emloglik` to waste memory
+            emloglik_comb = self.collect_evidence([e.Estep() for e in self.emissions])  # Combine subjects
 
             # If first iteration, only pass the desired emission models (pretraining)
             if i==0:
-                emloglik_c = deepcopy(emloglik)
+                emloglik_c = deepcopy([e.Estep() for e in self.emissions])
                 for j,emLL in enumerate(emloglik_c):
                     if not first_evidence[j]:
                         emLL[:,:,:]=0

@@ -1106,6 +1106,12 @@ class wMixVMF(MixVMF):
 
         return W
 
+    # def Mstep(self, U_hat, regularize=None):
+    #     super(wMixVMF, self).Mstep(U_hat)
+    #
+    #     if regularize is not None:
+    #         self.kappa = self.kappa + regularize
+
     def sample(self, U):
         """ Draw data sample from this model and given parameters
         Args:

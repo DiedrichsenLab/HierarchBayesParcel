@@ -145,11 +145,12 @@ def plot_results(results):
 
 if __name__ == '__main__':
     # simulate_split(n_cond=500,n_sess=3)
-    sim_param={'K':5,
-               'N':10,
+    sim_param={'K':10,
+               'N':20,
+               'P':1000,
                'sigma2':0.1,
                'signal_distrib':'exp',
                'signal_param':1.0}
-    results = do_sim(num_sim=10,**sim_param)
+    results = do_sim(num_sim=50,**sim_param)
     plot_results(results)
     pass
