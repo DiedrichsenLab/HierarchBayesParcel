@@ -141,7 +141,7 @@ class PottsModel(ArrangementModel):
         self.theta_w = 1 # Weight of the neighborhood relation - inverse temperature param
         self.rem_red = remove_redundancy
         pi = pt.ones((K, self.P)) / K
-        self.logpi = np.log(pi)
+        self.logpi = log(pi)
         if remove_redundancy:
             self.logpi = self.logpi - self.logpi[-1,:]
         # Inference parameters for persistence CD alogrithm via sampling
@@ -160,9 +160,9 @@ class PottsModel(ArrangementModel):
         if centroids is None:
             centroids = np.random.choice(self.P,(self.K,))
         d2 = Dist[centroids,:]**2
-        pi = pt.exp(-d2/theta_mu)
+        pi = exp(-d2/(2*theta_mu))
         pi = pi / pi.sum(dim=0)
-        self.logpi = np.log(pi)
+        self.logpi = log(pi)
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1,:]
 
@@ -176,7 +176,7 @@ class PottsModel(ArrangementModel):
         N = y.shape[0] # Number of observations
         phi = pt.zeros((self.numparam,N))
         for i in range(N):
-           S = np.equal(y[i,:],y[i,:].reshape((-1,1)))
+           S = pt.eq(y[i,:],y[i,:].reshape((-1,1)))
            phi[0,i]=pt.sum(S*self.W)
         return(phi)
 
@@ -390,6 +390,21 @@ class PottsModel(ArrangementModel):
             self.theta_w = self.theta_w + stepsize* grad_theta_w
         return
 
+    def marginal_prob(self):
+        """Returns marginal probabilty for every node under the model
+        Returns: p[] marginal probability under the model
+        """
+        # TODO: need find a smarter way to computer marginals
+        # U = self.sample(num_subj=1, burnin=20)
+        # N, P = U.shape
+        # la = pt.empty((self.K, P))
+        # lp = pt.empty((N,))
+        # for n in range(N):
+        #     phi = pt.eq(U[n, :], U[n, :].reshape((-1, 1)))
+        #     local = pt.sum(self.theta_w * self.W * phi, dim=0, keepdim=True)
+        #     local += self.logpi
+        # return (la + lp)
+        return pt.softmax(self.logpi, dim=0)
 
 class mpRBM(ArrangementModel):
     """multinomial (categorial) restricted Boltzman machine

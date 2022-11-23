@@ -88,6 +88,9 @@ class SpatialGrid(SpatialLayout):
                 grid (tuple): rows and columns of subplot grid
                 offset (int): Start with subplot number (1)
         """
+        if type(Y) is pt.Tensor:
+            Y = Y.cpu().numpy()
+
         if (Y.ndim == 1):
             if (grid is None):
                 ax = plt.imshow(Y.reshape(self.dim),cmap=cmap,interpolation='nearest',vmin=vmin,vmax=vmax)

@@ -1112,43 +1112,43 @@ class wMixVMF(MixVMF):
     #     if regularize is not None:
     #         self.kappa = self.kappa + regularize
 
-    def sample(self, U):
-        """ Draw data sample from this model and given parameters
-        Args:
-            U: The prior arrangement U from arragnment model (tensor)
-        Returns: The samples data form this distribution
-        """
-        if type(U) is np.ndarray:
-            U = pt.tensor(U, dtype=pt.int)
-        elif type(U) is pt.Tensor:
-            U = U.int()
-        else:
-            raise ValueError('The given U must be numpy ndarray or torch Tensor!')
-
-        num_subj = U.shape[0]
-        Y = pt.empty((num_subj, self.N, self.P))
-        new_V = pt.matmul(self.X, self.V)
-        new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
-        kappas = pt.where(self.W > 1, self.kappa * self.W **2, self.kappa * self.W**2)
-
-        for s in range(num_subj):
-            for p in range(self.P):
-                # Draw sample from the vmf distribution given the input U
-                # JD: Ideally re-write this routine to native Pytorch...
-                # So here the mean direction for sampling is the new V which
-                # calculated by X * V, shape of (N, k)
-                if self.uniform_kappa:
-                    Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], kappas[s,:,p]),
-                        dtype=pt.get_default_dtype())
-                else:
-                    Y[s, :, p] = pt.tensor(
-                        rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
-                        dtype=pt.get_default_dtype())
-
-        Y = Y * self.W
-
-        return Y
+    # def sample(self, U):
+    #     """ Draw data sample from this model and given parameters
+    #     Args:
+    #         U: The prior arrangement U from arragnment model (tensor)
+    #     Returns: The samples data form this distribution
+    #     """
+    #     if type(U) is np.ndarray:
+    #         U = pt.tensor(U, dtype=pt.int)
+    #     elif type(U) is pt.Tensor:
+    #         U = U.int()
+    #     else:
+    #         raise ValueError('The given U must be numpy ndarray or torch Tensor!')
+    #
+    #     num_subj = U.shape[0]
+    #     Y = pt.empty((num_subj, self.N, self.P))
+    #     new_V = pt.matmul(self.X, self.V)
+    #     new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
+    #     kappas = pt.where(self.W > 1, self.kappa * self.W **2, self.kappa * self.W**2)
+    #
+    #     for s in range(num_subj):
+    #         for p in range(self.P):
+    #             # Draw sample from the vmf distribution given the input U
+    #             # JD: Ideally re-write this routine to native Pytorch...
+    #             # So here the mean direction for sampling is the new V which
+    #             # calculated by X * V, shape of (N, k)
+    #             if self.uniform_kappa:
+    #                 Y[s, :, p] = pt.tensor(
+    #                     rand_von_mises_fisher(new_V[:, U[s, p]], kappas[s,:,p]),
+    #                     dtype=pt.get_default_dtype())
+    #             else:
+    #                 Y[s, :, p] = pt.tensor(
+    #                     rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
+    #                     dtype=pt.get_default_dtype())
+    #
+    #     Y = Y * self.W
+    #
+    #     return Y
 
 class MixGaussianGamma(EmissionModel):
     """
