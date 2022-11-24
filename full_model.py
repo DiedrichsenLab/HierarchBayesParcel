@@ -375,7 +375,7 @@ class FullMultiModel:
         Y = []
 
         for em, Us in enumerate(self.distribute_evidence(U)):
-            this_Y = self.emissions[em].sample(Us)
+            this_Y = self.emissions[em].sample(Us, signal=None)
             Y.append(this_Y)
         return U, Y
 

@@ -674,8 +674,8 @@ class MixGaussianExp(EmissionModel):
                                     err_msg='The given signal must with a shape of (num_subj, P)')
         else:
             # 1. Draw the signal strength for each node from an exponential distribution
-            signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
-
+            #signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
+            signal = pt.ones((num_subj, self.P))
             # 2. Draw the signal strength from 80%-0; 20%-maxlength
             # W = pt.tensor(np.random.choice(2, self.P, p=[0.8, 0.2]), dtype=pt.float32)
             # W = W * self.beta
@@ -872,7 +872,7 @@ class MixVMF(EmissionModel):
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
-    def sample(self, U):
+    def sample(self, U, signal=None):
         """ Draw data sample from this model and given parameters
         Args:
             U(pt.tensor): num_subj x P arrangement for each subject  

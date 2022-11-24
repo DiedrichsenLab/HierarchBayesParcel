@@ -220,7 +220,8 @@ class PottsModel(ArrangementModel):
         """
         self.neighbours=np.empty((self.P,),dtype=object)
         for p in range(self.P):
-            self.neighbours[p]= np.where(self.W[p,:]!=0)[0] # Find all the neighbors for node x (precompute!)
+            # Find all the neighbors for node x (precompute!)
+            self.neighbours[p]= pt.where(self.W[p,:]!=0)[0]
 
 
     def sample_gibbs(self,U0 = None, num_chains=None, bias = None, iter=5, return_hist=False, track=None):

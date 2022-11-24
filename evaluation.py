@@ -711,6 +711,6 @@ def align_models(models, in_place=True):
             # Now switch the emission models accordingly
             for j,em in enumerate(M.emissions):
                 em.V=em.V[:,indx]
-                if not em.uniform_kappa:
+                if (hasattr(em, 'uniform_kappa')) and (not em.uniform_kappa):
                     em.kappa = em.kappa[indx]
     return Prob
