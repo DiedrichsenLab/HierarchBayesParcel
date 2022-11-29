@@ -1106,7 +1106,7 @@ class wMixVMF(MixVMF):
 
         return W
 
-    # def Mstep(self, U_hat, regularize=None):
+    # def Mstep(self, U_hat, regularize=10):
     #     super(wMixVMF, self).Mstep(U_hat)
     #
     #     if regularize is not None:

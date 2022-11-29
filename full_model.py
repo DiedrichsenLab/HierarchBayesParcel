@@ -355,7 +355,7 @@ class FullMultiModel:
         else:
             raise NameError('num_subj needs to be a list of ints or a list of array/lists')
 
-    def sample(self, num_subj=None):
+    def sample(self, num_subj=None, U=None):
         """Take in the number of subjects to sample for each emission model
         Args:
             num_subj: list of subjects number. i.e [2, 3, 4] Or
@@ -371,7 +371,8 @@ class FullMultiModel:
         if (num_subj is not None) or (self.nsubj is None):
             self.set_num_subj(num_subj)
 
-        U = self.arrange.sample(self.nsubj)
+        if U is None:
+            U = self.arrange.sample(self.nsubj)
         Y = []
 
         for em, Us in enumerate(self.distribute_evidence(U)):

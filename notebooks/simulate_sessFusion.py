@@ -102,7 +102,7 @@ def make_full_model(K=5,P=100,
                     num_part=3,
                     common_kappa=False,
                     same_subj=False,
-                    true_model=False):
+                    true_model=False, weighting='ones'):
     """Making a full model contains an arrangement model and one or more
        emission models with desired settings
     Args:
@@ -123,8 +123,7 @@ def make_full_model(K=5,P=100,
         X = np.kron(np.ones((num_part,1)),np.eye(m))
         part_vec = np.kron(np.arange(num_part),np.ones((m,)))
         emission = em.wMixVMF(K=K, X=X, P=P, part_vec=part_vec,
-                              uniform_kappa=common_kappa,
-                              weighting='ones')
+                              uniform_kappa=common_kappa, weighting=weighting)
         emission.num_subj=nsubj_list[i]
         emissions.append(emission)
 
@@ -207,7 +206,7 @@ def plot_uerr(D, names=['dataset 1', 'dataset 2', 'fusion'],
     Returns:
         Figure plot
     """
-    fig, axs = plt.subplots(1, len(D), figsize=(6*len(D), 6))
+    fig, axs = plt.subplots(1, len(D), figsize=(6*len(D), 6), sharey=True)
 
     for i, data in enumerate(D):
         A, B, C = data[0], data[1], data[2]
@@ -471,7 +470,7 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
     grid = sp.SpatialGrid(width=width, height=width)
 
     T = make_true_model(grid, K=K, P=grid.P, nsubj_list=nsubj_list, M=M,
-                        theta_mu=60, theta_w=2, inits=np.array([820,443,188,305,717]),
+                        theta_mu=60, theta_w=2, inits=None,
                         num_part=num_part)
 
     # pm = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
@@ -517,26 +516,31 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
     # Sampling individual Us and data
     U,Y = T.sample()
 
-    Uerrors, U_indv, figs, Props = [], [], [], []
-    for common_kappa in [True, False]:
+    Uerrors, Uerrors_s, U_indv, figs, Props = [], [], [], [], []
+    for w in ['ones', 'lsquare_sum2PJ']:
         models = []
         em_indx = [[0, 1], [0], [1], [0, 1]]
         # Initialize three full models: dataset1, dataset2, dataset1 and 2
         for j in range(3):
             models.append(make_full_model(K=K,P=grid.P,M=M[em_indx[j+1]],num_part=num_part,
                                           nsubj_list=nsubj_list[em_indx[j+1]],
-                                          common_kappa=common_kappa))
+                                          common_kappa=True, weighting=w))
             data = [Y[i] for i in em_indx[j+1]]
             models[j].initialize(data)
 
         # Fitting the full models
         U_fit = []
         for i,m in enumerate(models):
-            models[i],ll,theta,Uhat,first_ll = \
-                models[i].fit_em_ninits(n_inits=40, first_iter=7, iter=100, tol=0.01,
-                fit_emission=True, fit_arrangement=True,
-                init_emission=True, init_arrangement=True,
-                align = 'arrange')
+            # models[i],ll,theta,Uhat,first_ll = \
+            #     models[i].fit_em_ninits(n_inits=40, first_iter=7, iter=100, tol=0.01,
+            #     fit_emission=True, fit_arrangement=True,
+            #     init_emission=True, init_arrangement=True,
+            #     align = 'arrange')
+            # # Use fit_em
+            models[i],ll,theta,Uhat = models[i].fit_em(iter=100, tol=0.01,
+                                                       fit_emission=True,
+                                                       fit_arrangement=True,
+                                                       first_evidence=False)
             U_fit.append(Uhat)
 
         # Align full models to the true
@@ -554,9 +558,13 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
         U_recon_2, uerr_2 = ev.matching_U(U2, U_fit[1])
         U_recon, uerr = ev.matching_U(U, U_fit[2])
         # TODO: Option 2: Using matching greedy
+        uerr_1_soft = pt.abs(ar.expand_mn(U_recon_1, K)-U_fit[0]).mean(dim=(1,2))
+        uerr_2_soft = pt.abs(ar.expand_mn(U_recon_2, K)-U_fit[1]).mean(dim=(1,2))
+        uerr_soft = pt.abs(ar.expand_mn(U_recon, K)-U_fit[2]).mean(dim=(1,2))
 
         U_indv.append([U_recon_1, U_recon_2, U_recon])
         Uerrors.append([uerr_1, uerr_2, uerr])
+        Uerrors_s.append([uerr_1_soft, uerr_2_soft, uerr_soft])
 
         # Printing kappa fitting
         Kappa = np.zeros((2,4,K))
@@ -565,7 +573,7 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
                 Kappa[i,j,:]=MM[j].emissions[k].kappa
         print(Kappa.round(1))
 
-    return grid, U, U_indv, Uerrors, Props
+    return grid, U, U_indv, Uerrors, Uerrors_s, Props
 
 def simulation_1(K=5, width=30,
                  nsub_list=np.array([12,8]),
@@ -579,7 +587,7 @@ def simulation_1(K=5, width=30,
     Returns:
         Simulation result plots
     """
-    grid, U, U_indv, Uerrors, Props = do_simulation_sessFusion_subj(K=K, M=M,
+    grid, U, U_indv, Uerrors, Uerrors_s, Props = do_simulation_sessFusion_subj(K=K, M=M,
                                                                     nsubj_list=nsub_list,
                                                                     num_part=num_part,
                                                                     width=width,
@@ -587,6 +595,7 @@ def simulation_1(K=5, width=30,
                                                                     high_kappa=30,
                                                                     plot_trueU=True)
     plot_uerr(Uerrors, save=True)
+    plot_uerr(Uerrors_s, save=True)
     plot_result(grid, Props, save=True)
 
     # Plot all true individual maps
@@ -723,8 +732,8 @@ if __name__ == '__main__':
     # pass
 
     # 1. simulate across subjects
-    # simulation_1(K=5, width=30, nsub_list=np.array([2,8]),
-    #              M=np.array([20,5],dtype=int), num_part=2)
+    simulation_1(K=5, width=30, nsub_list=np.array([8,12]),
+                 M=np.array([20,10],dtype=int), num_part=1)
 
     # 2. simulate across sessions in same set of subjects
     # simulation_2()
