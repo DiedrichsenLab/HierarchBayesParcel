@@ -17,14 +17,7 @@ class ArrangementModel(Model):
     def __init__(self, K, P):
         self.K = K  # Number of states
         self.P = P  # Number of nodes
-
-    def clear(self): 
-        """Removes temporary fields from 
-        object: Use this before saving with pickle to 
-        redice memory size
-        """
-        if hasattr(self,'estep_Uhat'):
-            delattr(self,'estep_Uhat')
+        self.tmp_list = []
 
 class ArrangeIndependent(ArrangementModel):
     """ Arrangement model for spatially independent assignment
@@ -49,6 +42,7 @@ class ArrangeIndependent(ArrangementModel):
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1, :]
         self.set_param_list(['logpi'])
+        self.tmp_list = ['estep_Uhat']
 
     def random_params(self):
         """ Sets prior parameters to random starting values 
@@ -435,6 +429,7 @@ class mpRBM(ArrangementModel):
         self.alpha = 0.01
         self.epos_iter = 5
         self.set_param_list(['W','bh','bu'])
+        self.tmp_list = ['epos_U','epos_Eh','eneg_U','eneg_Eh']
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -626,7 +621,7 @@ class cmpRBM(mpRBM):
         self.eneg_numchains = eneg_numchains
         self.fit_bu = True
         self.fit_W = True
-
+        self.tmp_list = ['epos_Uhat','epos_Hhat','eneg_U','eneg_H']
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
