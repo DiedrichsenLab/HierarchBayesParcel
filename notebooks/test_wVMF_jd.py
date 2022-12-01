@@ -119,6 +119,7 @@ def do_sim(num_sim=10,verbose = True,**sim_param):
                                     fit_arrangement=False,
                                     first_evidence=False)
             uerr = ev.u_abserr(expand_mn(U,K), U_hat)
+            uerr_hard = ev.u_prederr(U,U_hat,expectation=False)
             coserr = ev.coserr(Y_test, 
                                 fm.emissions[0].V,
                                 U_hat,
@@ -132,6 +133,7 @@ def do_sim(num_sim=10,verbose = True,**sim_param):
             res=pd.DataFrame({'sim': [n],
                              'model_type':[mt],
                              'uerr':[uerr],
+                             'uerr_hard':[uerr_hard.item()],
                              'coserr':[coserr.mean().item()],
                              'wcoserr':[wcoserr.mean().item()]})
             results  = pd.concat([results,res],ignore_index=True)
