@@ -8,7 +8,6 @@ from generativeMRF.sample_vmf import rand_von_mises_fisher
 from generativeMRF.model import Model
 from generativeMRF.depreciated.AIS_test import rejection_sampling
 import generativeMRF.arrangements as ar
-from copy import copy, deepcopy
 
 PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
 log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
@@ -41,28 +40,8 @@ class EmissionModel(Model):
 
         if data is not None:
             self.initialize(data)
+        self.tmp_list=['Y']
     
-    def __deepcopy__(self, memo):
-        """ Overwrites deepcopy behavior such that attached data (Y)
-        is only copied shallow, but not deep. This saves memory
-
-        Args:
-            memo (dictionary): already copied objects to avoid recursion
-
-        Returns:
-            _type_: _description_
-        """
-        cls = self.__class__
-        result = cls.__new__(cls)
-        memo[id(self)] = result
-        for k, v in self.__dict__.items():
-            if k == 'Y':
-                setattr(result, k, v)
-            else:
-                setattr(result, k, deepcopy(v, memo))
-        return result
-
-
     def initialize(self, data, X=None):
         """Initializes the emission model with data set. 
         The data are stored in the object itself
@@ -88,13 +67,6 @@ class EmissionModel(Model):
 
         self.Y = data  # This is assumed to be (num_sub,P,N)
         self.num_subj = data.shape[0]
-    
-    def clear(self):
-        """Removes the data from the emission model
-        This is important when saving model fits
-        """
-        if hasattr(self,'Y'):
-            delattr(self,'Y')
 
     def Estep(self, sub=None):
         """Implemnents E-step and returns
@@ -180,6 +152,8 @@ class MixGaussian(EmissionModel):
         self.name = 'GMM'
         if params is not None:
             self.set_params(params)
+        self.tmp_list=['Y','rss']
+
 
     def initialize(self, data, X=None):
         """Stores the data in emission model itself
@@ -290,6 +264,8 @@ class MixGaussianExp(EmissionModel):
             self.set_params(params)
         self.num_signal_bins = num_signal_bins  # Bins for approximation of signal strength
         self.type_estep = type_estep  # Added for a period until we have the best technique
+        self.tmp_list=['Y','YY','s','s2','rss']
+
 
     def initialize(self, data, X=None):
         """Stores the data in emission model itself
@@ -689,8 +665,9 @@ class MixGaussianExp(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None, part_vec=None, params=None,
-                 uniform_kappa=True):
+    def __init__(self, K=4, N=10, P=20, data=None, 
+                X=None, part_vec=None, params=None,
+                uniform_kappa=True):
         """ Constructor
         Args:
             K (int): the number of clusters
@@ -719,6 +696,7 @@ class MixVMF(EmissionModel):
         self.name = 'VMF'
         if params is not None:
             self.set_params(params)
+        self.tmp_list=['Y','num_part']
 
     def initialize(self, data):
         """ Calculates the sufficient stats on the data that does not depend on U,
@@ -930,6 +908,8 @@ class wMixVMF(MixVMF):
 
         self.name = 'wVMF'
         self.weighting=weighting
+        self.tmp_list=['Y','num_part','W']
+
 
     def initialize(self, data, weight=None):
         """ Calculates the sufficient stats on the data that does not depend on U,
@@ -1153,6 +1133,8 @@ class MixGaussianGamma(EmissionModel):
         self.name = 'GMM_gamma'
         if params is not None:
             self.set_params(params)
+        self.tmp_list=['Y','YY','s','s2','rss','logs']
+
 
     def initialize(self, data, X=None):
         """Stores the data in emission model itself
