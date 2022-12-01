@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Simulate datasets fusion
+"""Simulation 1: datasets fusion
+   The figure 2 in the manuscript
 
 Created on 11/24/2022 at 11:49 AM
 Author: dzhi
@@ -21,9 +22,9 @@ import pandas as pd
 import seaborn as sb
 
 # pytorch cuda global flag
-pt.set_default_tensor_type(pt.cuda.FloatTensor
-                           if pt.cuda.is_available() else
-                           torch.FloatTensor)
+# pt.set_default_tensor_type(pt.cuda.FloatTensor
+#                            if pt.cuda.is_available() else
+#                            pt.FloatTensor)
 
 def u_err(U, Uhat):
     """Absolute error on U
@@ -106,7 +107,7 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
 
     # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
     label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
-    _, base, idx = _compute_adjacency(label_map, 3)
+    _, base, idx = _compute_adjacency(label_map, 2)
 
     # the parcels have same V magnitude in dataset1
     idx_1 = pt.cat((idx, base.view(1)))
@@ -121,9 +122,12 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
                                                                    2, dim=0))
             T.emissions[i].V[:, par[j]] = unit_vec * low_norm
 
-    # Sampling individual Us and data
-    U, Y = T.sample()
-    _, Y_test = T.sample(U=U)
+    # Sampling individual Us and data, data_test
+    Y, Y_test = [], []
+    U, _ = T.sample()
+    for m, Us in enumerate(T.distribute_evidence(U)):
+        Y.append(T.emissions[m].sample(Us, signal=pt.ones(Us.shape)))
+        Y_test.append(T.emissions[m].sample(Us, signal=pt.ones(Us.shape)))
 
     # Get the true signals
     signal = [None]*len(T.subj_ind)
@@ -132,15 +136,11 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
 
     return T, Y, Y_test, U, signal
 
-def make_true_model(grid, K=5, P=100,
-                    nsubj_list=[10,10],
-                    M=[5,5], # Number of conditions per data set
-                    num_part=3,
-                    theta_mu=150,
-                    theta_w=20,
-                    inits=None,
-                    common_kappa=False,
-                    same_subj=False):
+def make_true_model_VMF(grid, K=5, P=100, nsubj_list=[10,10],
+                        M=[5,5], # Number of conditions per data set
+                        num_part=1, theta_mu=150, theta_w=20,
+                        inits=None, common_kappa=False,
+                        high_kappa=30, low_kappa=3, same_subj=False):
     """Making a full model contains an arrangement model and one or more
        emission models with desired settings
     Args:
@@ -166,6 +166,8 @@ def make_true_model(grid, K=5, P=100,
                               uniform_kappa=common_kappa,
                               weighting='ones')
         emission.num_subj=nsubj_list[i]
+        # Initialize all kappas to be the high value
+        emission.kappa = pt.full(emission.kappa.shape, high_kappa)
         emissions.append(emission)
 
     T = FullMultiModel(A,emissions)
@@ -178,17 +180,47 @@ def make_true_model(grid, K=5, P=100,
     else: # Emission models to have separate set subjects
         T.initialize()
 
-    return T
+    # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
+    label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
+    _, base, idx = _compute_adjacency(label_map, 2)
 
-def make_full_model(K=5,P=100,
-                    nsubj_list=[10,10],
+    # the parcels have same V magnitude in dataset1
+    idx_1 = pt.cat((idx, base.view(1)))
+    # the parcels have same V magnitude in dataset2
+    idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
+    idx_all = [idx_1, idx_2]
+    print(base, idx_all)
+    for i, par in enumerate([idx_1, idx_2]):
+        # Making the V align to the first parcel
+        for j in range(1, len(par)):
+            T.emissions[i].V[:, par[j]] = T.emissions[i].V[:, par[0]]
+
+        # Set kappas of k-neighbouring parcels to low_kappa
+        for k in range(len(par)):
+            if not T.emissions[i].uniform_kappa:
+                T.emissions[i].kappa[par[k]] = low_kappa
+            else:
+                raise ValueError(
+                    "The kappas of emission models need to be separate in simulation")
+
+    # Sampling individual Us and data, data_test
+    Y, Y_test = [], []
+    U, Y = T.sample()
+    _, Y_test = T.sample(U=U)
+
+    # Get the true signals
+    signal = [None] * len(T.subj_ind)
+    for i, us in enumerate(T.distribute_evidence(U)):
+        signal[i] = pt.where(pt.isin(us, idx_all[i]), low_kappa, high_kappa)
+
+    return T, Y, Y_test, U, signal
+
+def make_full_model(K=5, P=100, nsubj_list=[10,10],
                     M=[5,5], # Number of conditions per data set
-                    num_part=3,
-                    common_kappa=False,
-                    same_subj=False,
-                    model_type='VMF'):
-    """Making a full model contains an arrangement model and one or more
-       emission models with desired settings
+                    num_part=3, common_kappa=False,
+                    same_subj=False, model_type='VMF'):
+    """Making a full fitting model contains an arrangement model and
+       one or more emission models with desired settings
     Args:
         K: the number of clusers
         P: the number of voxels
@@ -213,7 +245,7 @@ def make_full_model(K=5,P=100,
         elif model_type == 'wVMF_ones':
             emission = em.wMixVMF(K=K, X=X, P=P, part_vec=part_vec,
                                   uniform_kappa=common_kappa, weighting='ones')
-        elif model_type == 'wVMF_t2':
+        elif (model_type == 'wVMF_t2') or (model_type == 'wVMF_t2P'):
             emission = em.wMixVMF(K=K, X=X, P=P, part_vec=part_vec,
                                   uniform_kappa=common_kappa)
         elif model_type == 'wVMF_l2':
@@ -573,7 +605,7 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
     return grid, U, U_indv, Uerrors, Props
 
 def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=None,
-                                  num_part=3, width=10, low_norm=3, high_norm=30,
+                                  num_part=3, width=10, low=3, high=30,
                                   sigma2=0.1, plot_trueU=False):
     """Run the missing data simulation at given missing rate
     Args:
@@ -590,12 +622,16 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
     #Generate grid for easier visualization
     grid = sp.SpatialGrid(width=width, height=width)
 
-    # T = make_true_model(grid, K=K, P=grid.P, nsubj_list=nsubj_list, M=M,
-    #                     theta_mu=60, theta_w=2, inits=np.array([820,443,188,305,717]),
-    #                     num_part=num_part)
+    # Option 1: generating data from VMF
+    # T, Y, Y_test, U, signal = make_true_model_VMF(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
+    #                                               M=M, theta_mu=20, theta_w=1.3, inits=None,
+    #                                               common_kappa=False, high_kappa=high,
+    #                                               low_kappa=low)
 
+    # Option 2: generating data from GME
     T, Y, Y_test, U, signal = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
                                                   M=M, theta_mu=20, theta_w=1.3, sigma2=sigma2,
+                                                  high_norm=high, low_norm=low,
                                                   inits=None)
 
     if plot_trueU:
@@ -618,7 +654,7 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
     results = pd.DataFrame()
 
     # Main loop
-    for w in ['VMF', 'wVMF_l2']:
+    for w in ['VMF']:
         for common_kappa in [True, False]:
             models = []
             em_indx = [[0, 1], [0], [1], [0, 1]]
@@ -632,6 +668,11 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
                 if w == 'wVMF_t2':
                     for i, emi in enumerate(models[j].emissions):
                         emi.initialize(Ys[j][i], weight=signals[j][i]**2)
+                elif w == 'wVMF_t2P':
+                    for i, emi in enumerate(models[j].emissions):
+                        this_W = signals[j][i]**2
+                        ratio = this_W.size(dim=1)/this_W.sum(dim=1, keepdim=True)
+                        emi.initialize(Ys[j][i], weight=this_W * ratio)
                 else:
                     models[j].initialize(Ys[j])
 
@@ -651,8 +692,8 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
             MM = [T]+models
             Prop = ev.align_models(MM, in_place=True)
             Props.append(Prop)
-            UV_hard = [pt.argmax(e.Estep()[0], dim=1) for e in MM[1:]]
             UV_soft = [e.Estep()[0] for e in MM[1:]]
+            UV_hard = [pt.argmax(e, dim=1) for e in UV_soft]
             U_indv.append(UV_hard)
 
             # evaluation starts after model alignment
@@ -676,8 +717,8 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
                                     'dataset': [fm_name],
                                     'uerr_hard': [uerr_hard.mean().item()],
                                     'uerr_soft': [uerr_soft],
-                                    'coserr': [pt.stack(coserr).mean().item()],
-                                    'wcoserr': [pt.stack(wcoserr).mean().item()]})
+                                    'coserr': [pt.cat(coserr).mean().item()],
+                                    'wcoserr': [pt.cat(wcoserr).mean().item()]})
                 results = pd.concat([results, res], ignore_index=True)
 
             # Visualizing fitted results (checking results)
@@ -718,23 +759,30 @@ def simulation_1(K=5, width=30,
         Simulation result plots
     """
     results = pd.DataFrame()
-    for i in range(2):
+    for i in range(1):
         print(f'simulation {i}...')
         grid, U, U_indv, Props, kappas, res = do_simulation_sessFusion_subj(K=K, M=M,
                                                                         nsubj_list=nsub_list,
                                                                         num_part=num_part,
                                                                         width=width,
-                                                                        low_norm=0.1,
-                                                                        high_norm=0.9,
+                                                                        low=0.1, high=0.9,
                                                                         sigma2=sigma2,
-                                                                        plot_trueU=True)
+                                                                        plot_trueU=False)
 
         res['iter'] = i
         results = pd.concat([results, res], ignore_index=True)
 
-    sb.barplot(x='model_type', y='uerr_soft', hue='dataset', data=results)
+    # 1. Plot evaluation results
+    plt.figure(figsize=(15,20))
+    crits = ['uerr_hard','uerr_soft','coserr','wcoserr']
+    for i, c in enumerate(crits):
+        plt.subplot(4, 1, i+1)
+        sb.barplot(x='dataset', y=c, hue='model_type', data=results)
+        plt.legend(loc='upper right')
     plt.show()
-    plot_result(grid, Props, save=True)
+
+    # 2. Plot the group reconstruction result from the last simulation
+    plot_result(grid, Props, ylabels=results['model_type'].unique(), save=True)
 
     # Plot all true individual maps
     _plot_maps(U, cmap='tab20', dim=(width, width), row_labels='True', save=True)
@@ -788,70 +836,6 @@ def simulation_2(K=6, width=30,
 
     pass
 
-def sample_Us(K=5, M=np.array([5,5],dtype=int), nsubj_list=None,
-              num_part=3, width=10, theta_mu=[150], theta_w=[10],
-              low_kappa=3, high_kappa=30, plot_trueU=False):
-    #Generate grid for easier visualization
-    grid = sp.SpatialGrid(width=width, height=width)
-    # centroids = np.random.choice(grid.P, (K,))
-    centroids = np.array([820, 443, 188, 305, 717])
-    # T = make_true_model(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
-    #                     M=M, inits=centroids, num_part=num_part)
-    T = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
-                            M=M, inits=centroids)
-
-    if plot_trueU:
-        grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
-        plt.savefig('trueU.pdf', format='pdf')
-        plt.show()
-        plt.clf()
-        grid.plot_maps(pt.exp(T.arrange.logpi), cmap='jet', vmax=1, grid=(1, K), offset=1)
-        plt.savefig('true_prior.pdf', format='pdf')
-        plt.show()
-
-    # Initialize all kappas to be the high value
-    for em in T.emissions:
-        em.kappa = pt.full(em.kappa.shape, high_kappa)
-
-    # Step 2: Initialize the parameters of the true model
-    U_all, Y_all = [], []
-    for mu in theta_mu:
-        T.arrange.random_smooth_pi(grid.Dist, theta_mu=mu, centroids=centroids)
-        for w in theta_w:
-            T.arrange.theta_w = pt.tensor(w)
-
-            # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
-            label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
-            _, base, idx = _compute_adjacency(label_map, 3)
-
-            # the parcels have same V in dataset1
-            idx_1 = pt.cat((idx, base.view(1)))
-            # the parcels have same V in dataset2
-            idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
-            print(base, idx_1, idx_2)
-            for i, par in enumerate([[1,2,3]]):
-                # Making the V align to the first parcel
-                for j in range(1, len(par)):
-                    T.emissions[i].V[:, par[j]] = T.emissions[i].V[:, par[0]]
-
-                # Set kappas of k-neighbouring parcels to low_kappa
-                for k in range(len(par)):
-                    if not T.emissions[i].uniform_kappa:
-                        T.emissions[i].kappa[par[k]] = low_kappa
-                    else:
-                        raise ValueError("The kappas of emission models need to"
-                            " be separate in simulation")
-
-            # Sampling individual Us and data
-            U, Y = T.sample()
-            U_all.append(U)
-            Y_all.append(Y)
-            # Plot all true individual maps
-            _plot_maps(U, cmap='tab20', dim=(width, width), row_labels=f'smooth{mu}_conn{w}',
-                       save=True)
-
-    return U_all, Y_all
-
 def cal_gradient(Y):
     from scipy import ndimage
     w,h,d = Y.shape
@@ -868,22 +852,19 @@ def cal_gradient(Y):
     return sobel
 
 if __name__ == '__main__':
+    # original simulation by Jorn
     # nsub_list = np.array([10, 8])
     # do_simulation_sessFusion(5, nsub_list)
     # pass
 
     # 1. simulate across subjects
-    simulation_1(K=6, width=30, nsub_list=np.array([5,5]),
-                 M=np.array([40,40],dtype=int), num_part=1, sigma2=0.1)
+    simulation_1(K=5, width=30, nsub_list=np.array([4,6]),
+                 M=np.array([40,20],dtype=int), num_part=1, sigma2=0.1)
 
     # 2. simulate across sessions in same set of subjects
     # simulation_2()
 
     # 3. Generate true individual maps with different parameters
-    # U,Y = sample_Us(K=5, M=np.array([5],dtype=int), nsubj_list=[5],
-    #           num_part=2, width=30, theta_mu=[20], theta_w=[1],
-    #           low_kappa=3, high_kappa=30, plot_trueU=True)
-    # # select smooth=60, w=2 for visualizing
     # test_Y = Y[0][0][0].T.view(30,30,-1)
     # grad = cal_gradient(test_Y)
     # plt.imshow(grad, cmap='jet')

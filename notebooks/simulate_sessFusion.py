@@ -470,7 +470,7 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
     grid = sp.SpatialGrid(width=width, height=width)
 
     T = make_true_model(grid, K=K, P=grid.P, nsubj_list=nsubj_list, M=M,
-                        theta_mu=60, theta_w=2, inits=None,
+                        theta_mu=60, theta_w=2, inits=np.array([820, 443, 188, 305, 717]),
                         num_part=num_part)
 
     # pm = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
@@ -545,7 +545,7 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
 
         # Align full models to the true
         MM = [T]+models
-        Prop = ev.align_models(MM)
+        Prop = ev.align_models(MM, in_place=False)
         figs.append(U_fit)
         Props.append(Prop)
 
@@ -554,13 +554,13 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
         U2 = U[T.subj_ind[1],:]
 
         # Option 1: Using matching_U
-        U_recon_1, uerr_1 = ev.matching_U(U1, U_fit[0])
-        U_recon_2, uerr_2 = ev.matching_U(U2, U_fit[1])
-        U_recon, uerr = ev.matching_U(U, U_fit[2])
+        U_recon_1, uerr_1, id1 = ev.matching_U(U1, U_fit[0])
+        U_recon_2, uerr_2, id2 = ev.matching_U(U2, U_fit[1])
+        U_recon, uerr, id = ev.matching_U(U, U_fit[2])
         # TODO: Option 2: Using matching greedy
-        uerr_1_soft = pt.abs(ar.expand_mn(U_recon_1, K)-U_fit[0]).mean(dim=(1,2))
-        uerr_2_soft = pt.abs(ar.expand_mn(U_recon_2, K)-U_fit[1]).mean(dim=(1,2))
-        uerr_soft = pt.abs(ar.expand_mn(U_recon, K)-U_fit[2]).mean(dim=(1,2))
+        uerr_1_soft = pt.abs(ar.expand_mn(U1, K) - U_fit[0][:,id1,:]).mean((1,2))
+        uerr_2_soft = pt.abs(ar.expand_mn(U2, K) - U_fit[1][:,id2,:]).mean((1,2))
+        uerr_soft = pt.abs(ar.expand_mn(U, K) - U_fit[2][:,id,:]).mean((1,2))
 
         U_indv.append([U_recon_1, U_recon_2, U_recon])
         Uerrors.append([uerr_1, uerr_2, uerr])
