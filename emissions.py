@@ -670,19 +670,10 @@ class MixGaussianExp(EmissionModel):
         """
         num_subj = U.shape[0]
         if signal is not None:
-            np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),
-                                    err_msg='The given signal must with a shape of (num_subj, P)')
+            np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),err_msg='The given signal must with a shape of (num_subj, P)')
         else:
             # 1. Draw the signal strength for each node from an exponential distribution
-            #signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
-            signal = pt.ones((num_subj, self.P))
-            # 2. Draw the signal strength from 80%-0; 20%-maxlength
-            # W = pt.tensor(np.random.choice(2, self.P, p=[0.8, 0.2]), dtype=pt.float32)
-            # W = W * self.beta
-            # signal = W.expand(num_subj, -1)
-
-            # W = pt.tensor(np.random.choice(3, self.P, p=[0.3, 0.4, 0.3]), dtype=pt.float32)
-            # signal = W.expand(num_subj, -1)
+            signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))
 
         Y = pt.normal(0, pt.sqrt(self.sigma2), (num_subj, self.N, self.P))
         for s in range(num_subj):

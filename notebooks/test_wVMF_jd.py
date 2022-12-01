@@ -13,15 +13,15 @@ import pandas as pd
 import seaborn as sb
 
 # for testing and evaluating models
-from full_model import FullMultiModel
-from arrangements import ArrangeIndependent, expand_mn, sample_multinomial
-from emissions import MixGaussianExp, MixVMF, wMixVMF
-import evaluation as ev
+from generativeMRF.full_model import FullMultiModel
+from generativeMRF.arrangements import ArrangeIndependent, expand_mn, sample_multinomial
+from generativeMRF.emissions import MixGaussianExp, MixVMF, wMixVMF
+import generativeMRF.evaluation as ev
 
 # pytorch cuda global flag
 pt.set_default_tensor_type(pt.cuda.FloatTensor
                            if pt.cuda.is_available() else
-                           torch.FloatTensor)
+                           pt.FloatTensor)
 
 def simulate_from_GME(K=5, P=100, N=40, num_sub=10,
                 sigma2 = 0.2,
@@ -57,6 +57,9 @@ def simulate_from_GME(K=5, P=100, N=40, num_sub=10,
     elif signal_distrib=='exp':
         emissionT.beta = pt.tensor(signal_param)
         Y, signal = emissionT.sample(U, return_signal=True)
+    elif signal_distrib=='uniform':
+        signal = pt.ones((num_sub,P))
+        Y, signal = emissionT.sample(U, signal, return_signal=True)
     else:
         raise(NameError('Unknown signal distribution'))
 
@@ -96,14 +99,15 @@ def build_model(model_type,Y,signal,arrangeT,uniform_kappa=True):
     fm.initialize()
     return fm
 
-def do_sim(num_sim=10,**sim_param): 
+def do_sim(num_sim=10,verbose = True,**sim_param): 
     # different types of fitting models 
-    model_type = ['VMF','wVMF_ones','wVMF_t2','wVMF_l2']
+    model_type = ['VMF','wVMF_t2','wVMF_l2']
     K = sim_param['K']
     # Generate training data 
     results = pd.DataFrame()
     for n in range(num_sim):
-        print(f'simulation {n}')
+        if verbose:
+            print(f'simulation {n}')
         Y,U,signal,arrangeT,emissionT = simulate_from_GME(**sim_param)
 
         # Get independent test data
@@ -125,7 +129,8 @@ def do_sim(num_sim=10,**sim_param):
                                 U_hat,
                                 adjusted=True, 
                                 soft_assign=True)
-            res=pd.DataFrame({'model_type':[mt],
+            res=pd.DataFrame({'sim': [n],
+                             'model_type':[mt],
                              'uerr':[uerr],
                              'coserr':[coserr.mean().item()],
                              'wcoserr':[wcoserr.mean().item()]})
@@ -141,16 +146,14 @@ def plot_results(results):
     plt.subplot(1,3,3)
     sb.barplot(data=results,x='model_type',y='wcoserr')
 
-    plt.show()
-
 if __name__ == '__main__':
     # simulate_split(n_cond=500,n_sess=3)
     sim_param={'K':10,
                'N':20,
-               'P':1000,
-               'sigma2':0.1,
+               'P':100,
+               'sigma2':0.05,
                'signal_distrib':'exp',
-               'signal_param':1.0}
-    results = do_sim(num_sim=50,**sim_param)
+               'signal_param':2.0}
+    results = do_sim(num_sim=50,verbose=False,**sim_param)
     plot_results(results)
     pass
