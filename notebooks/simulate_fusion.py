@@ -630,9 +630,9 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
 
     # Option 2: generating data from GME
     T, Y, Y_test, U, signal = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
-                                                  M=M, theta_mu=20, theta_w=1.3, sigma2=sigma2,
+                                                  M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low,
-                                                  inits=None)
+                                                  inits=np.array([820, 443, 188, 305, 717]))
 
     if plot_trueU:
         grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
