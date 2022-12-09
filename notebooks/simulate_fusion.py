@@ -543,17 +543,6 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
                                         init_emission=True, init_arrangement=True,
                                         align = 'arrange')
 
-        # Align full models to the true
-        MM = [T] + models
-        Prop = ev.align_models(MM, in_place=True)
-        Props.append(Prop)
-        UV_soft = [e.Estep()[0] for e in MM[1:]]
-        UV_hard = [pt.argmax(e, dim=1) for e in UV_soft]
-        U_indv.append(UV_hard)
-
-        # evaluation starts after model alignment
-        models = MM[1:]
-        for j, fm_name in enumerate(fitting_model):
             # ------------------------------------------
             # Now build the model for the test data and crossvalidate
             # across subjects
@@ -568,18 +557,29 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
                                                              fit_emission=True,
                                                              fit_arrangement=False,
                                                              first_evidence=False)
-            U_indiv = models[j].remap_evidence(U_indiv)
+            # U_indiv = models[j].remap_evidence(U_indiv)
 
+        # Align full models to the true
+        MM = [T] + models
+        Prop = ev.align_models(MM, in_place=True)
+        Props.append(Prop)
+        UV_soft = [e.Estep()[0] for e in MM[1:]]
+        UV_hard = [pt.argmax(e, dim=1) for e in UV_soft]
+        U_indv.append(UV_hard)
+
+        # evaluation starts after model alignment
+        models = MM[1:]
+        for j, fm_name in enumerate(fitting_model):
             # 1. Hard U reconstruction error
-            uerr_hard = u_err(U, pt.argmax(U_indiv, dim=1))
+            uerr_hard = u_err(U, UV_hard[j])
             # 2. Soft U reconstruction error
-            uerr_soft = ev.u_abserr(ar.expand_mn(U, K), U_indiv)
+            uerr_soft = ev.u_abserr(ar.expand_mn(U, K), UV_soft[j])
             # 3. non-adjusted/adjusted expected cosine error
             coserr, wcoserr = [], []
             for i, emi in enumerate(models[j].emissions):
-                coserr.append(ev.coserr(Y_test[0], emi.V, U_indiv,
+                coserr.append(ev.coserr(Y_test[0], emi.V, UV_soft[j],
                                         adjusted=False, soft_assign=True))
-                wcoserr.append(ev.coserr(Y_test[0], emi.V, U_indiv,
+                wcoserr.append(ev.coserr(Y_test[0], emi.V, UV_soft[j],
                                          adjusted=True, soft_assign=True))
 
             res = pd.DataFrame({'model_type': [f'VMF_{common_kappa}'],
@@ -650,7 +650,11 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
     results = pd.DataFrame()
 
     Ys = [[Y[0]], [Y[1]], Y]
-    Ys_test = pt.vstack(Y_test)
+    # Two options: the nsubj of Y_test can be either combined the two
+    # datasets, or pick the first datasets.
+    # Ys_test = pt.vstack(Y_test)
+    U_test = T.distribute_evidence(U_test)[0]
+    Ys_test = Y_test[0]
     signals = [[signal[0]], [signal[1]], signal]
 
     # Main loop
@@ -765,13 +769,13 @@ def simulation_1(K=5, width=30,
         Simulation result plots
     """
     results = pd.DataFrame()
-    for i in range(10):
+    for i in range(100):
         print(f'simulation {i}...')
         grid, U, Ut, U_indv, Props, kappas, res = do_simulation_sessFusion_subj(K=K, M=M,
                                                                         nsubj_list=nsub_list,
                                                                         num_part=num_part,
                                                                         width=width,
-                                                                        low=0.1, high=0.9,
+                                                                        low=0.1, high=1.1,
                                                                         sigma2=sigma2,
                                                                         plot_trueU=False)
 
@@ -817,7 +821,7 @@ def simulation_2(K=6, width=30,
         Simulation result plots
     """
     results = pd.DataFrame()
-    for i in range(1):
+    for i in range(100):
         print(f'simulation {i}...')
         grid, U, U_indv, Props, kappas, res = do_simulation_sessFusion_sess(K=K, M=M,
                                                                         nsubj_list=nsub_list,
@@ -825,7 +829,7 @@ def simulation_2(K=6, width=30,
                                                                         width=width,
                                                                         low=0.1, high=1.1,
                                                                         sigma2=sigma2,
-                                                                        plot_trueU=True)
+                                                                        plot_trueU=False)
         res['iter'] = i
         results = pd.concat([results, res], ignore_index=True)
 
@@ -876,7 +880,7 @@ if __name__ == '__main__':
     # pass
 
     # 1. simulate across subjects
-    # simulation_1(K=5, width=30, nsub_list=np.array([4,6]),
+    # simulation_1(K=5, width=30, nsub_list=np.array([10,10]),
     #              M=np.array([40,20],dtype=int), num_part=1, sigma2=0.1)
 
     # 2. simulate across sessions in same set of subjects
