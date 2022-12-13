@@ -17,14 +17,16 @@ import emissions as em
 import spatial as sp
 import evaluation as ev
 from sklearn.metrics.pairwise import cosine_similarity
+from ProbabilisticParcellation.util import *
+from ProbabilisticParcellation.evaluate import calc_test_dcbc
 from copy import copy, deepcopy
 import pandas as pd
 import seaborn as sb
 
 # pytorch cuda global flag
-# pt.set_default_tensor_type(pt.cuda.FloatTensor
-#                            if pt.cuda.is_available() else
-#                            pt.FloatTensor)
+pt.set_default_tensor_type(pt.cuda.FloatTensor
+                           if pt.cuda.is_available() else
+                           pt.FloatTensor)
 
 def u_err(U, Uhat):
     """Absolute error on U
@@ -45,23 +47,43 @@ def _compute_adjacency(map, k):
         base_label: the label of the seed parcel
         neighbours: the labels of k-1 clusters that are neighbouring
     """
-    G = pt.zeros([map.max() + 1] * 2)
+    num_parcel = map.unique().shape[0]
+
+    # Handling corner case: the parcel labels are not continous
+    # i.e [0,1,2,4,5] which cases adjacency mapping array overflow
+    A, B = pt.unique(map.unique(), return_inverse=True)
+    new_map = (map.view(-1, 1) == A).int().argmax(dim=1).reshape(map.shape)
+
+    # Making adjacency matrix
+    G = pt.zeros([num_parcel] * 2)
     # left-right pairs
-    G[map[:, :-1], map[:, 1:]] = 1
+    G[new_map[:, :-1], new_map[:, 1:]] = 1
     # right-left pairs
-    G[map[:, 1:], map[:, :-1]] = 1
+    G[new_map[:, 1:], new_map[:, :-1]] = 1
     # top-bottom pairs
-    G[map[:-1, :], map[1:, :]] = 1
+    G[new_map[:-1, :], new_map[1:, :]] = 1
     # bottom-top pairs
-    G[map[1:, :], map[:-1, :]] = 1
+    G[new_map[1:, :], new_map[:-1, :]] = 1
+    # G.fill_diagonal_(0)
 
-    labels = pt.where(G.sum(0) >= k)[0]
-    base_label = labels[pt.randint(labels.shape[0], ())]
-    tmp = pt.where(G[base_label] == 1)[0]
-    tmp = tmp[tmp != base_label]
-    neighbours = tmp[:k-1]
+    visited = [False] * num_parcel
+    start = pt.randint(num_parcel, ())
+    q = [start]
+    visited[start] = True
+    neighbours = []
+    # Standard BFS search
+    while q:
+        vis = q[0]
+        neighbours.append(vis)
+        q.pop(0)
+        for i in range(num_parcel):
+            if (G[vis][i] == 1) and (not visited[i]):
+                q.append(pt.tensor(i))
+                visited[i] = True
 
-    return G, base_label, neighbours
+    neighbours = pt.stack(neighbours)[:k]
+    # Return A[neighbours] to map back the original labels
+    return G, start, A[neighbours]
 
 def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
                         M=[5,5], # Number of conditions per data set
@@ -107,14 +129,14 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
 
     # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
     label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
-    _, base, idx = _compute_adjacency(label_map, 2)
-
     # the parcels have same V magnitude in dataset1
-    idx_1 = pt.cat((idx, base.view(1)))
+    _, base, idx_1 = _compute_adjacency(label_map, int(K * 0.4))
+
     # the parcels have same V magnitude in dataset2
-    idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
+    _, base, idx_2 = _compute_adjacency(label_map, int(K * 0.4))
+    # idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
     idx_all = [idx_1, idx_2]
-    print(base, idx_all)
+    print(idx_all)
     for i, par in enumerate(idx_all):
         # Making the V magnitude of bad parcels as low norm
         for j in range(0, len(par)):
@@ -131,7 +153,7 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
 
     # Build a separate emission model contains all parcel infomation
     # for generating test data
-    em_test = em.MixGaussianExp(K=K, N=sum(M), P=P, num_signal_bins=100, std_V=True)
+    em_test = em.MixGaussianExp(K=K, N=sum(M)*2, P=P, num_signal_bins=100, std_V=True)
     em_test.sigma2 = pt.tensor(sigma2)
     em_test.V = em_test.V * high_norm
     if same_subj:
@@ -465,15 +487,10 @@ def _plot_maps(U, cmap='tab20', grid=None, offset=1, dim=(30, 30),
         plt.savefig(f'{row_labels}.pdf', format='pdf')
     plt.show()
 
-def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
-                                  nsubj_list=None,
-                                  num_part=3,
-                                  width=10,
-                                  low=3,
-                                  high=30,
-                                  arbitrary=None,
-                                  sigma2=0.1,
-                                  plot_trueU=False):
+def do_sessFusion_diffK(K_true=10, K=5, M=np.array([5],dtype=int),
+                        nsubj_list=None, num_part=3, width=10,
+                        low=3, high=30, arbitrary=None, sigma2=0.1,
+                        plot_trueU=False):
     """Run the simulation of common kappa vs separate kappas across
        different sessions in the same set of subjects
     Args:
@@ -503,18 +520,18 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
     """
     #Generate grid for easier visualization
     grid = sp.SpatialGrid(width=width, height=width)
-
+    U_prior = []
     # Option 2: generating data from GME
     # inits = np.array([820, 443, 188, 305, 717])
-    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
+    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K_true, P=grid.P, nsubj_list=nsubj_list,
                                                   M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low, same_subj=True,
                                                   inits=None)
-
+    U_prior.append(T.marginal_prob())
     if plot_trueU:
         grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
         plt.show()
-        grid.plot_maps(pt.exp(T.arrange.logpi), cmap='jet', vmax=1, grid=(1, K), offset=1)
+        grid.plot_maps(pt.exp(T.arrange.logpi), cmap='jet', vmax=1, grid=(1, K_true), offset=1)
         plt.show()
 
     # Basic setting for fitting/evauation
@@ -561,7 +578,7 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
 
         # Align full models to the true
         MM = [T] + models
-        Prop = ev.align_models(MM, in_place=True)
+        Prop = ev.align_models(models, in_place=True)
         Props.append(Prop)
         UV_soft = [e.Estep()[0] for e in MM[1:]]
         UV_hard = [pt.argmax(e, dim=1) for e in UV_soft]
@@ -570,10 +587,14 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
         # evaluation starts after model alignment
         models = MM[1:]
         for j, fm_name in enumerate(fitting_model):
-            # 1. Hard U reconstruction error
-            uerr_hard = u_err(U, UV_hard[j])
-            # 2. Soft U reconstruction error
-            uerr_soft = ev.u_abserr(ar.expand_mn(U, K), UV_soft[j])
+            # 1. ARI
+            ari_group = ev.ARI(pt.argmax(T.marginal_prob(), dim=0),
+                               pt.argmax(models[j].arrange.logpi, dim=0))
+            ari_indiv = [ev.ARI(U[i], UV_hard[j][i]) for i in range(U.shape[0])]
+            # 2. dcbc
+            Pgroup = pt.argmax(models[j].marginal_prob(), dim=0) + 1
+            dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
+            dcbc_indiv = calc_test_dcbc(UV_hard[j], Y_test[0], grid.Dist)
             # 3. non-adjusted/adjusted expected cosine error
             coserr, wcoserr = [], []
             for i, emi in enumerate(models[j].emissions):
@@ -584,8 +605,10 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
 
             res = pd.DataFrame({'model_type': [f'VMF_{common_kappa}'],
                                 'dataset': [fm_name],
-                                'uerr_hard': [uerr_hard.mean().item()],
-                                'uerr_soft': [uerr_soft],
+                                'ari_group': [ari_group.item()],
+                                'ari_indiv': [pt.stack(ari_indiv).mean().item()],
+                                'dcbc_group': [dcbc_group.mean().item()],
+                                'dcbc_indiv': [dcbc_indiv.mean().item()],
                                 'coserr': [pt.cat(coserr).mean().item()],
                                 'wcoserr': [pt.cat(wcoserr).mean().item()]})
             results = pd.concat([results, res], ignore_index=True)
@@ -599,7 +622,7 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
         # print(Kappa)
         kappas.append(Kappa)
 
-    return grid, U, U_indv, Props, pt.stack(kappas), results
+    return grid, U, U_prior, U_indv, Props, pt.stack(kappas), results
 
 def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=None,
                                   num_part=3, width=10, low=3, high=30,
@@ -745,6 +768,147 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
 
     return grid, U, U_test, U_indv, Props, pt.stack(kappas), results
 
+def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
+                                  nsubj_list=None,
+                                  num_part=3,
+                                  width=10,
+                                  low=3,
+                                  high=30,
+                                  arbitrary=None,
+                                  sigma2=0.1,
+                                  plot_trueU=False):
+    """Run the simulation of common kappa vs separate kappas across
+       different sessions in the same set of subjects
+    Args:
+        K (int): the number of parcels
+        M (list): the list of number of conditions per emission
+        nsubj_list (list): the list of number of subjects per emission
+        num_part (int): the number of partitions
+        width (int): the width of MRF grid
+        low_kappa (int or float): the lower kappa value
+        high_kappa (int or float): the higher kappa value
+        arbitrary (list): the list to specify the bad parcels in each
+                          session. e.g [[0,1,2], [2,3]] indicates the parcel
+                          0,1,2 are the parcels with same Vs in the first
+                          session, parcel 2,3 are the parcels with same Vs
+                          in the second session. If None, the default is to
+                          have 3 bad parcels in first session and K-3 bad
+                          parcels in the second session.
+        plot_trueU (bool): Plot the true U and prior maps if True.
+    Returns:
+        grid (object): the MRF grid object initialized
+        U (pt.Tensor): the true Us
+        U_indv (list): the estimated individual U_hat fitted by different
+                       models. They are all aligned with the true Us.
+        Uerrors (list): the list of individual reconstruction errors by
+                        different models
+        Props (pt.Tensor): the True + fitted group prior
+    """
+    #Generate grid for easier visualization
+    grid = sp.SpatialGrid(width=width, height=width)
+
+    # Option 2: generating data from GME
+    # inits = np.array([820, 443, 188, 305, 717])
+    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
+                                                  M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
+                                                  high_norm=high, low_norm=low, same_subj=True,
+                                                  inits=None)
+
+    if plot_trueU:
+        grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
+        plt.show()
+        grid.plot_maps(pt.exp(T.arrange.logpi), cmap='jet', vmax=1, grid=(1, K), offset=1)
+        plt.show()
+
+    # Basic setting for fitting/evauation
+    kappas, U_indv, Props = [], [], []
+    all_ses = [x for x in np.arange(len(M))]
+    em_indx = [all_ses] + [[x] for x in np.arange(len(M))] + [all_ses]
+    fitting_model = ['D' + str(i + 1) for i in all_ses] + ['D_fusion']
+    results = pd.DataFrame()
+
+    for common_kappa in [True, False]:
+        models = []
+        # Initialize multiple fitting models: dataset1, dataset2,..., dataset1 to N
+        for j, fm_name in enumerate(fitting_model):
+            models.append(make_full_model(K=K, P=grid.P, M=M[em_indx[j+1]],
+                                          nsubj_list=nsubj_list[em_indx[j+1]],
+                                          num_part=num_part, common_kappa=common_kappa,
+                                          model_type='VMF', same_subj=True))
+            data = [Y[i] for i in em_indx[j+1]]
+            this_sub_list = [np.arange(x) for x in nsubj_list[em_indx[j+1]]]
+            models[j].initialize(data, subj_ind=this_sub_list)
+
+            # Fitting the full models
+            models[j],_,_,Uhat,first_ll = \
+                models[j].fit_em_ninits(n_inits=40, first_iter=10, iter=100, tol=0.01,
+                                        fit_emission=True, fit_arrangement=True,
+                                        init_emission=True, init_arrangement=True,
+                                        align = 'arrange')
+
+            # ------------------------------------------
+            # Now build the model for the test data and crossvalidate
+            # across subjects
+            em_model = em.MixVMF(K=K, N=Y_test[0].shape[1], P=grid.P,
+                                 X=None, uniform_kappa=common_kappa)
+            em_model.initialize(Y_test[0])
+            models[j].emissions = [em_model]
+            models[j].initialize()
+
+            # Gets us the individual parcellation
+            models[j], ll, theta, U_indiv = models[j].fit_em(iter=200, tol=0.1,
+                                                             fit_emission=True,
+                                                             fit_arrangement=False,
+                                                             first_evidence=False)
+            # U_indiv = models[j].remap_evidence(U_indiv)
+
+        # Align full models to the true
+        MM = [T] + models
+        Prop = ev.align_models(MM, in_place=True)
+        Props.append(Prop)
+        UV_soft = [e.Estep()[0] for e in MM[1:]]
+        UV_hard = [pt.argmax(e, dim=1) for e in UV_soft]
+        U_indv.append(UV_hard)
+
+        # evaluation starts after model alignment
+        models = MM[1:]
+        for j, fm_name in enumerate(fitting_model):
+            # 1. U reconstruction error
+            uerr_hard = u_err(U, UV_hard[j])
+            uerr_soft = ev.u_abserr(ar.expand_mn(U, K), UV_soft[j])
+            # 2. dcbc
+            Pgroup = pt.argmax(models[j].marginal_prob(), dim=0) + 1
+            dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
+            dcbc_indiv = calc_test_dcbc(UV_hard[j], Y_test[0], grid.Dist)
+            # 3. non-adjusted/adjusted expected cosine error
+            coserr, wcoserr = [], []
+            for i, emi in enumerate(models[j].emissions):
+                coserr.append(ev.coserr(Y_test[0], emi.V, UV_soft[j],
+                                        adjusted=False, soft_assign=True))
+                wcoserr.append(ev.coserr(Y_test[0], emi.V, UV_soft[j],
+                                         adjusted=True, soft_assign=True))
+
+            res = pd.DataFrame({'model_type': [f'VMF_{common_kappa}'],
+                                'dataset': [fm_name],
+                                'uerr_hard': [uerr_hard.mean().item()],
+                                'uerr_soft': [uerr_soft],
+                                'dcbc_group': [dcbc_group.mean().item()],
+                                'dcbc_indiv': [dcbc_indiv.mean().item()],
+                                'coserr': [pt.cat(coserr).mean().item()],
+                                'wcoserr': [pt.cat(wcoserr).mean().item()]})
+            results = pd.concat([results, res], ignore_index=True)
+
+        # Printing kappa fitting
+        Kappa = pt.zeros((2, 3, K))
+        MM = MM[1:]
+        for j, ei in enumerate(em_indx[1:]):
+            for k, i in enumerate(ei):
+                Kappa[i, j, :] = MM[j].emissions[0].kappa
+        # print(Kappa)
+        kappas.append(Kappa)
+
+    return grid, U, U_indv, Props, pt.stack(kappas), results
+
 def plot_results(results):
     plt.figure(figsize=(15,5))
     plt.subplot(1,3,1)
@@ -810,7 +974,7 @@ def simulation_1(K=5, width=30,
 def simulation_2(K=6, width=30,
                  nsub_list=np.array([10,10]),
                  M=np.array([10,10],dtype=int),
-                 num_part=2, sigma2=0.1):
+                 num_part=2, sigma2=0.1, iter=100):
     """Simulation of common kappa vs. separate kappas across subjects
     Args:
         width: The width and height of MRF grid
@@ -821,7 +985,7 @@ def simulation_2(K=6, width=30,
         Simulation result plots
     """
     results = pd.DataFrame()
-    for i in range(100):
+    for i in range(iter):
         print(f'simulation {i}...')
         grid, U, U_indv, Props, kappas, res = do_simulation_sessFusion_sess(K=K, M=M,
                                                                         nsubj_list=nsub_list,
@@ -834,31 +998,98 @@ def simulation_2(K=6, width=30,
         results = pd.concat([results, res], ignore_index=True)
 
     # 1. Plot evaluation results
-    plt.figure(figsize=(15, 20))
-    crits = ['uerr_hard', 'uerr_soft', 'coserr', 'wcoserr']
+    plt.figure(figsize=(15, 10))
+    crits = ['uerr_hard', 'dcbc_group', 'coserr', 'uerr_soft', 'dcbc_indiv', 'wcoserr']
     for i, c in enumerate(crits):
-        plt.subplot(4, 1, i + 1)
+        plt.subplot(2, 3, i + 1)
         sb.barplot(x='dataset', y=c, hue='model_type', data=results, errorbar="se")
-        plt.legend(loc='upper right')
+        plt.legend(loc='lower right')
+        if 'coserr' in c:
+            plt.ylim(0.8, 1)
+
+    plt.suptitle(f'Simulation K_true={K}, K_fit={K}, iter={iter}')
     plt.show()
 
-    plot_result(grid, Props, names = ["True", "Sess 1", "Sess 2", "Fusion"],
-                save=True)
+    # plot_result(grid, Props, names = ["True", "Sess 1", "Sess 2", "Fusion"],
+    #             save=True)
+    #
+    # # Plot all true individual maps
+    # _plot_maps(U, cmap='tab20', dim=(width, width), row_labels='True', save=True)
+    #
+    # # Plot fitted and aligned individual maps in dataset1, 2 and fusion
+    # labels = ["commonKappa_", "separateKappa_"]
+    # names = ['Sess 1', 'Sess 2', 'Fusion']
+    # for i, us in enumerate(U_indv):
+    #     for j in range(len(us)):
+    #         _plot_maps(us[j], cmap='tab20', dim=(width, width),
+    #                    row_labels=labels[i]+names[j], save=True)
+    #
+    # pass
 
-    # Plot all true individual maps
-    _plot_maps(U, cmap='tab20', dim=(width, width), row_labels='True', save=True)
+def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
+                 M=np.array([10,10],dtype=int), num_part=2, sigma2=0.1,
+                 iter=100):
+    """Simulation of common kappa vs. separate kappas across subjects
+    Args:
+        width: The width and height of MRF grid
+        nsub_list: the list of number of subject per dataset (emission model)
+        M: The number of conditions per dataset (emission model)
+        num_part: the number of partitions (sessions)
+    Returns:
+        Simulation result plots
+    """
+    results = pd.DataFrame()
+    for i in range(iter):
+        print(f'simulation {i}...')
+        grid, U, U_prior, U_indv, Props, kappas, res = do_sessFusion_diffK(K_true=K_true,
+                                                                           K=K, M=M,
+                                                                           nsubj_list=nsub_list,
+                                                                           num_part=num_part,
+                                                                           width=width,
+                                                                           low=0.1, high=1.1,
+                                                                           sigma2=sigma2,
+                                                                           plot_trueU=False)
+        res['iter'] = i
+        results = pd.concat([results, res], ignore_index=True)
 
-    # Plot fitted and aligned individual maps in dataset1, 2 and fusion
-    labels = ["commonKappa_", "separateKappa_"]
-    names = ['Sess 1', 'Sess 2', 'Fusion']
-    for i, us in enumerate(U_indv):
-        for j in range(len(us)):
-            _plot_maps(us[j], cmap='tab20', dim=(width, width),
-                       row_labels=labels[i]+names[j], save=True)
+    # 1. Plot evaluation results
+    plt.figure(figsize=(18, 10))
+    crits = ['ari_group','dcbc_group','coserr','ari_indiv','dcbc_indiv','wcoserr']
+    for i, c in enumerate(crits):
+        plt.subplot(2, 3, i + 1)
+        sb.barplot(x='dataset', y=c, hue='model_type', data=results, errorbar="se")
+        plt.legend(loc='lower right')
+        if 'coserr' in c:
+            plt.ylim(0.8, 1)
 
-    pass
+    plt.suptitle(f'Simulation K_true={K_true}, K_fit={K}, iter={iter}')
+    plt.show()
+
+    # plot_result(grid, Props, names = ["Sess 1", "Sess 2", "Fusion"], save=True)
+    #
+    # # Plot all true individual maps
+    # _plot_maps(U, cmap='tab20', dim=(width, width), row_labels='True', save=True)
+    #
+    # # Plot fitted and aligned individual maps in dataset1, 2 and fusion
+    # labels = ["commonKappa_", "separateKappa_"]
+    # names = ['Sess 1', 'Sess 2', 'Fusion']
+    # for i, us in enumerate(U_indv):
+    #     for j in range(len(us)):
+    #         _plot_maps(us[j], cmap='tab20', dim=(width, width),
+    #                    row_labels=labels[i]+names[j], save=True)
+    #
+    # pass
 
 def cal_gradient(Y):
+    """Calculate the functional gradients from data
+       for simulation
+
+    Args:
+        Y: raw data. shape (width, height, N)
+
+    Returns:
+
+    """
     from scipy import ndimage
     w,h,d = Y.shape
 
@@ -879,13 +1110,21 @@ if __name__ == '__main__':
     # do_simulation_sessFusion(5, nsub_list)
     # pass
 
-    # 1. simulate across subjects
+    # 1. simulation - subject fusion
     # simulation_1(K=5, width=30, nsub_list=np.array([10,10]),
     #              M=np.array([40,20],dtype=int), num_part=1, sigma2=0.1)
 
-    # 2. simulate across sessions in same set of subjects
-    simulation_2(K=5, width=30, nsub_list=np.array([10,10]),
-                 M=np.array([40,20],dtype=int), num_part=1, sigma2=0.1)
+    # 2. simulation - session fusion
+    for k in [5, 10, 20, 30]:
+        simulation_2(K=k, width=50, nsub_list=np.array([10, 10]),
+                     M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
+                     iter=50)
+
+    # 3. simulation - session fusion (different Ks)
+    # for k in [5, 10, 20, 30]:
+    #     simulation_3(K_true=k, K=5, width=50, nsub_list=np.array([10, 10]),
+    #                  M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
+    #                  iter=100)
 
     # 3. Generate true individual maps with different parameters
     # test_Y = Y[0][0][0].T.view(30,30,-1)
