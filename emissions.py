@@ -835,9 +835,13 @@ class MixVMF(EmissionModel):
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
             r_bar = r_norm.sum() / self.num_part.sum()
+            # r_bar[r_bar > 0.95] = 0.95
+            # r_bar[r_bar < 0.05] = 0.05
             r_bar = pt.mean(r_bar)
         else:
             r_bar = r_norm / pt.sum(UU, dim=1)
+            # r_bar[r_bar > 0.95] = 0.95
+            # r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
