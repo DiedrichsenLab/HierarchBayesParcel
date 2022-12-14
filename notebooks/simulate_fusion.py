@@ -50,7 +50,7 @@ def _compute_adjacency(map, k):
     num_parcel = map.unique().shape[0]
 
     # Handling corner case: the parcel labels are not continous
-    # i.e [0,1,2,4,5] which cases adjacency mapping array overflow
+    # i.e [0,1,2,4,5] which causes adjacency mapping array index overflow
     A, B = pt.unique(map.unique(), return_inverse=True)
     new_map = (map.view(-1, 1) == A).int().argmax(dim=1).reshape(map.shape)
 
@@ -130,10 +130,10 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
     # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
     label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
     # the parcels have same V magnitude in dataset1
-    _, base, idx_1 = _compute_adjacency(label_map, int(K * 0.4))
+    _, base, idx_1 = _compute_adjacency(label_map, int(pt.randint(1, K, ())))
 
     # the parcels have same V magnitude in dataset2
-    _, base, idx_2 = _compute_adjacency(label_map, int(K * 0.4))
+    _, base, idx_2 = _compute_adjacency(label_map, int(pt.randint(1, K, ())))
     # idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
     idx_all = [idx_1, idx_2]
     print(idx_all)
@@ -998,7 +998,7 @@ def simulation_2(K=6, width=30,
         results = pd.concat([results, res], ignore_index=True)
 
     # 1. Plot evaluation results
-    plt.figure(figsize=(15, 10))
+    plt.figure(figsize=(18, 10))
     crits = ['uerr_hard', 'dcbc_group', 'coserr', 'uerr_soft', 'dcbc_indiv', 'wcoserr']
     for i, c in enumerate(crits):
         plt.subplot(2, 3, i + 1)
@@ -1007,7 +1007,7 @@ def simulation_2(K=6, width=30,
         if 'coserr' in c:
             plt.ylim(0.8, 1)
 
-    plt.suptitle(f'Simulation K_true={K}, K_fit={K}, iter={iter}')
+    plt.suptitle(f'Simulation 2, K_true={K}, K_fit={K}, iter={iter}')
     plt.show()
 
     # plot_result(grid, Props, names = ["True", "Sess 1", "Sess 2", "Fusion"],
@@ -1062,7 +1062,7 @@ def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
         if 'coserr' in c:
             plt.ylim(0.8, 1)
 
-    plt.suptitle(f'Simulation K_true={K_true}, K_fit={K}, iter={iter}')
+    plt.suptitle(f'Simulation 3, K_true={K_true}, K_fit={K}, iter={iter}')
     plt.show()
 
     # plot_result(grid, Props, names = ["Sess 1", "Sess 2", "Fusion"], save=True)
@@ -1079,6 +1079,45 @@ def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
     #                    row_labels=labels[i]+names[j], save=True)
     #
     # pass
+
+def simulation_4(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
+                 M=np.array([10,10],dtype=int), num_part=2, sigma2=0.1,
+                 iter=100):
+    """Simulation of common kappa vs. separate kappas across subjects
+    Args:
+        width: The width and height of MRF grid
+        nsub_list: the list of number of subject per dataset (emission model)
+        M: The number of conditions per dataset (emission model)
+        num_part: the number of partitions (sessions)
+    Returns:
+        Simulation result plots
+    """
+    results = pd.DataFrame()
+    for i in range(iter):
+        print(f'simulation {i}...')
+        grid, U, U_prior, U_indv, Props, kappas, res = do_sessFusion_diffK(K_true=K_true,
+                                                                           K=K, M=M,
+                                                                           nsubj_list=nsub_list,
+                                                                           num_part=num_part,
+                                                                           width=width,
+                                                                           low=0.1, high=1.1,
+                                                                           sigma2=sigma2,
+                                                                           plot_trueU=False)
+        res['iter'] = i
+        results = pd.concat([results, res], ignore_index=True)
+
+    # 1. Plot evaluation results
+    plt.figure(figsize=(18, 10))
+    crits = ['ari_group','dcbc_group','coserr','ari_indiv','dcbc_indiv','wcoserr']
+    for i, c in enumerate(crits):
+        plt.subplot(2, 3, i + 1)
+        sb.barplot(x='dataset', y=c, hue='model_type', data=results, errorbar="se")
+        plt.legend(loc='lower right')
+        if 'coserr' in c:
+            plt.ylim(0.8, 1)
+
+    plt.suptitle(f'Simulation 3, K_true={K_true}, K_fit={K}, iter={iter}')
+    plt.show()
 
 def cal_gradient(Y):
     """Calculate the functional gradients from data
@@ -1115,16 +1154,23 @@ if __name__ == '__main__':
     #              M=np.array([40,20],dtype=int), num_part=1, sigma2=0.1)
 
     # 2. simulation - session fusion
-    for k in [5, 10, 20, 30]:
-        simulation_2(K=k, width=50, nsub_list=np.array([10, 10]),
-                     M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
-                     iter=50)
+    # for k in [10]:
+    #     simulation_2(K=k, width=50, nsub_list=np.array([10, 10]),
+    #                  M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
+    #                  iter=10)
 
     # 3. simulation - session fusion (different Ks)
-    # for k in [5, 10, 20, 30]:
+    # for k in [30]:
     #     simulation_3(K_true=k, K=5, width=50, nsub_list=np.array([10, 10]),
     #                  M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
-    #                  iter=100)
+    #                  iter=10)
+
+    # 4. simulation - establish when underlying K >> fit K, kappa difference
+    for k_t in [5,10,20,30,40]:
+        for k_fit in [5,10,20,30,40]:
+            simulation_4(K_true=k_t, K=k_fit, width=50, nsub_list=np.array([10]),
+                         M=np.array([40], dtype=int), num_part=1, sigma2=0.5,
+                         iter=10)
 
     # 3. Generate true individual maps with different parameters
     # test_Y = Y[0][0][0].T.view(30,30,-1)
