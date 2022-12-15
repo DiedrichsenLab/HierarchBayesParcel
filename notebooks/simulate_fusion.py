@@ -106,16 +106,28 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
     A = ar.PottsModel(grid.W, K=K, remove_redundancy=False)
     A.random_smooth_pi(grid.Dist, theta_mu=theta_mu, centroids=inits)
     A.theta_w = pt.tensor(theta_w)
+    label_map = pt.argmax(A.logpi, dim=0).reshape(grid.dim)
 
-    emissions =[]
+    emissions, idx_all = [], []
+    K_group = pt.arange(1, K).chunk(len(M))
     for i,m in enumerate(M):
         # Step 2: up the emission model and sample from it with a specific signal
         emissionT = em.MixGaussianExp(K=K, N=m, P=P, num_signal_bins=100, std_V=True)
         emissionT.sigma2 = pt.tensor(sigma2)
         # Initialize all V to be the high norm
         emissionT.V = emissionT.V * high_norm
+
+        # Making ambiguous boundaries between random number parcelsby set low signal
+        # for k-neighbouring parcels. The parcels have same V magnitude in this emission
+        num_badpar = K_group[i][int(pt.randint(K_group[i].numel(), ()))]
+        _, _, idx = _compute_adjacency(label_map, int(num_badpar))
+        print(f'Dataset {i+1} bad parcels are: {idx}')
+        # Making the bad parcels V to have the low norm (signal)
+        emissionT.V[:,idx] = emissionT.V[:,idx] * (low_norm/high_norm)
+
         emissionT.num_subj=nsubj_list[i]
         emissions.append(emissionT)
+        idx_all.append(idx)
 
     T = FullMultiModel(A,emissions)
     if same_subj: # All emission models have the same set of subjects
@@ -127,22 +139,22 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
     else: # Emission models to have separate set subjects
         T.initialize()
 
-    # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
-    label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
-    # the parcels have same V magnitude in dataset1
-    _, base, idx_1 = _compute_adjacency(label_map, int(pt.randint(1, K, ())))
-
-    # the parcels have same V magnitude in dataset2
-    _, base, idx_2 = _compute_adjacency(label_map, int(pt.randint(1, K, ())))
-    # idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
-    idx_all = [idx_1, idx_2]
-    print(idx_all)
-    for i, par in enumerate(idx_all):
-        # Making the V magnitude of bad parcels as low norm
-        for j in range(0, len(par)):
-            unit_vec = T.emissions[i].V[:, par[j]] / pt.sqrt(pt.sum(T.emissions[i].V[:, par[j]] **
-                                                                   2, dim=0))
-            T.emissions[i].V[:, par[j]] = unit_vec * low_norm
+    # # Making ambiguous boundaries by set the same V_k for k-neighbouring parcels
+    # label_map = pt.argmax(T.arrange.logpi, dim=0).reshape(grid.dim)
+    # # the parcels have same V magnitude in dataset1
+    # _, base, idx_1 = _compute_adjacency(label_map, int(pt.randint(1, K, ())))
+    #
+    # # the parcels have same V magnitude in dataset2
+    # _, base, idx_2 = _compute_adjacency(label_map, int(pt.randint(1, K, ())))
+    # # idx_2 = pt.tensor([i for i in label_map.unique() if i not in idx_1])
+    # idx_all = [idx_1, idx_2]
+    # print(idx_all)
+    # for i, par in enumerate(idx_all):
+    #     # Making the V magnitude of bad parcels as low norm
+    #     for j in range(0, len(par)):
+    #         unit_vec = T.emissions[i].V[:, par[j]] / pt.sqrt(pt.sum(T.emissions[i].V[:, par[j]] **
+    #                                                                2, dim=0))
+    #         T.emissions[i].V[:, par[j]] = unit_vec * low_norm
 
     # Sampling individual Us and data, data_test
     Y, Y_test, signal = [], [], []
@@ -909,6 +921,122 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
 
     return grid, U, U_indv, Props, pt.stack(kappas), results
 
+def do_sim_diffK_fit(K_true=10, K=5, M=np.array([5],dtype=int),
+                     nsubj_list=None, num_part=3, width=10,
+                     low=3, high=30, arbitrary=None, sigma2=0.1,
+                     plot_trueU=False):
+    """Run the simulation of common kappa vs separate kappas across
+       different sessions in the same set of subjects
+    Args:
+        K (int): the number of parcels
+        M (list): the list of number of conditions per emission
+        nsubj_list (list): the list of number of subjects per emission
+        num_part (int): the number of partitions
+        width (int): the width of MRF grid
+        low_kappa (int or float): the lower kappa value
+        high_kappa (int or float): the higher kappa value
+        arbitrary (list): the list to specify the bad parcels in each
+                          session. e.g [[0,1,2], [2,3]] indicates the parcel
+                          0,1,2 are the parcels with same Vs in the first
+                          session, parcel 2,3 are the parcels with same Vs
+                          in the second session. If None, the default is to
+                          have 3 bad parcels in first session and K-3 bad
+                          parcels in the second session.
+        plot_trueU (bool): Plot the true U and prior maps if True.
+    Returns:
+        grid (object): the MRF grid object initialized
+        U (pt.Tensor): the true Us
+        U_indv (list): the estimated individual U_hat fitted by different
+                       models. They are all aligned with the true Us.
+        Uerrors (list): the list of individual reconstruction errors by
+                        different models
+        Props (pt.Tensor): the True + fitted group prior
+    """
+    #Generate grid for easier visualization
+    grid = sp.SpatialGrid(width=width, height=width)
+    U_prior = []
+    # Option 2: generating data from GME
+    # inits = np.array([820, 443, 188, 305, 717])
+    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K_true, P=grid.P, nsubj_list=nsubj_list,
+                                                  M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
+                                                  high_norm=high, low_norm=low, same_subj=True,
+                                                  inits=None)
+    U_prior.append(T.marginal_prob())
+    if plot_trueU:
+        grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
+        plt.show()
+        grid.plot_maps(pt.exp(T.arrange.logpi), cmap='jet', vmax=1, grid=(1, K_true), offset=1)
+        plt.show()
+
+    # Basic setting for fitting/evauation
+    kappas, U_indv, Props = [], [], []
+    results = pd.DataFrame()
+
+    for common_kappa in [True, False]:
+        # Initialize multiple fitting models: dataset1, dataset2,..., dataset1 to N
+
+        model = make_full_model(K=K, P=grid.P, M=M,
+                                nsubj_list=nsubj_list,
+                                num_part=num_part, common_kappa=common_kappa,
+                                model_type='VMF', same_subj=True)
+        model.initialize(Y, subj_ind=T.subj_ind)
+
+        # Fitting the full models
+        model,_,_,Uhat,_ = model.fit_em_ninits(n_inits=40, first_iter=10, iter=100,
+                                               tol=0.01,fit_emission=True,
+                                               fit_arrangement=True,init_emission=True,
+                                               init_arrangement=True, align = 'arrange')
+
+        # ------------------------------------------
+        # Now build the model for the test data and crossvalidate
+        # across subjects
+        em_model = em.MixVMF(K=K, N=Y_test[0].shape[1], P=grid.P,
+                             X=None, uniform_kappa=common_kappa)
+        em_model.initialize(Y_test[0])
+        model.emissions = [em_model]
+        model.initialize()
+
+        # Gets us the individual parcellation
+        model, ll, theta, U_indiv = model.fit_em(iter=200, tol=0.1,
+                                                 fit_emission=True,
+                                                 fit_arrangement=False,
+                                                 first_evidence=False)
+        # U_indiv = models[j].remap_evidence(U_indiv)
+        MM = [T] + [model]
+        Props.append(model.marginal_prob())
+        UV_soft = [e.Estep()[0] for e in MM[1:]]
+        UV_hard = [pt.argmax(e, dim=1) for e in UV_soft]
+        U_indv.append(UV_hard)
+
+        # evaluation starts after model alignment
+        # 1. ARI
+        ari_group = ev.ARI(pt.argmax(T.marginal_prob(), dim=0),
+                           pt.argmax(model.arrange.logpi, dim=0))
+        ari_indiv = [ev.ARI(U[i], UV_hard[0][i]) for i in range(U.shape[0])]
+        # 2. dcbc
+        Pgroup = pt.argmax(model.marginal_prob(), dim=0) + 1
+        dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
+        dcbc_indiv = calc_test_dcbc(UV_hard[0], Y_test[0], grid.Dist)
+        # 3. non-adjusted/adjusted expected cosine error
+        coserr, wcoserr = [], []
+        for i, emi in enumerate(model.emissions):
+            coserr.append(ev.coserr(Y_test[0], emi.V, UV_soft[0],
+                                    adjusted=False, soft_assign=True))
+            wcoserr.append(ev.coserr(Y_test[0], emi.V, UV_soft[0],
+                                     adjusted=True, soft_assign=True))
+
+        res = pd.DataFrame({'model_type': [f'VMF_{common_kappa}'],
+                            'common_kappa': common_kappa,
+                            'ari_group': [ari_group.item()],
+                            'ari_indiv': [pt.stack(ari_indiv).mean().item()],
+                            'dcbc_group': [dcbc_group.mean().item()],
+                            'dcbc_indiv': [dcbc_indiv.mean().item()],
+                            'coserr': [pt.cat(coserr).mean().item()],
+                            'wcoserr': [pt.cat(wcoserr).mean().item()]})
+        results = pd.concat([results, res], ignore_index=True)
+
+    return grid, U, U_prior, U_indv, Props, results
+
 def plot_results(results):
     plt.figure(figsize=(15,5))
     plt.subplot(1,3,1)
@@ -1093,30 +1221,50 @@ def simulation_4(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
         Simulation result plots
     """
     results = pd.DataFrame()
-    for i in range(iter):
-        print(f'simulation {i}...')
-        grid, U, U_prior, U_indv, Props, kappas, res = do_sessFusion_diffK(K_true=K_true,
-                                                                           K=K, M=M,
-                                                                           nsubj_list=nsub_list,
-                                                                           num_part=num_part,
-                                                                           width=width,
-                                                                           low=0.1, high=1.1,
-                                                                           sigma2=sigma2,
-                                                                           plot_trueU=False)
-        res['iter'] = i
-        results = pd.concat([results, res], ignore_index=True)
+    res_plot = pd.DataFrame()
+    for k_t in K_true:
+        for k_fit in K:
+            for i in range(iter):
+                print(f'simulation K_true={k_t}, K_fit={k_fit}, iter {i}...')
+                _, _, _, _, _, res = do_sim_diffK_fit(K_true=k_t, K=k_fit, M=M,
+                                                         nsubj_list=nsub_list,
+                                                         num_part=num_part,
+                                                         width=width, low=0.1,
+                                                         high=1.1, sigma2=sigma2,
+                                                         plot_trueU=False)
+                res['K_true'] = k_t
+                res['K_fit'] = k_fit
+                res['iter'] = i
+                results = pd.concat([results, res], ignore_index=True)
+
+            df = results.loc[(results['K_true']==k_t) & (results['K_fit']==k_fit)]
+            common = df.loc[df['common_kappa'] == True]
+            separate = df.loc[df['common_kappa'] == False]
+            for_heatmap = pd.DataFrame(
+                        {'ari_group_dif': [round(common.ari_group.mean() -
+                                           separate.ari_group.mean(), 4)],
+                         'ari_indiv_dif': [round(common.ari_indiv.mean() -
+                                                 separate.ari_indiv.mean(), 4)],
+                         'dcbc_group_dif': [round(common.dcbc_group.mean() -
+                                                  separate.dcbc_group.mean(), 4)],
+                         'dcbc_indiv_dif': [round(common.dcbc_indiv.mean() -
+                                                  separate.dcbc_indiv.mean(), 4)],
+                         'coserr_dif': [round(common.coserr.mean() - separate.coserr.mean(), 4)],
+                         'wcoserr_dif': [round(common.wcoserr.mean() - separate.wcoserr.mean(), 4)],
+                         'K_true': [k_t],
+                         'K_fit': [k_fit]})
+            res_plot = pd.concat([res_plot, for_heatmap], ignore_index=True)
 
     # 1. Plot evaluation results
     plt.figure(figsize=(18, 10))
     crits = ['ari_group','dcbc_group','coserr','ari_indiv','dcbc_indiv','wcoserr']
     for i, c in enumerate(crits):
         plt.subplot(2, 3, i + 1)
-        sb.barplot(x='dataset', y=c, hue='model_type', data=results, errorbar="se")
-        plt.legend(loc='lower right')
-        if 'coserr' in c:
-            plt.ylim(0.8, 1)
+        result = res_plot.pivot(index='K_true', columns='K_fit', values=c+'_dif')
+        sb.heatmap(result, annot=True, fmt='.2g')
+        plt.title(c)
 
-    plt.suptitle(f'Simulation 3, K_true={K_true}, K_fit={K}, iter={iter}')
+    plt.suptitle(f'Simulation 4, iter={iter}')
     plt.show()
 
 def cal_gradient(Y):
@@ -1166,11 +1314,9 @@ if __name__ == '__main__':
     #                  iter=10)
 
     # 4. simulation - establish when underlying K >> fit K, kappa difference
-    for k_t in [5,10,20,30,40]:
-        for k_fit in [5,10,20,30,40]:
-            simulation_4(K_true=k_t, K=k_fit, width=50, nsub_list=np.array([10]),
-                         M=np.array([40], dtype=int), num_part=1, sigma2=0.5,
-                         iter=10)
+    simulation_4(K_true=[5,10,20,30,40], K=[5,10,20,30,40], width=50,
+                 nsub_list=np.array([10]),M=np.array([40], dtype=int),
+                 num_part=1, sigma2=0.5, iter=10)
 
     # 3. Generate true individual maps with different parameters
     # test_Y = Y[0][0][0].T.view(30,30,-1)
