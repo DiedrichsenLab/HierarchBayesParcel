@@ -88,7 +88,7 @@ def _compute_adjacency(map, k):
 def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
                         M=[5,5], # Number of conditions per data set
                         theta_mu=150, theta_w=20, inits=None,
-                        sigma2=1.0, high_norm=0.9, low_norm=0.1,
+                        sigma2=[1.0,1.0], high_norm=0.9, low_norm=0.1,
                         same_subj=False):
     """Making a full model contains an arrangement model and one or more
        emission models with desired settings
@@ -109,18 +109,22 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
     label_map = pt.argmax(A.logpi, dim=0).reshape(grid.dim)
 
     emissions, idx_all = [], []
-    K_group = pt.arange(1, K).chunk(len(M))
+    K_group = pt.arange(int(K/2)+1, K).chunk(len(M))
     for i,m in enumerate(M):
         # Step 2: up the emission model and sample from it with a specific signal
         emissionT = em.MixGaussianExp(K=K, N=m, P=P, num_signal_bins=100, std_V=True)
-        emissionT.sigma2 = pt.tensor(sigma2)
+        emissionT.sigma2 = pt.tensor(sigma2[i])
         # Initialize all V to be the high norm
         emissionT.V = emissionT.V * high_norm
 
         # Making ambiguous boundaries between random number parcelsby set low signal
         # for k-neighbouring parcels. The parcels have same V magnitude in this emission
         num_badpar = K_group[i][int(pt.randint(K_group[i].numel(), ()))]
-        _, _, idx = _compute_adjacency(label_map, int(num_badpar))
+        _, _, idx = _compute_adjacency(label_map, 3)
+        if i==0:
+            idx_1 = idx
+        elif i==1:
+            idx = pt.tensor([j for j in label_map.unique() if j not in idx_1])
         print(f'Dataset {i+1} bad parcels are: {idx}')
         # Making the bad parcels V to have the low norm (signal)
         emissionT.V[:,idx] = emissionT.V[:,idx] * (low_norm/high_norm)
@@ -166,7 +170,7 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
     # Build a separate emission model contains all parcel infomation
     # for generating test data
     em_test = em.MixGaussianExp(K=K, N=sum(M)*2, P=P, num_signal_bins=100, std_V=True)
-    em_test.sigma2 = pt.tensor(sigma2)
+    em_test.sigma2 = pt.tensor(0.1)
     em_test.V = em_test.V * high_norm
     if same_subj:
         Uind = [U]
@@ -606,7 +610,7 @@ def do_sessFusion_diffK(K_true=10, K=5, M=np.array([5],dtype=int),
             # 2. dcbc
             Pgroup = pt.argmax(models[j].marginal_prob(), dim=0) + 1
             dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
-            dcbc_indiv = calc_test_dcbc(UV_hard[j], Y_test[0], grid.Dist)
+            dcbc_indiv = calc_test_dcbc(UV_hard[j]+1, Y_test[0], grid.Dist)
             # 3. non-adjusted/adjusted expected cosine error
             coserr, wcoserr = [], []
             for i, emi in enumerate(models[j].emissions):
@@ -824,7 +828,7 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
     T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
                                                   M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low, same_subj=True,
-                                                  inits=None)
+                                                  inits=np.array([910,930,950,2710,2730,2750]))
 
     if plot_trueU:
         grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
@@ -891,7 +895,7 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
             # 2. dcbc
             Pgroup = pt.argmax(models[j].marginal_prob(), dim=0) + 1
             dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
-            dcbc_indiv = calc_test_dcbc(UV_hard[j], Y_test[0], grid.Dist)
+            dcbc_indiv = calc_test_dcbc(UV_hard[j]+1, Y_test[0], grid.Dist)
             # 3. non-adjusted/adjusted expected cosine error
             coserr, wcoserr = [], []
             for i, emi in enumerate(models[j].emissions):
@@ -1016,7 +1020,7 @@ def do_sim_diffK_fit(K_true=10, K=5, M=np.array([5],dtype=int),
         # 2. dcbc
         Pgroup = pt.argmax(model.marginal_prob(), dim=0) + 1
         dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
-        dcbc_indiv = calc_test_dcbc(UV_hard[0], Y_test[0], grid.Dist)
+        dcbc_indiv = calc_test_dcbc(UV_hard[0]+1, Y_test[0], grid.Dist)
         # 3. non-adjusted/adjusted expected cosine error
         coserr, wcoserr = [], []
         for i, emi in enumerate(model.emissions):
@@ -1132,8 +1136,8 @@ def simulation_2(K=6, width=30,
         plt.subplot(2, 3, i + 1)
         sb.barplot(x='dataset', y=c, hue='model_type', data=results, errorbar="se")
         plt.legend(loc='lower right')
-        if 'coserr' in c:
-            plt.ylim(0.8, 1)
+        # if 'coserr' in c:
+        #     plt.ylim(0.8, 1)
 
     plt.suptitle(f'Simulation 2, K_true={K}, K_fit={K}, iter={iter}')
     plt.show()
@@ -1187,8 +1191,8 @@ def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
         plt.subplot(2, 3, i + 1)
         sb.barplot(x='dataset', y=c, hue='model_type', data=results, errorbar="se")
         plt.legend(loc='lower right')
-        if 'coserr' in c:
-            plt.ylim(0.8, 1)
+        # if 'coserr' in c:
+        #     plt.ylim(0.8, 1)
 
     plt.suptitle(f'Simulation 3, K_true={K_true}, K_fit={K}, iter={iter}')
     plt.show()
@@ -1230,7 +1234,7 @@ def simulation_4(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
                                                          nsubj_list=nsub_list,
                                                          num_part=num_part,
                                                          width=width, low=0.1,
-                                                         high=1.1, sigma2=sigma2,
+                                                         high=1.5, sigma2=sigma2,
                                                          plot_trueU=False)
                 res['K_true'] = k_t
                 res['K_fit'] = k_fit
@@ -1255,6 +1259,8 @@ def simulation_4(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
                          'K_fit': [k_fit]})
             res_plot = pd.concat([res_plot, for_heatmap], ignore_index=True)
 
+    results.to_csv(f'k_diff_simulation_iter_{iter}_sk_aliMd.tsv', index=False, sep='\t')
+    res_plot.to_csv(f'k_diff_simulation_heatmap_sk_aliMd.tsv', index=False, sep='\t')
     # 1. Plot evaluation results
     plt.figure(figsize=(18, 10))
     crits = ['ari_group','dcbc_group','coserr','ari_indiv','dcbc_indiv','wcoserr']
@@ -1301,22 +1307,37 @@ if __name__ == '__main__':
     # simulation_1(K=5, width=30, nsub_list=np.array([10,10]),
     #              M=np.array([40,20],dtype=int), num_part=1, sigma2=0.1)
 
-    # 2. simulation - session fusion
-    # for k in [10]:
-    #     simulation_2(K=k, width=50, nsub_list=np.array([10, 10]),
-    #                  M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
+    # # 2. simulation - session fusion
+    # for k in [6]:
+    #     simulation_2(K=k, width=60, nsub_list=np.array([10, 10]),
+    #                  M=np.array([40, 20], dtype=int), num_part=1, sigma2=[0.2, 0.2],
     #                  iter=10)
-
+    #
     # 3. simulation - session fusion (different Ks)
-    # for k in [30]:
-    #     simulation_3(K_true=k, K=5, width=50, nsub_list=np.array([10, 10]),
-    #                  M=np.array([40, 20], dtype=int), num_part=1, sigma2=0.5,
-    #                  iter=10)
+    for k in [5,10,20]:
+        simulation_3(K_true=k, K=5, width=50, nsub_list=np.array([10, 10]),
+                     M=np.array([40, 20], dtype=int), num_part=1, sigma2=[0.2, 0.2],
+                     iter=10)
 
     # 4. simulation - establish when underlying K >> fit K, kappa difference
-    simulation_4(K_true=[5,10,20,30,40], K=[5,10,20,30,40], width=50,
-                 nsub_list=np.array([10]),M=np.array([40], dtype=int),
-                 num_part=1, sigma2=0.5, iter=10)
+    # simulation_4(K_true=[5,10,20,30,40], K=[5,10,20,30,40], width=50,
+    #              nsub_list=np.array([10]),M=np.array([40], dtype=int),
+    #              num_part=1, sigma2=0.2, iter=100)
+
+    res_plot = pd.read_csv('k_diff_simulation_heatmap_sk_aliMd.tsv', delimiter='\t')
+    # 1. Plot evaluation results
+    plt.figure(figsize=(18, 10))
+    crits = ['ari_group', 'dcbc_group', 'coserr', 'ari_indiv', 'dcbc_indiv', 'wcoserr']
+    for i, c in enumerate(crits):
+        plt.subplot(2, 3, i + 1)
+        result = res_plot.pivot(index='K_true', columns='K_fit', values=c + '_dif')
+        rdgn = sb.color_palette("vlag", as_cmap=True)
+        # rdgn = sb.color_palette("Spectral", as_cmap=True)
+        sb.heatmap(result, annot=True, cmap=rdgn, center=0.00, fmt='.2g')
+        plt.title(c)
+
+    plt.suptitle(f'Simulation 4, common_kappa=False, iter=100')
+    plt.show()
 
     # 3. Generate true individual maps with different parameters
     # test_Y = Y[0][0][0].T.view(30,30,-1)

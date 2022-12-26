@@ -693,13 +693,28 @@ class FullMultiModelSymmetric(FullMultiModel):
         return Usplit
 
 def move_to(M, device='cpu'):
+    """Recursively move all torch.Tensor object in fullModel
+       class to the targe device
+    Args:
+        M: a FullMultiModel or FullMultiModelSymmetric
+           object
+        device: the target device to store the tensor
+                default - 'cpu'
+    Returns:
+        None
+    Notes:
+        This function is exculsively desinged for
+        <FullMultiModel> class and its inherited class
+        so that we know the containing classes are
+        `arrange` and `emissions`. But if we want this
+        function works blindly on any class, then it needs
+        to be developed later.
+    """
     for attr, value in M.__dict__.items():
         if isinstance(value, pt.Tensor):
             vars(M)[attr] = value.to(device)
-        elif hasattr(value, '__dict__'):
-            if value.__dict__ != {}:
-                move_to(value, device=device)
-        elif any(hasattr(itm, '__dict__') for itm in value):
+        elif attr == 'arrange':
+            move_to(value, device=device)
+        elif attr == 'emissions':
             for obj_in_list in value:
                 move_to(obj_in_list, device=device)
-

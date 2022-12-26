@@ -45,7 +45,7 @@ def ARI(U, Uhat, sparse=True):
 
     # Special cases: empty data or full agreement (tn, fp), (fn, tp)
     if n_01 == 0 and n_10 == 0:
-        return 1.0
+        return pt.tensor(1.0)
 
     return 1 - 2.0*(n_11*n_00 - n_10*n_01)/((n_11+n_10)*(n_10+n_00)+(n_11+n_01)*(n_01+n_00))
 
