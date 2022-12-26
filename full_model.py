@@ -692,3 +692,14 @@ class FullMultiModelSymmetric(FullMultiModel):
         Usplit = emloglik_comb = super().distribute_evidence(Uhat_full)
         return Usplit
 
+def move_to(M, device='cpu'):
+    for attr, value in M.__dict__.items():
+        if isinstance(value, pt.Tensor):
+            vars(M)[attr] = value.to(device)
+        elif hasattr(value, '__dict__'):
+            if value.__dict__ != {}:
+                move_to(value, device=device)
+        elif any(hasattr(itm, '__dict__') for itm in value):
+            for obj_in_list in value:
+                move_to(obj_in_list, device=device)
+
