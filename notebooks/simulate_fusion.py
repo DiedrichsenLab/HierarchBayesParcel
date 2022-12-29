@@ -120,7 +120,7 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
         # Making ambiguous boundaries between random number parcelsby set low signal
         # for k-neighbouring parcels. The parcels have same V magnitude in this emission
         num_badpar = K_group[i][int(pt.randint(K_group[i].numel(), ()))]
-        _, _, idx = _compute_adjacency(label_map, 3)
+        _, _, idx = _compute_adjacency(label_map, num_badpar)
         if i==0:
             idx_1 = idx
         elif i==1:
@@ -1314,8 +1314,8 @@ if __name__ == '__main__':
     #                  iter=10)
     #
     # 3. simulation - session fusion (different Ks)
-    for k in [5,10,20]:
-        simulation_3(K_true=k, K=5, width=50, nsub_list=np.array([10, 10]),
+    for k in [5,10,20,40]:
+        simulation_3(K_true=40, K=k, width=50, nsub_list=np.array([10, 10]),
                      M=np.array([40, 20], dtype=int), num_part=1, sigma2=[0.2, 0.2],
                      iter=10)
 
