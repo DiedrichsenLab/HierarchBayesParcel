@@ -40,6 +40,24 @@ class Model:
         for att in self.tmp_list:
             if hasattr(self,att):
                 delattr(self,att)
+    
+    def move_to(self, device='cpu'):
+        """move all torch.Tensor object in Model
+           class to the targe device
+       Args:
+        M: a FullMultiModel or FullMultiModelSymmetric
+           object
+        device: the target device to store the tensor
+                default - 'cpu'
+        Returns:
+            None
+        Notes:
+            This function works generally for all Models but is not recursive
+       """
+        for attr, value in self.__dict__.items():
+            if isinstance(value, pt.Tensor):
+                vars(self)[attr] = value.to(device)
+
 
     def set_param_list(self, param_list=[]):
         """Initializes the parameter list for a model 

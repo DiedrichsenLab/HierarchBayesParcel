@@ -599,6 +599,29 @@ class FullMultiModel:
                             'of emission model and <param> is the param name. i.g '
                             'emissions.0.V')
 
+    def move_to(self, device='cpu'):
+        """Recursively move all torch.Tensor object in fullModel
+           class to the targe device
+       Args:
+        M: a FullMultiModel or FullMultiModelSymmetric
+           object
+        device: the target device to store the tensor
+                default - 'cpu'
+        Returns:
+            None
+        Notes:
+            
+       """
+        for attr, value in self.__dict__.items():
+            if isinstance(value, pt.Tensor):
+                vars(self)[attr] = value.to(device)
+            elif attr == 'arrange':
+                value.move_to(device=device)
+            elif attr == 'emissions':
+                for obj_in_list in value:
+                    obj_in_list.move_to(device=device)
+
+
 class FullMultiModelSymmetric(FullMultiModel):
     """ Full generative model contains arrangement model and multiple
        emission models for training across dataset
@@ -692,29 +715,3 @@ class FullMultiModelSymmetric(FullMultiModel):
         Usplit = emloglik_comb = super().distribute_evidence(Uhat_full)
         return Usplit
 
-def move_to(M, device='cpu'):
-    """Recursively move all torch.Tensor object in fullModel
-       class to the targe device
-    Args:
-        M: a FullMultiModel or FullMultiModelSymmetric
-           object
-        device: the target device to store the tensor
-                default - 'cpu'
-    Returns:
-        None
-    Notes:
-        This function is exculsively desinged for
-        <FullMultiModel> class and its inherited class
-        so that we know the containing classes are
-        `arrange` and `emissions`. But if we want this
-        function works blindly on any class, then it needs
-        to be developed later.
-    """
-    for attr, value in M.__dict__.items():
-        if isinstance(value, pt.Tensor):
-            vars(M)[attr] = value.to(device)
-        elif attr == 'arrange':
-            move_to(value, device=device)
-        elif attr == 'emissions':
-            for obj_in_list in value:
-                move_to(obj_in_list, device=device)
