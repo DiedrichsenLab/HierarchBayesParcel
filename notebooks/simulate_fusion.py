@@ -182,7 +182,10 @@ def make_true_model_GME(grid, K=5, P=100, nsubj_list=[10,10],
         Y_test.append(em_test.sample(Us, signal=pt.ones(Us.shape)))
         signal.append(pt.where(pt.isin(Us, idx_all[i]), low_norm, high_norm))
 
-    return T, Y, Y_test, U, U_test, signal
+    # record number of bad parcels
+    num_bp = [i.numel() for i in idx_all]
+
+    return T, Y, Y_test, U, U_test, signal, num_bp
 
 def make_true_model_VMF(grid, K=5, P=100, nsubj_list=[10,10],
                         M=[5,5], # Number of conditions per data set
@@ -539,7 +542,8 @@ def do_sessFusion_diffK(K_true=10, K=5, M=np.array([5],dtype=int),
     U_prior = []
     # Option 2: generating data from GME
     # inits = np.array([820, 443, 188, 305, 717])
-    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K_true, P=grid.P, nsubj_list=nsubj_list,
+    T, Y, Y_test, U, _, signal, num_bp = make_true_model_GME(grid, K=K_true, P=grid.P,
+                                                      nsubj_list=nsubj_list,
                                                   M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low, same_subj=True,
                                                   inits=None)
@@ -609,8 +613,14 @@ def do_sessFusion_diffK(K_true=10, K=5, M=np.array([5],dtype=int),
             ari_indiv = [ev.ARI(U[i], UV_hard[j][i]) for i in range(U.shape[0])]
             # 2. dcbc
             Pgroup = pt.argmax(models[j].marginal_prob(), dim=0) + 1
-            dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist)
-            dcbc_indiv = calc_test_dcbc(UV_hard[j]+1, Y_test[0], grid.Dist)
+            binWidth = 5
+            max_dist = binWidth * pt.ceil(grid.Dist.max()/binWidth)
+            dcbc_group = calc_test_dcbc(Pgroup, Y_test[0], grid.Dist,
+                                        max_dist=int(max_dist),
+                                        bin_width=binWidth)
+            dcbc_indiv = calc_test_dcbc(UV_hard[j]+1, Y_test[0], grid.Dist,
+                                        max_dist=int(max_dist),
+                                        bin_width=binWidth)
             # 3. non-adjusted/adjusted expected cosine error
             coserr, wcoserr = [], []
             for i, emi in enumerate(models[j].emissions):
@@ -620,7 +630,15 @@ def do_sessFusion_diffK(K_true=10, K=5, M=np.array([5],dtype=int),
                                          adjusted=True, soft_assign=True))
 
             res = pd.DataFrame({'model_type': [f'VMF_{common_kappa}'],
+                                'K_true': [K_true],
+                                'K_fit': [K],
+                                'common_kappa': [f'{common_kappa}'],
                                 'dataset': [fm_name],
+                                'sigma2': [sigma2],
+                                'low_signal': [low],
+                                'high_signal': [high],
+                                'num_bp_1': [num_bp[0]],
+                                'num_bp_2': [num_bp[1]],
                                 'ari_group': [ari_group.item()],
                                 'ari_indiv': [pt.stack(ari_indiv).mean().item()],
                                 'dcbc_group': [dcbc_group.mean().item()],
@@ -666,7 +684,7 @@ def do_simulation_sessFusion_subj(K=5, M=np.array([5,5],dtype=int), nsubj_list=N
 
     # Option 2: generating data from GME
     # inits = np.array([820, 443, 188, 305, 717])
-    T, Y, Y_test, U, U_test, signal = make_true_model_GME(grid, K=K, P=grid.P,
+    T, Y, Y_test, U, U_test, signal, num_bp = make_true_model_GME(grid, K=K, P=grid.P,
                                                           nsubj_list=nsubj_list,
                                                   M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low,
@@ -825,7 +843,8 @@ def do_simulation_sessFusion_sess(K=5, M=np.array([5],dtype=int),
 
     # Option 2: generating data from GME
     # inits = np.array([820, 443, 188, 305, 717])
-    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K, P=grid.P, nsubj_list=nsubj_list,
+    T, Y, Y_test, U, _, signal, num_bp = make_true_model_GME(grid, K=K, P=grid.P,
+                                                          nsubj_list=nsubj_list,
                                                   M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low, same_subj=True,
                                                   inits=np.array([910,930,950,2710,2730,2750]))
@@ -961,7 +980,8 @@ def do_sim_diffK_fit(K_true=10, K=5, M=np.array([5],dtype=int),
     U_prior = []
     # Option 2: generating data from GME
     # inits = np.array([820, 443, 188, 305, 717])
-    T, Y, Y_test, U, _, signal = make_true_model_GME(grid, K=K_true, P=grid.P, nsubj_list=nsubj_list,
+    T, Y, Y_test, U, _, signal, num_bp = make_true_model_GME(grid, K=K_true, P=grid.P,
+                                                      nsubj_list=nsubj_list,
                                                   M=M, theta_mu=120, theta_w=1.5, sigma2=sigma2,
                                                   high_norm=high, low_norm=low, same_subj=True,
                                                   inits=None)
@@ -1182,6 +1202,7 @@ def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
                                                                            sigma2=sigma2,
                                                                            plot_trueU=False)
         res['iter'] = i
+        res['relevant'] = 'False'
         results = pd.concat([results, res], ignore_index=True)
 
     # 1. Plot evaluation results
@@ -1210,7 +1231,7 @@ def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
     #         _plot_maps(us[j], cmap='tab20', dim=(width, width),
     #                    row_labels=labels[i]+names[j], save=True)
     #
-    # pass
+    return results
 
 def simulation_4(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
                  M=np.array([10,10],dtype=int), num_part=2, sigma2=0.1,
@@ -1314,10 +1335,14 @@ if __name__ == '__main__':
     #                  iter=10)
     #
     # 3. simulation - session fusion (different Ks)
-    for k in [5,10,20,40]:
-        simulation_3(K_true=40, K=k, width=50, nsub_list=np.array([10, 10]),
-                     M=np.array([40, 20], dtype=int), num_part=1, sigma2=[0.2, 0.2],
-                     iter=10)
+    D = pd.DataFrame()
+    for k in [5,10,20,30,40]:
+        res = simulation_3(K_true=20, K=k, width=50, nsub_list=np.array([10, 10]),
+                          M=np.array([40, 20], dtype=int), num_part=1, sigma2=[0.2, 0.2],
+                          iter=100)
+        D = pd.concat([D, res], ignore_index=True)
+
+    D.to_csv('eval_all_Ktrue_20_Kfit_5to40_irrelevantFusion.tsv', index=False, sep='\t')
 
     # 4. simulation - establish when underlying K >> fit K, kappa difference
     # simulation_4(K_true=[5,10,20,30,40], K=[5,10,20,30,40], width=50,
