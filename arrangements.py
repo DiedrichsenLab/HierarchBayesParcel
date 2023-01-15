@@ -20,12 +20,19 @@ class ArrangementModel(Model):
         self.tmp_list = []
 
 class ArrangeIndependent(ArrangementModel):
-    """ Arrangement model for spatially independent assignment
-        Either with a spatially uniform prior
-        or a spatially-specific prior. Pi is saved in form of log-pi.
+    """ Independent arrangement model
+    Parameters:
+        K (int):
+            Number of different parcels
+        P (int): 
+            Number of voxels / vertices
+        spatially_specific (bool):  
+            Use a spatially specific model (default True)
+        remove_redundancy (bool): 
+            Code with K probabilities with K or K-1 parameters? 
     """
     def __init__(self, K=3, P=100,
-                 spatial_specific=False,
+                 spatial_specific=True,
                  remove_redundancy=True):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
@@ -100,8 +107,11 @@ class ArrangeIndependent(ArrangementModel):
         no relation with other nodes, which means it equals to
         sample from the prior pi.
 
-        :param num_subj: the number of subjects to sample
-        :return: the sampled data for subjects
+        Parameters: 
+            num_subj (int): 
+                the number of subjects to sample
+        Returns (pt.tensor):
+             the sampled data for subjects
         """
         U = pt.zeros(num_subj, self.P)
         pi = pt.softmax(self.logpi,dim=0)
@@ -120,19 +130,30 @@ class ArrangeIndependent(ArrangementModel):
         return pt.softmax(self.logpi,dim=0)
 
 class ArrangeIndependentSymmetric(ArrangeIndependent):
-    """Independent arrangement model with symmetry contstraint"""
-    def __init__(self, K=3,
+    """Independent arrangement model with symmetry constraint
+    It has two sizes: 
+    P and K (number of nodes / parcels for arrangement model)
+    P_full and K_full (number of location / parcels for data)
+    Parameters:
+        K (int):
+            Number of different parcels
+        indx_full (ndarray/tensor): 
+            2 x P array of data-indices for each node (L/R)
+        indx_reduced (ndarray): 
+            P_full - vector of node-indices for each data location 
+        same_parcels (bool): 
+            are the means of parcels the same or different across hemispheres?
+        spatially_specific (bool):  
+            Use a spatially specific model (default True)
+        remove_redundancy (bool): 
+            Code with K probabilities with K or K-1 parameters? 
+    """
+    def __init__(self, K,
                 indx_full,
                 indx_reduced,
-                same_parcels=False
-                spatial_specific=False,
+                same_parcels=False,
+                spatial_specific=True,
                 remove_redundancy=True):
-        """
-        Parameters:
-            indx_full (ndarray): 2 x P_sym array of indices mapping data to nodes
-            indx_reduced (ndarray): P-vector of indices mapping nodes to data
-            same_parcels (bool): are the means of parcels the same or different across hemispheres?
-        """
         if type(indx_full) is np.ndarray:
             indx_full = pt.tensor(indx_full, dtype=pt.get_default_dtype()).long()
 
@@ -142,12 +163,13 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         self.indx_full = indx_full
         self.indx_reduced = indx_reduced
 
-        self.P_full = indx_full.shape[1]
+        self.P_full = indx_reduced.shape[0]
+        self.P = indx_full.shape[1]
         self.K_full = K
         if not same_parcels:
-            if self.K = floor(self.K/2):
+            self.K = int(K/2)
         self.same_parcels = same_parcels
-        super().__init__(K, P, spatial_specific=False, remove_redundancy=True)
+        super().__init__(self.K, self.P, spatial_specific, remove_redundancy)
 
     def map_to_full(self,Uhat):
         """ remapping evidence from an
@@ -161,16 +183,16 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
             if self.same_parcels:
                 Umap = Uhat[:,:,self.indx_reduced]
             else:
-                Umap = pt.zeros((Uhat.shape[0],self.K,self.P))
-                Umap[:,:self.K_sym,self.indx_full[0]]=Uhat
-                Umap[:,self.K_sym:,self.indx_full[1]]=Uhat
+                Umap = pt.zeros((Uhat.shape[0],self.K_full,self.P_full))
+                Umap[:,:self.K,self.indx_full[0]]=Uhat
+                Umap[:,self.K:,self.indx_full[1]]=Uhat
         elif Uhat.ndim==2:
             if self.same_parcels:
                 Umap = Uhat[:,self.indx_reduced]
             else:
                 Umap = pt.zeros((self.K,self.P))
-                Umap[:self.K_sym,self.indx_full[0]]=Uhat
-                Umap[self.K_sym:,self.indx_full[1]]=Uhat
+                Umap[:self.K,self.indx_full[0]]=Uhat
+                Umap[self.K:,self.indx_full[1]]=Uhat
         return Umap
 
     def map_to_arrange(self,emloglik):
@@ -178,14 +200,14 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         representation
 
         Args:
-            emloglik (list): List of emissionlogliklihoods
+            emloglik (list): List of emission logliklihoods
         Returns:
             emloglik_comb (ndarray): ndarray of emission logliklihoods
         """
         if self.same_parcels:
-            emloglik_comb = emloglik_comb[:,:,self.indx_full[0]] + emloglik_comb[:,:,self.indx_full[1]]
+            emloglik_comb = emloglik[:,:,self.indx_full[0]] + emloglik[:,:,self.indx_full[1]]
         else:
-            emloglik_comb = emloglik_comb[:,:self.K_sym,self.indx_full[0]] + emloglik_comb[:,self.K_sym:,self.indx_full[1]]
+            emloglik_comb = emloglik[:,:self.K,self.indx_full[0]] + emloglik[:,self.K:,self.indx_full[1]]
         return emloglik_comb
 
     def Estep(self, emloglik, gather_ss=True):
@@ -203,7 +225,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
                 Expected log-liklihood of the arrangement model
         """
         emloglik = self.map_to_arrange(emloglik)
-        Uhat, ll_A = super.Estep(emloglik,gather_ss)
+        Uhat, ll_A = super().Estep(emloglik,gather_ss)
         Uhat = self.map_to_full(Uhat)
         return Uhat, ll_A
 
@@ -217,23 +239,15 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         :param num_subj: the number of subjects to sample
         :return: the sampled data for subjects
         """
-        U = pt.zeros(num_subj, self.P)
-        pi = pt.softmax(self.logpi,dim=0)
-        for i in range(num_subj):
-            if self.spatial_specific:
-                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
-            else:
-                pi=pi.expand(self.K,self.P)
-                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
+        U = super.sample(num_subj)
+        U = self.map_to_full(U)
         return U
 
     def marginal_prob(self):
         """Returns marginal probabilty for every node under the model
         Returns: p[] marginal probability under the model
         """
-        return pt.softmax(self.logpi,dim=0)
-
-
+        return self.map_to_full(pt.softmax(self.logpi,dim=0))
 
 class PottsModel(ArrangementModel):
     """
