@@ -736,3 +736,35 @@ class FullMultiModelSymmetric(FullMultiModel):
         Usplit = emloglik_comb = super().distribute_evidence(Uhat_full)
         return Usplit
 
+
+def update_symmetric_model(model):
+    """ Updates a symmetric model from a 
+    FullMultiModelSymmetric + ArrangementIndependent
+    FullMultiModel + ArrangementIndependentSymmetric 
+    Args:
+        model (FullMultiModelSymmetric)
+    Returns:
+        new_model (FullMultiModel)
+    """
+    if type(model) is FullMultiModel:
+        if type(model.arrange) is arr.ArrangeIndependent:
+            print('Warning: Model is not not symmetric')
+        elif type(model.arrange) is arr.ArrangeIndependentSymmetric:
+            print('Warning: Model is already updated')
+    elif type(model) is FullMultiModelSymmetric:
+        new_arrange = arr.ArrangeIndependentSymmetric(model.K,
+            model.indx_full,
+            model.indx_reduced,
+            model.same_parcels,
+            model.arrange.spatial_specific,
+            model.arrange.rem_red)
+        new_arrange.logpi = model.arrange.logpi
+        new_model = FullMultiModel(new_arrange,model.emissions)
+        new_model.nsubj = model.nsubj
+        new_model.n_emission = model.n_emission
+        new_model.nsubj_list = model.nsubj_list
+        new_model.subj_ind = model.subj_ind
+        if hasattr(model,'ds_weight'):
+            new_model.ds_weight = model.ds_weight
+
+    return new_model
