@@ -13,6 +13,13 @@ import generativeMRF.arrangements as arr
 import warnings
 from copy import copy,deepcopy
 
+def report_cuda_memory():
+    if pt.cuda.is_available():
+        ma = pt.cuda.memory_allocated()/1024/1024
+        mma = pt.cuda.max_memory_allocated()/1024/1024
+        mr = pt.cuda.memory_reserved()/1024/1024
+        print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
+
 class FullModel:
     """The full generative model contains single arrangement model and
        single emission model for training by given dataset
@@ -449,20 +456,16 @@ class FullMultiModel:
             # Get the (approximate) posterior p(U|Y)
             # emloglik = [e.Estep() for e in self.emissions]
             # Pass emlogliks immediately to collect evidence function,
-            # rathen than save a local variable `emloglik` to waste memory
-            emloglik_comb = self.collect_evidence([e.Estep() for e in self.emissions])  # Combine subjects
-
+            # rather than save a local variable `emloglik` to waste memory
             # If first iteration, only pass the desired emission models (pretraining)
-            if i==0:
-                emloglik_c = deepcopy([e.Estep() for e in self.emissions])
+            emloglik_c = [e.Estep() for e in self.emissions]
+            if i==0:                
                 for j,emLL in enumerate(emloglik_c):
                     if not first_evidence[j]:
                         emLL[:,:,:]=0
-                Uhat, ll_A = self.arrange.Estep(self.collect_evidence(emloglik_c))
-            # Otherwise pass all evidence to arrangement model:
-            else:
-                Uhat, ll_A = self.arrange.Estep(emloglik_comb)
-
+            emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
+            del emloglik_c
+            Uhat, ll_A = self.arrange.Estep(emloglik_comb)
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             ll[i, 0] = pt.sum(ll_A)
@@ -491,6 +494,10 @@ class FullMultiModel:
                 if fit_emission[em]:
                     self.emissions[em].Mstep(Us)
 
+        # Clear the temporary stats from the arrangement model to concerve memory
+        self.arrange.clear()
+
+        # Return parameters and Uhat
         if seperate_ll:
             return self, ll[0:i+1], theta[0:i+1, :], Uhat
         else:
@@ -499,7 +506,7 @@ class FullMultiModel:
     def fit_em_ninits(self, n_inits=20, first_iter=7, iter=30, tol=0.01,
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
-                      align = 'arrange'):
+                      align = 'arrange',verbose=False):
         """Run the EM-algorithm on a full model starting with n_inits multiple
            random initialization values and escape from local maxima by selecting
            the model with the highest likelihood after first_iter.
@@ -522,6 +529,7 @@ class FullMultiModel:
                         non-flat (i.e. random) initialization)
                 int: from emission model with number i. Works with spatially flat
                         initialization of arrangement model
+            verbose: if set to true, gives memory update for each iteration  
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of best full model as function of iteration
@@ -542,9 +550,14 @@ class FullMultiModel:
             first_ev = [False]*len(self.emissions)
             first_ev[align]=True
 
+        print('n_inits starting')
+        report_cuda_memory()
         for i in range(n_inits):
             # Making the new set of emission models with random initializations
             fm = deepcopy(self)
+            if verbose:
+                print(f'{i} n inits')
+                report_cuda_memory()
             if init_arrangement:
                 fm.arrange.random_params()
             if init_emission:

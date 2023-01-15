@@ -190,7 +190,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
             if self.same_parcels:
                 Umap = Uhat[:,self.indx_reduced]
             else:
-                Umap = pt.zeros((self.K,self.P))
+                Umap = pt.zeros((self.K_full,self.P_full))
                 Umap[:self.K,self.indx_full[0]]=Uhat
                 Umap[self.K:,self.indx_full[1]]=Uhat
         return Umap
