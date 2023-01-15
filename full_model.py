@@ -21,6 +21,7 @@ class FullModel:
         self.arrange = arrange
         self.emission = emission
         self.nparams = self.arrange.nparams + self.emission.nparams
+        DeprecationWarning('Full Model will be removed in future verisons - use FullMultiModel')
 
     def sample(self, num_subj=10):
         U = self.arrange.sample(num_subj)
@@ -281,7 +282,8 @@ class FullMultiModel:
 
     def remap_evidence(self,Uhat):
         """Placeholder function of remapping evidence from an
-        arrangement space to a emission space (here it doesn't do anything)
+        arrangement space to a emission space
+        WARNING: To be removed in future version
 
         Args:
             Uhat (ndarray): tensor of estimated arrangement
@@ -324,7 +326,7 @@ class FullMultiModel:
 
     def marginal_prob(self):
         """Convenience function that returns
-        marginal probability for the full model
+        marginal probability for the arrangement model
 
         Returns:
             Prob (pt.tensor): KxP marginal probabilities
@@ -419,7 +421,7 @@ class FullMultiModel:
                     Otherwise, freeze it
             first_evidence (bool or list of bool): Determines whether evidence
                     is passed from emission models to arrangement model on the
-                    first iteration. Usually set to True. If a list of bools, it determines this for each emission model seperately. To improve alignment between emission models from random starting values, only pass evidence from one or none of the emission models. 
+                    first iteration. Usually set to True. If a list of bools, it determines this for each emission model seperately. To improve alignment between emission models from random starting values, only pass evidence from one or none of the emission models.
 
         Returns:
             model (Full Model): fitted model (also updated)
@@ -610,7 +612,7 @@ class FullMultiModel:
         Returns:
             None
         Notes:
-            
+
        """
         for attr, value in self.__dict__.items():
             if isinstance(value, pt.Tensor):
@@ -657,6 +659,9 @@ class FullMultiModelSymmetric(FullMultiModel):
         if not same_parcels:
             if self.K_sym*2 != self.K:
                 raise(NameError('K in emission models must be twice K in arrangement model'))
+        DeprecationWarning('FullMultiModelSymmetric will be removed in future verisons - use FullMultiModel \
+            and a symmetric arrangement model. Old models can be translated with full_model.update_symmetric()')
+
 
     def remap_evidence(self,Uhat):
         """Placeholder function of remapping evidence from an
@@ -680,6 +685,8 @@ class FullMultiModelSymmetric(FullMultiModel):
                 Umap = pt.zeros((self.K,self.P))
                 Umap[:self.K_sym,self.indx_full[0]]=Uhat
                 Umap[self.K_sym:,self.indx_full[1]]=Uhat
+        DeprecationWarning('FullMultiModelSymmetric will be removed in future verisons - use FullMultiModel \
+            and a symmetric arrangement model. Old models can be translated with full_model.update_symmetric()')
         return Umap
 
     def collect_evidence(self,emloglik):

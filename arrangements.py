@@ -45,7 +45,7 @@ class ArrangeIndependent(ArrangementModel):
         self.tmp_list = ['estep_Uhat']
 
     def random_params(self):
-        """ Sets prior parameters to random starting values 
+        """ Sets prior parameters to random starting values
         """
         self.logpi = pt.normal(0,1,size=self.logpi.shape)
 
@@ -71,7 +71,7 @@ class ArrangeIndependent(ArrangementModel):
             self.estep_Uhat = Uhat
         # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
         pi = pt.softmax(self.logpi,dim=0)
-        lpi = pt.nan_to_num(pt.log(pi),neginf=0) # Prevent underflow 
+        lpi = pt.nan_to_num(pt.log(pi),neginf=0) # Prevent underflow
         ll_A = pt.sum(Uhat * lpi)
         if pt.isnan(ll_A):
             raise(NameError('likelihood is nan'))
@@ -118,6 +118,121 @@ class ArrangeIndependent(ArrangementModel):
         Returns: p[] marginal probability under the model
         """
         return pt.softmax(self.logpi,dim=0)
+
+class ArrangeIndependentSymmetric(ArrangeIndependent):
+    """Independent arrangement model with symmetry contstraint"""
+    def __init__(self, K=3,
+                indx_full,
+                indx_reduced,
+                same_parcels=False
+                spatial_specific=False,
+                remove_redundancy=True):
+        """
+        Parameters:
+            indx_full (ndarray): 2 x P_sym array of indices mapping data to nodes
+            indx_reduced (ndarray): P-vector of indices mapping nodes to data
+            same_parcels (bool): are the means of parcels the same or different across hemispheres?
+        """
+        if type(indx_full) is np.ndarray:
+            indx_full = pt.tensor(indx_full, dtype=pt.get_default_dtype()).long()
+
+        if type(indx_reduced) is np.ndarray:
+            indx_reduced = pt.tensor(indx_reduced, dtype=pt.get_default_dtype()).long()
+
+        self.indx_full = indx_full
+        self.indx_reduced = indx_reduced
+
+        self.P_full = indx_full.shape[1]
+        self.K_full = K
+        if not same_parcels:
+            if self.K = floor(self.K/2):
+        self.same_parcels = same_parcels
+        super().__init__(K, P, spatial_specific=False, remove_redundancy=True)
+
+    def map_to_full(self,Uhat):
+        """ remapping evidence from an
+        arrangement space to a emission space (here it doesn't do anything)
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        if Uhat.ndim == 3:
+            if self.same_parcels:
+                Umap = Uhat[:,:,self.indx_reduced]
+            else:
+                Umap = pt.zeros((Uhat.shape[0],self.K,self.P))
+                Umap[:,:self.K_sym,self.indx_full[0]]=Uhat
+                Umap[:,self.K_sym:,self.indx_full[1]]=Uhat
+        elif Uhat.ndim==2:
+            if self.same_parcels:
+                Umap = Uhat[:,self.indx_reduced]
+            else:
+                Umap = pt.zeros((self.K,self.P))
+                Umap[:self.K_sym,self.indx_full[0]]=Uhat
+                Umap[self.K_sym:,self.indx_full[1]]=Uhat
+        return Umap
+
+    def map_to_arrange(self,emloglik):
+        """ Maps emission log likelihoods to the internal size of the
+        representation
+
+        Args:
+            emloglik (list): List of emissionlogliklihoods
+        Returns:
+            emloglik_comb (ndarray): ndarray of emission logliklihoods
+        """
+        if self.same_parcels:
+            emloglik_comb = emloglik_comb[:,:,self.indx_full[0]] + emloglik_comb[:,:,self.indx_full[1]]
+        else:
+            emloglik_comb = emloglik_comb[:,:self.K_sym,self.indx_full[0]] + emloglik_comb[:,self.K_sym:,self.indx_full[1]]
+        return emloglik_comb
+
+    def Estep(self, emloglik, gather_ss=True):
+        """ Estep for the spatial arrangement model
+
+        Parameters:
+            emloglik (pt.tensor):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss (bool):
+                Gather Sufficient statistics for M-step (default = True)
+        Returns:
+            Uhat (pt.tensor):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (pt.tensor):
+                Expected log-liklihood of the arrangement model
+        """
+        emloglik = self.map_to_arrange(emloglik)
+        Uhat, ll_A = super.Estep(emloglik,gather_ss)
+        Uhat = self.map_to_full(Uhat)
+        return Uhat, ll_A
+
+    def sample(self, num_subj=10):
+        """
+        Samples a number of subjects from the prior.
+        In this i.i.d arrangement model we assume each node has
+        no relation with other nodes, which means it equals to
+        sample from the prior pi.
+
+        :param num_subj: the number of subjects to sample
+        :return: the sampled data for subjects
+        """
+        U = pt.zeros(num_subj, self.P)
+        pi = pt.softmax(self.logpi,dim=0)
+        for i in range(num_subj):
+            if self.spatial_specific:
+                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
+            else:
+                pi=pi.expand(self.K,self.P)
+                U = sample_multinomial(pi,shape=(num_subj,self.K,self.P),compress=True)
+        return U
+
+    def marginal_prob(self):
+        """Returns marginal probabilty for every node under the model
+        Returns: p[] marginal probability under the model
+        """
+        return pt.softmax(self.logpi,dim=0)
+
 
 
 class PottsModel(ArrangementModel):
@@ -511,7 +626,7 @@ class mpRBM(ArrangementModel):
         return Uhat, pt.nan
 
     def marginal_prob(self):
-        # If not given, then initialize: 
+        # If not given, then initialize:
         if self.eneg_U is None:
             U,Eh=self.Eneg()
         pi  = pt.mean(self.eneg_U,dim=0)
@@ -656,7 +771,7 @@ class cmpRBM(mpRBM):
         return p_u, sample
 
     def marginal_prob(self):
-        # If not given, then initialize: 
+        # If not given, then initialize:
         if self.gibbs_U is None:
             return pt.softmax(self.bu,0)
         else:
@@ -706,7 +821,7 @@ class cmpRBM(mpRBM):
                     shape=(self.eneg_numchains,self.K,self.P),
                     kdim=0,
                     compress=False)
-        # Grab the current chains 
+        # Grab the current chains
         if use_chains is None:
             use_chains = pt.arange(self.eneg_numchains)
 
@@ -720,7 +835,7 @@ class cmpRBM(mpRBM):
         self.eneg_H = H
         self.eneg_U = U
         # Persistent: Keep the new gibbs samples around
-        self.gibbs_U[use_chains]=U 
+        self.gibbs_U[use_chains]=U
         return self.eneg_U,self.eneg_H
 
     def Mstep(self):
@@ -731,7 +846,7 @@ class cmpRBM(mpRBM):
         """
         N = self.epos_Hhat.shape[0]
         M = self.eneg_H.shape[0]
-        # Update the connectivity 
+        # Update the connectivity
         if self.fit_W:
             gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),self.epos_Uhat).sum(dim=0)/N
             gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),self.eneg_U).sum(dim=0)/M
@@ -744,10 +859,10 @@ class cmpRBM(mpRBM):
                 self.W = (self.Wc * self.theta).sum(dim=2)
             else:
                 self.W += self.alpha * gradW
-        
+
         # Update the bias term
-        if self.fit_bu: 
-            gradBU =   1 / N * pt.sum(self.epos_Uhat,0) 
+        if self.fit_bu:
+            gradBU =   1 / N * pt.sum(self.epos_Uhat,0)
             gradBU -=  1 / M * pt.sum(self.eneg_U,0)
             self.bu += self.alpha * gradBU
 
