@@ -506,7 +506,7 @@ class FullMultiModel:
     def fit_em_ninits(self, n_inits=20, first_iter=7, iter=30, tol=0.01,
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
-                      align = 'arrange',verbose=False):
+                      align = 'arrange',verbose=True):
         """Run the EM-algorithm on a full model starting with n_inits multiple
            random initialization values and escape from local maxima by selecting
            the model with the highest likelihood after first_iter.
@@ -549,9 +549,10 @@ class FullMultiModel:
         else:
             first_ev = [False]*len(self.emissions)
             first_ev[align]=True
-
-        print('n_inits starting')
-        report_cuda_memory()
+        if verbose:
+            print('n_inits starting')
+            report_cuda_memory()
+        
         for i in range(n_inits):
             # Making the new set of emission models with random initializations
             fm = deepcopy(self)
