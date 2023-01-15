@@ -748,9 +748,10 @@ def update_symmetric_model(model):
     """
     if type(model) is FullMultiModel:
         if type(model.arrange) is arr.ArrangeIndependent:
-            print('Warning: Model is not not symmetric')
+            raise(NameError('Warning: Model is not not symmetric'))
         elif type(model.arrange) is arr.ArrangeIndependentSymmetric:
             print('Warning: Model is already updated')
+            return model
     elif type(model) is FullMultiModelSymmetric:
         new_arrange = arr.ArrangeIndependentSymmetric(model.K,
             model.indx_full,
