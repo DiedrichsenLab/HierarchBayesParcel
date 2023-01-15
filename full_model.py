@@ -226,8 +226,8 @@ class FullMultiModel:
         self.emissions = emission
         self.n_emission = len(self.emissions)
         self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
-        self.K = self.arrange.K
-        self.P = self.arrange.P
+        self.K = self.emissions[0].K
+        self.P = self.emissions[0].P
 
     def initialize(self,Y=None,subj_ind='separate'):
         """ Initializes the model for fitting.
