@@ -4,15 +4,15 @@ import torch as pt
 from copy import copy, deepcopy
 
 class Model:
-    """Abstract class for models  
-    Implements two behaviors: 
-        - param_list: These is the list of free parameters. 
-            the class allows vectorization of free parameters, sets 
-            param_size and nparams automatically, and tells you 
-            where to find the parameters in the vector 
+    """Abstract class for models
+    Implements two behaviors:
+        - param_list: These is the list of free parameters.
+            the class allows vectorization of free parameters, sets
+            param_size and nparams automatically, and tells you
+            where to find the parameters in the vector
         - tmp_list: List of data-specific attributes that should not be copied
-            or saved. when deep_copy is called on a model, these items will only be copied by reference (id), but not copied in memory. 
-            When clear is call, the reference to these items will be deleted (but not the data itself, if it is referenced from somewhere else). 
+            or saved. when deep_copy is called on a model, these items will only be copied by reference (id), but not copied in memory.
+            When clear is call, the reference to these items will be deleted (but not the data itself, if it is referenced from somewhere else).
     """
     def __deepcopy__(self, memo):
         """ Overwrites deepcopy behavior such that members of tmp_list are not deepcopied, but only shallow copied (by reference). One important example is the data attached to emission models. This saves memory
@@ -34,13 +34,13 @@ class Model:
         return result
 
     def clear(self):
-        """Removes any member of tmp_list from the model 
-        This is important when saving model fits. 
+        """Removes any member of tmp_list from the model
+        This is important when saving model fits.
         """
         for att in self.tmp_list:
             if hasattr(self,att):
                 delattr(self,att)
-    
+
     def move_to(self, device='cpu'):
         """move all torch.Tensor object in Model
            class to the targe device
@@ -58,12 +58,11 @@ class Model:
             if isinstance(value, pt.Tensor):
                 vars(self)[attr] = value.to(device)
 
-
     def set_param_list(self, param_list=[]):
-        """Initializes the parameter list for a model 
+        """Initializes the parameter list for a model
 
         Args:
-            param_list (list, optional): Names of parameters 
+            param_list (list, optional): Names of parameters
         """
         self.param_list = param_list
         self.param_size = []
@@ -107,7 +106,7 @@ class Model:
     def set_params(self, theta):
         """ Sets the parameters from a vector
         Args:
-            theta (numpy.ndarray or torch.tensor): Input parameters as vector. 
+            theta (numpy.ndarray or torch.tensor): Input parameters as vector.
         """
         if type(theta) is np.ndarray:  # Convert input theta to tensor if it is ndarray
             theta = pt.tensor(theta, dtype=pt.get_default_dtype())

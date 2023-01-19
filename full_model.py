@@ -13,6 +13,13 @@ import generativeMRF.arrangements as arr
 import warnings
 from copy import copy,deepcopy
 
+def report_cuda_memory():
+    if pt.cuda.is_available():
+        ma = pt.cuda.memory_allocated()/1024/1024
+        mma = pt.cuda.max_memory_allocated()/1024/1024
+        mr = pt.cuda.memory_reserved()/1024/1024
+        print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
+
 class FullModel:
     """The full generative model contains single arrangement model and
        single emission model for training by given dataset
@@ -21,6 +28,7 @@ class FullModel:
         self.arrange = arrange
         self.emission = emission
         self.nparams = self.arrange.nparams + self.emission.nparams
+        DeprecationWarning('Full Model will be removed in future verisons - use FullMultiModel')
 
     def sample(self, num_subj=10):
         U = self.arrange.sample(num_subj)
@@ -225,8 +233,8 @@ class FullMultiModel:
         self.emissions = emission
         self.n_emission = len(self.emissions)
         self.nparams = self.arrange.nparams + sum([i.nparams for i in self.emissions])
-        self.K = self.arrange.K
-        self.P = self.arrange.P
+        self.K = self.emissions[0].K
+        self.P = self.emissions[0].P
 
     def initialize(self,Y=None,subj_ind='separate'):
         """ Initializes the model for fitting.
@@ -281,7 +289,8 @@ class FullMultiModel:
 
     def remap_evidence(self,Uhat):
         """Placeholder function of remapping evidence from an
-        arrangement space to a emission space (here it doesn't do anything)
+        arrangement space to a emission space
+        WARNING: To be removed in future version
 
         Args:
             Uhat (ndarray): tensor of estimated arrangement
@@ -324,7 +333,7 @@ class FullMultiModel:
 
     def marginal_prob(self):
         """Convenience function that returns
-        marginal probability for the full model
+        marginal probability for the arrangement model
 
         Returns:
             Prob (pt.tensor): KxP marginal probabilities
@@ -419,7 +428,7 @@ class FullMultiModel:
                     Otherwise, freeze it
             first_evidence (bool or list of bool): Determines whether evidence
                     is passed from emission models to arrangement model on the
-                    first iteration. Usually set to True. If a list of bools, it determines this for each emission model seperately. To improve alignment between emission models from random starting values, only pass evidence from one or none of the emission models. 
+                    first iteration. Usually set to True. If a list of bools, it determines this for each emission model seperately. To improve alignment between emission models from random starting values, only pass evidence from one or none of the emission models.
 
         Returns:
             model (Full Model): fitted model (also updated)
@@ -447,20 +456,16 @@ class FullMultiModel:
             # Get the (approximate) posterior p(U|Y)
             # emloglik = [e.Estep() for e in self.emissions]
             # Pass emlogliks immediately to collect evidence function,
-            # rathen than save a local variable `emloglik` to waste memory
-            emloglik_comb = self.collect_evidence([e.Estep() for e in self.emissions])  # Combine subjects
-
+            # rather than save a local variable `emloglik` to waste memory
             # If first iteration, only pass the desired emission models (pretraining)
-            if i==0:
-                emloglik_c = deepcopy([e.Estep() for e in self.emissions])
+            emloglik_c = [e.Estep() for e in self.emissions]
+            if i==0:                
                 for j,emLL in enumerate(emloglik_c):
                     if not first_evidence[j]:
                         emLL[:,:,:]=0
-                Uhat, ll_A = self.arrange.Estep(self.collect_evidence(emloglik_c))
-            # Otherwise pass all evidence to arrangement model:
-            else:
-                Uhat, ll_A = self.arrange.Estep(emloglik_comb)
-
+            emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
+            del emloglik_c
+            Uhat, ll_A = self.arrange.Estep(emloglik_comb)
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             ll[i, 0] = pt.sum(ll_A)
@@ -489,6 +494,10 @@ class FullMultiModel:
                 if fit_emission[em]:
                     self.emissions[em].Mstep(Us)
 
+        # Clear the temporary stats from the arrangement model to concerve memory
+        self.arrange.clear()
+
+        # Return parameters and Uhat
         if seperate_ll:
             return self, ll[0:i+1], theta[0:i+1, :], Uhat
         else:
@@ -497,7 +506,7 @@ class FullMultiModel:
     def fit_em_ninits(self, n_inits=20, first_iter=7, iter=30, tol=0.01,
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
-                      align = 'arrange'):
+                      align = 'arrange',verbose=True):
         """Run the EM-algorithm on a full model starting with n_inits multiple
            random initialization values and escape from local maxima by selecting
            the model with the highest likelihood after first_iter.
@@ -520,6 +529,7 @@ class FullMultiModel:
                         non-flat (i.e. random) initialization)
                 int: from emission model with number i. Works with spatially flat
                         initialization of arrangement model
+            verbose: if set to true, gives memory update for each iteration  
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of best full model as function of iteration
@@ -539,10 +549,16 @@ class FullMultiModel:
         else:
             first_ev = [False]*len(self.emissions)
             first_ev[align]=True
-
+        if verbose:
+            print('n_inits starting')
+            report_cuda_memory()
+        
         for i in range(n_inits):
             # Making the new set of emission models with random initializations
             fm = deepcopy(self)
+            if verbose:
+                print(f'{i} n inits')
+                report_cuda_memory()
             if init_arrangement:
                 fm.arrange.random_params()
             if init_emission:
@@ -610,7 +626,7 @@ class FullMultiModel:
         Returns:
             None
         Notes:
-            
+
        """
         for attr, value in self.__dict__.items():
             if isinstance(value, pt.Tensor):
@@ -657,6 +673,9 @@ class FullMultiModelSymmetric(FullMultiModel):
         if not same_parcels:
             if self.K_sym*2 != self.K:
                 raise(NameError('K in emission models must be twice K in arrangement model'))
+        DeprecationWarning('FullMultiModelSymmetric will be removed in future verisons - use FullMultiModel \
+            and a symmetric arrangement model. Old models can be translated with full_model.update_symmetric()')
+
 
     def remap_evidence(self,Uhat):
         """Placeholder function of remapping evidence from an
@@ -680,6 +699,8 @@ class FullMultiModelSymmetric(FullMultiModel):
                 Umap = pt.zeros((self.K,self.P))
                 Umap[:self.K_sym,self.indx_full[0]]=Uhat
                 Umap[self.K_sym:,self.indx_full[1]]=Uhat
+        DeprecationWarning('FullMultiModelSymmetric will be removed in future verisons - use FullMultiModel \
+            and a symmetric arrangement model. Old models can be translated with full_model.update_symmetric()')
         return Umap
 
     def collect_evidence(self,emloglik):
@@ -715,3 +736,36 @@ class FullMultiModelSymmetric(FullMultiModel):
         Usplit = emloglik_comb = super().distribute_evidence(Uhat_full)
         return Usplit
 
+
+def update_symmetric_model(model):
+    """ Updates a symmetric model from a 
+    FullMultiModelSymmetric + ArrangementIndependent
+    FullMultiModel + ArrangementIndependentSymmetric 
+    Args:
+        model (FullMultiModelSymmetric)
+    Returns:
+        new_model (FullMultiModel)
+    """
+    if type(model) is FullMultiModel:
+        if type(model.arrange) is arr.ArrangeIndependent:
+            raise(NameError('Warning: Model is not not symmetric'))
+        elif type(model.arrange) is arr.ArrangeIndependentSymmetric:
+            print('Warning: Model is already updated')
+            return model
+    elif type(model) is FullMultiModelSymmetric:
+        new_arrange = arr.ArrangeIndependentSymmetric(model.K,
+            model.indx_full,
+            model.indx_reduced,
+            model.same_parcels,
+            model.arrange.spatial_specific,
+            model.arrange.rem_red)
+        new_arrange.logpi = model.arrange.logpi
+        new_model = FullMultiModel(new_arrange,model.emissions)
+        new_model.nsubj = model.nsubj
+        new_model.n_emission = model.n_emission
+        new_model.nsubj_list = model.nsubj_list
+        new_model.subj_ind = model.subj_ind
+        if hasattr(model,'ds_weight'):
+            new_model.ds_weight = model.ds_weight
+
+    return new_model
