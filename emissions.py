@@ -192,13 +192,6 @@ class MixGaussian(EmissionModel):
         LL = - 0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2)) \
              - 0.5 / self.sigma2 * self.rss
 
-        # for i in sub:
-        #     YV = pt.mm(self.Y[i, :, :].T, self.V)
-        #     self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2*YV.T + uVVu.reshape((self.K, 1))
-        #     # the log likelihood for emission model (GMM in this case)
-        #     LL[i, :, :] = -0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2))\
-        #                   - 0.5 / self.sigma2 * self.rss[i, :, :]
-
         return pt.nan_to_num(LL)
 
     def Mstep(self, U_hat):
@@ -646,7 +639,8 @@ class MixGaussianExp(EmissionModel):
         """
         num_subj = U.shape[0]
         if signal is not None:
-            np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),err_msg='The given signal must with a shape of (num_subj, P)')
+            np.testing.assert_equal((signal.shape[0], signal.shape[1]), (num_subj, self.P),
+                                    err_msg='The given signal must with a shape of (num_subj, P)')
         else:
             # 1. Draw the signal strength for each node from an exponential distribution
             signal = pt.distributions.exponential.Exponential(self.beta).sample((num_subj, self.P))

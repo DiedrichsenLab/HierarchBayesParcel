@@ -795,6 +795,20 @@ def expand_mn(u,K):
     U[np.arange(N).reshape((N,1)),u,np.arange(P)]=1
     return U
 
+def expand_mn_1d(u,K):
+    """Expands a P long multinomial vector
+    to an K x P tensor of indictor variables
+    Args:
+        u (1d-tensor): P vector of samples from [int]
+        K (int): Number of categories
+    Returns
+        U (2d-tensor): K x P matrix of indicator variables [default float]
+    """
+    P = u.shape[0]
+    U = pt.zeros(K,P)
+    U[u, np.arange(P)] = 1
+    return U
+
 def compress_mn(U):
     """Compresses a N x K x P tensor of indictor variables
     to a N x P multinomial tensor
