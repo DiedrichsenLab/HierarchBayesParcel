@@ -152,7 +152,7 @@ class MixGaussian(EmissionModel):
         self.name = 'GMM'
         if params is not None:
             self.set_params(params)
-        self.tmp_list=['Y','rss']
+        self.tmp_list=['Y','rss','YY']
 
 
     def initialize(self, data, X=None):

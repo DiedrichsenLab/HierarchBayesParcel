@@ -1282,7 +1282,7 @@ def simulation_3(K_true=10, K=6, width=30, nsub_list=np.array([10,10]),
                                                                            width=width,
                                                                            low=low, high=high,
                                                                            sigma2=sigma2,
-                                                                           plot_trueU=False,
+                                                                           plot_trueU=True,
                                                                            relevant=relevant)
         res['iter'] = i
         res['relevant'] = relevant
@@ -1401,6 +1401,48 @@ def cal_gradient(Y):
     #sobel = (sobel - sobel.min())/ (sobel.max()-sobel.min())
     return sobel
 
+def _plot_heatmap():
+    res_plot = pd.read_csv('Y:\data\Cerebellum\ProbabilisticParcellationModel\Results/2'
+                           '.simulation/k_diff_simulation_heatmap_sk_aliMd.tsv', delimiter='\t')
+    # 1. Plot evaluation results
+    plt.figure(figsize=(18, 10))
+    crits = ['ari_group', 'dcbc_group', 'coserr', 'ari_indiv', 'dcbc_indiv', 'wcoserr']
+    for i, c in enumerate(crits):
+        plt.subplot(2, 3, i + 1)
+        result = res_plot.pivot(index='K_true', columns='K_fit', values=c + '_dif')
+        rdgn = sb.color_palette("vlag", as_cmap=True)
+        # rdgn = sb.color_palette("Spectral", as_cmap=True)
+        sb.heatmap(result, annot=True, cmap=rdgn, center=0.00, fmt='.2g')
+        plt.title(c)
+
+    plt.suptitle(f'Simulation 4, different region signal strength, iter=100')
+    plt.show()
+
+def synthetic_data(K=5, width=50, nsubj_list=[10,10], M=[20,20],
+                   theta_mu=120, theta_w=1.5, sigma2=[0.1], inits=None):
+    grid = sp.SpatialGrid(width=width, height=width)
+    T, Y, _, U, _, _, _ = make_true_model_GME(grid, K=K, P=grid.P,
+                                              nsubj_list=nsubj_list,
+                                              M=M, theta_mu=theta_mu,
+                                              theta_w=theta_w, sigma2=sigma2,
+                                              high_norm=1.1, low_norm=0.1,
+                                              inits=inits, relevant=False)
+
+    grid.plot_maps(pt.argmax(T.arrange.logpi, dim=0), cmap='tab20', vmax=19, grid=[1, 1])
+    plt.savefig('true.pdf', format='pdf')
+    plt.show()
+    grid.plot_maps(pt.exp(T.arrange.logpi), cmap='jet', vmax=1, grid=(1, K), offset=1)
+    plt.savefig(f'group_prior_{theta_mu}.pdf', format='pdf')
+    plt.show()
+
+    _plot_maps(U, cmap='tab20', dim=(width, width),
+               row_labels=f'indiv_sample_{theta_mu}_{theta_w}', save=True)
+
+    grad = cal_gradient(Y[0][0].T.view(width,width,-1).cpu())
+    plt.imshow(grad, cmap='jet')
+    plt.savefig(f'functional_grad_{sigma2}.pdf')
+    plt.show()
+
 if __name__ == '__main__':
     # original simulation by Jorn
     # nsub_list = np.array([10, 8])
@@ -1439,21 +1481,10 @@ if __name__ == '__main__':
     #              nsub_list=np.array([10]),M=np.array([40], dtype=int),
     #              num_part=1, sigma2=0.2, iter=100)
 
-    res_plot = pd.read_csv('Y:\data\Cerebellum\ProbabilisticParcellationModel\Results/2'
-                           '.simulation/k_diff_simulation_heatmap_sk_aliMd.tsv', delimiter='\t')
-    # 1. Plot evaluation results
-    plt.figure(figsize=(18, 10))
-    crits = ['ari_group', 'dcbc_group', 'coserr', 'ari_indiv', 'dcbc_indiv', 'wcoserr']
-    for i, c in enumerate(crits):
-        plt.subplot(2, 3, i + 1)
-        result = res_plot.pivot(index='K_true', columns='K_fit', values=c + '_dif')
-        rdgn = sb.color_palette("vlag", as_cmap=True)
-        # rdgn = sb.color_palette("Spectral", as_cmap=True)
-        sb.heatmap(result, annot=True, cmap=rdgn, center=0.00, fmt='.2g')
-        plt.title(c)
-
-    plt.suptitle(f'Simulation 4, different region signal strength, iter=100')
-    plt.show()
+    for mu in [60]:
+        for w in [1.5]:
+            synthetic_data(width=50, theta_mu=mu, theta_w=w, sigma2=[0.05, 0.05],
+                           inits=np.array([520, 1211, 1235, 1872, 1740]))
 
     # 3. Generate true individual maps with different parameters
     # test_Y = Y[0][0][0].T.view(30,30,-1)
