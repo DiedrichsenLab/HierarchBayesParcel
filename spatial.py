@@ -1,4 +1,10 @@
-"""Module for Spatial layout classes
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on 12/14/2021
+Module for Spatial layout classes
+
+Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import matplotlib.pyplot as plt

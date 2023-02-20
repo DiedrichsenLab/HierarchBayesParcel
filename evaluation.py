@@ -1,8 +1,13 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
+Created on 12/14/2021
 Evaluation - implements evaluation of emission, arrangement, or full models
 Assumes that data, likelihoods, and estimates comes as NxKxP tensors
 First are basic functions for save evaluation -
 Second are more complex functions that use different criteria
+
+Author: dzhi, jdiedrichsen
 """
 import torch as pt
 import numpy as np

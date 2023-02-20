@@ -2,9 +2,40 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="87ba84bb-63f0-4862-abbf-20d12119c063" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/generativeMRF.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/arrangements.py" beforeDir="false" afterPath="$PROJECT_DIR$/arrangements.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/group/Y_glm7_cerebellum_suit.h5" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/group/cerebellarGreySUIT3mm.nii" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/group/regions_cerebellum_suit.mat" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/indivmaps.label.gii" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/simulate_fusion.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/simulate_fusion.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/evaluation.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/examples.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/full_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/full_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/emissionModel_compare-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_dataFusion-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_missingData-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_sessFusion-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_emissions-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_mpRBM-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_wVMF-checkpoint.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/adjusted_SSE.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/deepMRF.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k10.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k20.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k5.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k50.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k5signal0.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/rbm.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/spatial.py" beforeDir="false" afterPath="$PROJECT_DIR$/spatial.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,7 +78,7 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
-    <property name="settings.editor.selected.configurable" value="project.propVCSSupport.Mappings" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RunManager" selected="Python.simulate_fusion">
     <configuration name="simulate_fusion" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -201,6 +232,7 @@
       <workItem from="1674662463748" duration="14344000" />
       <workItem from="1674868131303" duration="2119000" />
       <workItem from="1675095987886" duration="1308000" />
+      <workItem from="1676840387633" duration="3787000" />
     </task>
     <servers />
   </component>
@@ -227,7 +259,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/arrangements.py</url>
-          <line>534</line>
+          <line>541</line>
           <option name="timeStamp" value="62" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
