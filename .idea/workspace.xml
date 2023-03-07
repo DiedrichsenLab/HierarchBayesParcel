@@ -1,87 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="87ba84bb-63f0-4862-abbf-20d12119c063" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/generativeMRF.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.pdf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/arrangements.py" beforeDir="false" afterPath="$PROJECT_DIR$/arrangements.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/group/Y_glm7_cerebellum_suit.h5" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/group/cerebellarGreySUIT3mm.nii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/group/regions_cerebellum_suit.mat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/indivmaps.label.gii" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
+    <list default="true" id="97b5a78c-973e-453a-bddb-74f1f374aafa" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/evaluation.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/full_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/full_model.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/model.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/emissionModel_compare-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_dataFusion-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_missingData-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/simulate_sessFusion-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_emissions-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_mpRBM-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/.ipynb_checkpoints/test_wVMF-checkpoint.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/adjusted_SSE.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/deepMRF.csv" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k10.csv" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k20.csv" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k5.csv" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k50.csv" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/emission_modelrecover_k5signal0.csv" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/rbm.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/spatial.py" beforeDir="false" afterPath="$PROJECT_DIR$/spatial.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/test_wVMF.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_wVMF.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="FileTemplateManagerImpl">
-    <option name="RECENT_TEMPLATES">
-      <list>
-        <option value="Python Script" />
-        <option value="Jupyter Notebook" />
-      </list>
-    </option>
-  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
-  </component>
-  <component name="GitSEFilterConfiguration">
-    <file-type-list>
-      <filtered-out-file-type name="LOCAL_BRANCH" />
-      <filtered-out-file-type name="REMOTE_BRANCH" />
-      <filtered-out-file-type name="TAG" />
-      <filtered-out-file-type name="COMMIT_BY_MESSAGE" />
-    </file-type-list>
   </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
-  <component name="ProjectId" id="25TXKf2InMnbkLI02oKnZILFKvP" />
+  <component name="ProjectId" id="2MQ4boPadQrn1WnBXpgyhHgbIOS" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent">
-    <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
-  <component name="RunManager" selected="Python.simulate_fusion">
-    <configuration name="simulate_fusion" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+  <component name="RunManager">
+    <configuration name="test_VMFs" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="generativeMRF" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -94,95 +45,7 @@
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/simulate_fusion.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="simulate_sessFusion" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="generativeMRF" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/notebooks" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/simulate_sessFusion.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="speedtest_npVspt" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="generativeMRF" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/notebooks" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/speedtest_npVspt.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="test_wVMF" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="generativeMRF" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/notebooks" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/test_wVMF.py" />
-      <option name="PARAMETERS" value="" />
-      <option name="SHOW_COMMAND_LINE" value="false" />
-      <option name="EMULATE_TERMINAL" value="false" />
-      <option name="MODULE_MODE" value="false" />
-      <option name="REDIRECT_INPUT" value="false" />
-      <option name="INPUT_FILE" value="" />
-      <method v="2" />
-    </configuration>
-    <configuration name="test_wVMF_jd" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
-      <module name="generativeMRF" />
-      <option name="INTERPRETER_OPTIONS" value="" />
-      <option name="PARENT_ENVS" value="true" />
-      <envs>
-        <env name="PYTHONUNBUFFERED" value="1" />
-      </envs>
-      <option name="SDK_HOME" value="" />
-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/notebooks" />
-      <option name="IS_MODULE_SDK" value="true" />
-      <option name="ADD_CONTENT_ROOTS" value="true" />
-      <option name="ADD_SOURCE_ROOTS" value="true" />
-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/test_wVMF_jd.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/notebooks/test_VMFs.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -193,121 +56,27 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.simulate_fusion" />
-        <item itemvalue="Python.simulate_sessFusion" />
-        <item itemvalue="Python.test_wVMF_jd" />
-        <item itemvalue="Python.speedtest_npVspt" />
-        <item itemvalue="Python.test_wVMF" />
+        <item itemvalue="Python.test_VMFs" />
       </list>
     </recent_temporary>
   </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="87ba84bb-63f0-4862-abbf-20d12119c063" name="Changes" comment="" />
-      <created>1645551988868</created>
+      <changelist id="97b5a78c-973e-453a-bddb-74f1f374aafa" name="Changes" comment="" />
+      <created>1677686548177</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1645551988868</updated>
-      <workItem from="1645551991029" duration="1747000" />
-      <workItem from="1645556345050" duration="441000" />
-      <workItem from="1645556800268" duration="4372000" />
-      <workItem from="1645565079234" duration="3037000" />
-      <workItem from="1645633221844" duration="25428000" />
-      <workItem from="1645720218252" duration="18664000" />
-      <workItem from="1645811778451" duration="2844000" />
-      <workItem from="1645815944268" duration="1852000" />
-      <workItem from="1645819570434" duration="46592000" />
-      <workItem from="1646145906253" duration="37733000" />
-      <workItem from="1648566859929" duration="18545000" />
-      <workItem from="1650658237160" duration="5505000" />
-      <workItem from="1650825087390" duration="2643000" />
-      <workItem from="1650905834310" duration="57000" />
-      <workItem from="1650917692563" duration="88670000" />
-      <workItem from="1665260404954" duration="346000" />
-      <workItem from="1668708098182" duration="1270000" />
-      <workItem from="1668716675955" duration="5265000" />
-      <workItem from="1669927680911" duration="942000" />
-      <workItem from="1669938673512" duration="4046000" />
-      <workItem from="1674662463748" duration="14344000" />
-      <workItem from="1674868131303" duration="2119000" />
-      <workItem from="1675095987886" duration="1308000" />
-      <workItem from="1676840387633" duration="3787000" />
+      <updated>1677686548177</updated>
+      <workItem from="1677686550645" duration="1315000" />
+      <workItem from="1678118717985" duration="4217000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/test_emissions.py</url>
-          <line>477</line>
-          <option name="timeStamp" value="27" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/test_emissions.py</url>
-          <line>1196</line>
-          <option name="timeStamp" value="40" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/test_wVMF.py</url>
-          <line>233</line>
-          <option name="timeStamp" value="41" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/arrangements.py</url>
-          <line>541</line>
-          <option name="timeStamp" value="62" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/simulate_sessFusion.py</url>
-          <line>737</line>
-          <option name="timeStamp" value="65" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/simulate_sessFusion.py</url>
-          <line>519</line>
-          <option name="timeStamp" value="67" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/simulate_sessFusion.py</url>
-          <line>715</line>
-          <option name="timeStamp" value="70" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/simulate_fusion.py</url>
-          <line>858</line>
-          <option name="timeStamp" value="106" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/simulate_fusion.py</url>
-          <line>787</line>
-          <option name="timeStamp" value="113" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/notebooks/simulate_fusion.py</url>
-          <line>1440</line>
-          <option name="timeStamp" value="119" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
-  </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/generativeMRF$simulate_missingData.coverage" NAME="simulate_missingData Coverage Results" MODIFIED="1651272664568" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$evaluation.coverage" NAME="evaluation Coverage Results" MODIFIED="1646253969207" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/generativeMRF$speedtest_pt_M1.coverage" NAME="speedtest_pt_M1 Coverage Results" MODIFIED="1671738267750" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$test_wVMF_jd.coverage" NAME="test_wVMF_jd Coverage Results" MODIFIED="1668980712930" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$test_arrangement.coverage" NAME="test_arrangement Coverage Results" MODIFIED="1666230436019" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$test_emissions.coverage" NAME="test_emissions Coverage Results" MODIFIED="1651083609543" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$test_split_VMF.coverage" NAME="test_split_VMF Coverage Results" MODIFIED="1667575081957" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$speedtest_npVspt.coverage" NAME="speedtest_npVspt Coverage Results" MODIFIED="1671738232461" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$plot_data.coverage" NAME="plot_data Coverage Results" MODIFIED="1666624546701" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$test_wVMF.coverage" NAME="test_wVMF Coverage Results" MODIFIED="1670876556592" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$emissions.coverage" NAME="emissions Coverage Results" MODIFIED="1651008660821" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/generativeMRF$simulate_fusion.coverage" NAME="simulate_fusion Coverage Results" MODIFIED="1674676091752" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
-    <SUITE FILE_PATH="coverage/generativeMRF$simulate_sessFusion.coverage" NAME="simulate_sessFusion Coverage Results" MODIFIED="1669243403643" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$test_VMFs.coverage" NAME="test_VMFs Coverage Results" MODIFIED="1677686645477" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
   </component>
 </project>

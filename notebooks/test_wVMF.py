@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 # for testing and evaluating models
 import os
-from full_model import FullModel
+from full_model import FullModel, FullMultiModel
 from arrangements import ArrangeIndependent, expand_mn
 from emissions import MixGaussianExp, MixVMF, wMixVMF
 import plotly.graph_objects as go
@@ -36,121 +36,116 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         Several evaluation plots.
     """
     # Step 1: Set the true model to some interesting value
-    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=False,
+    arrangeT = ArrangeIndependent(K=K, P=P, spatial_specific=True,
                                   remove_redundancy=False)
     emissionT = MixGaussianExp(K=K, N=N, P=P, num_signal_bins=100, std_V=True)
     emissionT.sigma2 = pt.tensor(sigma2)
     emissionT.beta = pt.tensor(beta)
+    emissionT.num_subj = num_sub
 
     # Step 2: Generate data by sampling from the above model
-    T = FullModel(arrangeT, emissionT)
-    U = arrangeT.sample(num_subj=num_sub)
-    Y, signal = emissionT.sample(U, return_signal=True)
+    T = FullMultiModel(arrangeT, [emissionT])
+    T.initialize()
+    U,_ = T.sample()
+
+    W = pt.tensor(np.random.choice(2, P, p=[0.8, 0.2]), dtype=pt.float32)
+    Y, signal = emissionT.sample(U, signal=W.expand(num_sub, -1)+0.1, return_signal=True)
     signal_normal = (signal - signal.min()) / (signal.max() - signal.min())
 
     # Step 3: Compute the log likelihood from the true model
-    Uhat_true, loglike_true = T.Estep(Y=Y)
+    T.emissions[0].initialize(Y)
+    Uhat_true, loglike_true = T.Estep()
     theta_true = T.get_params()
 
     # Step 4: Generate new models for fitting
-    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=False,
+    arrangeM = ArrangeIndependent(K=K, P=P, spatial_specific=True,
                                   remove_redundancy=False)
     # model 1 - use data magnitude as weights (default)
-    emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=1)
+    emissionM1 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting='length')
+    emissionM1.num_subj = num_sub
     # model 2 - use normalized data magnitude + density as weights
-    emissionM2 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=3)
+    emissionM2 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting='lsquare')
+    emissionM2.num_subj = num_sub
     # model 3 - use true data signal
     emissionM3 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
+    emissionM3.num_subj = num_sub
     # model 4 - wVMF as VMF
-    emissionM4 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting=None)
+    emissionM4 = wMixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa, weighting='ones')
+    emissionM4.num_subj = num_sub
     # model 5 - true VMF comparison
     emVMF = MixVMF(K=K, N=N, P=P, X=None, uniform_kappa=uniform_kappa)
+    emVMF.num_subj = num_sub
 
     list_M1, list_M2, list_M3, list_M4, list_M0 = [],[],[],[],[]
     lls_1, lls_2, lls_3, lls_4, lls_0 = [],[],[],[],[]
     Ufit_1, Ufit_2, Ufit_3, Ufit_4, Ufit_0 = [], [], [], [], []
     max_1, max_2, max_3, max_4, max_0 = 1,1,1,1,1
-    for j in range(20):
-        emissionM1.random_params()
-        emissionM2.random_params()
-        emissionM3.random_params()
-        emissionM4.random_params()
-        emVMF.random_params()
 
-        M1 = FullModel(arrangeM, emissionM1)
-        M2 = FullModel(arrangeM, emissionM2)
-        M3 = FullModel(arrangeM, emissionM3)
-        M4 = FullModel(arrangeM, emissionM4)
-        M_vmf = FullModel(arrangeM, emVMF)
+    M1 = FullMultiModel(arrangeM, [emissionM1])
+    M2 = FullMultiModel(arrangeM, [emissionM2])
+    M3 = FullMultiModel(arrangeM, [emissionM3])
+    M4 = FullMultiModel(arrangeM, [emissionM4])
+    M_vmf = FullMultiModel(arrangeM, [emVMF])
 
-        # Step 5: Estimate the parameter thetas to fit the new model using EM
-        M1, ll1, theta1, Uhat_fit_1 = M1.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                                fit_arrangement=False)
-        _, uerr_1 = ev.matching_U(U, Uhat_fit_1)
-        if max_1 > uerr_1:
-            max_1 = uerr_1
-            j_1 = j
+    M1.initialize([Y])
+    M2.initialize([Y])
+    M3.initialize([Y])
+    M3.emissions[0].initialize(Y, weight=signal)
+    M4.initialize([Y])
+    M_vmf.initialize([Y])
 
-        list_M1.append(M1)
-        lls_1.append(ll1)
-        Ufit_1.append(Uhat_fit_1)
+    # Step 5: Estimate the parameter thetas to fit the new model using EM
+    M1, ll1, _, Uhat_fit_1,_ = M1.fit_em_ninits(n_inits=40, first_iter=20, iter=200, tol=0.01,
+                                                fit_emission=True, fit_arrangement=False,
+                                                init_emission=True, init_arrangement=True,
+                                                align = 'arrange', verbose=False)
+    list_M1.append(M1)
+    lls_1.append(ll1)
+    Ufit_1.append(Uhat_fit_1)
 
-        M2, ll2, theta2, Uhat_fit_2 = M2.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                                fit_arrangement=False)
-        _, uerr_2 = ev.matching_U(U, Uhat_fit_2)
-        if max_2 > uerr_2:
-            max_2 = uerr_2
-            j_2 = j
+    M2, ll2, _, Uhat_fit_2,_ = M2.fit_em_ninits(n_inits=40, first_iter=20, iter=200, tol=0.01,
+                                                fit_emission=True, fit_arrangement=False,
+                                                init_emission=True, init_arrangement=True,
+                                                align = 'arrange', verbose=False)
+    list_M2.append(M2)
+    lls_2.append(ll2)
+    Ufit_2.append(Uhat_fit_2)
 
-        list_M2.append(M2)
-        lls_2.append(ll2)
-        Ufit_2.append(Uhat_fit_2)
+    M3, ll3, _, Uhat_fit_3,_ = M3.fit_em_ninits(n_inits=40, first_iter=20, iter=200, tol=0.01,
+                                                fit_emission=True, fit_arrangement=False,
+                                                init_emission=True, init_arrangement=True,
+                                                align = 'arrange', verbose=False)
+    list_M3.append(M3)
+    lls_3.append(ll3)
+    Ufit_3.append(Uhat_fit_3)
 
-        M3, ll3, theta3, Uhat_fit_3 = M3.fit_em(Y=Y, signal=signal.unsqueeze(1).unsqueeze(0),
-                                                iter=max_iter, tol=0.0001,
-                                                fit_arrangement=False)
-        _, uerr_3 = ev.matching_U(U, Uhat_fit_3)
-        if max_3 > uerr_3:
-            max_3 = uerr_3
-            j_3 = j
+    M4, ll4, _, Uhat_fit_4,_ = M4.fit_em_ninits(n_inits=40, first_iter=20, iter=200, tol=0.01,
+                                                fit_emission=True, fit_arrangement=False,
+                                                init_emission=True, init_arrangement=True,
+                                                align = 'arrange', verbose=False)
+    list_M4.append(M4)
+    lls_4.append(ll4)
+    Ufit_4.append(Uhat_fit_4)
 
-        list_M3.append(M3)
-        lls_3.append(ll3)
-        Ufit_3.append(Uhat_fit_3)
+    M0, ll0, _, Uhat_fit_0,_ = M_vmf.fit_em_ninits(n_inits=40, first_iter=20, iter=200, tol=0.01,
+                                                   fit_emission=True, fit_arrangement=False,
+                                                   init_emission=True, init_arrangement=True,
+                                                   align = 'arrange', verbose=False)
+    list_M0.append(M0)
+    lls_0.append(ll0)
+    Ufit_0.append(Uhat_fit_0)
 
-        M4, ll4, theta4, Uhat_fit_4 = M4.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                                fit_arrangement=False)
-        _, uerr_4 = ev.matching_U(U, Uhat_fit_4)
-        if max_4 > uerr_4:
-            max_4 = uerr_4
-            j_4 = j
-
-        list_M4.append(M4)
-        lls_4.append(ll4)
-        Ufit_4.append(Uhat_fit_4)
-
-        M0, ll0, theta0, Uhat_fit_0 = M_vmf.fit_em(Y=Y, signal=None, iter=max_iter, tol=0.0001,
-                                                   fit_arrangement=False)
-        _, uerr_0 = ev.matching_U(U, Uhat_fit_0)
-        if max_0 > uerr_0:
-            max_0 = uerr_0
-            j_0 = j
-
-        list_M0.append(M0)
-        lls_0.append(ll0)
-        Ufit_0.append(Uhat_fit_0)
-
-    U_recon_1, this_uerr_1 = ev.matching_U(U, Ufit_1[j_1])
-    U_recon_2, this_uerr_2 = ev.matching_U(U, Ufit_2[j_2])
-    U_recon_3, this_uerr_3 = ev.matching_U(U, Ufit_3[j_3])
-    U_recon_4, this_uerr_4 = ev.matching_U(U, Ufit_4[j_4])
-    U_recon_0, this_uerr_0 = ev.matching_U(U, Ufit_0[j_0])
+    U_recon_1, this_uerr_1 = ev.matching_U(U, Ufit_1[0])
+    U_recon_2, this_uerr_2 = ev.matching_U(U, Ufit_2[0])
+    U_recon_3, this_uerr_3 = ev.matching_U(U, Ufit_3[0])
+    U_recon_4, this_uerr_4 = ev.matching_U(U, Ufit_4[0])
+    U_recon_0, this_uerr_0 = ev.matching_U(U, Ufit_0[0])
     U_recon_true, this_uerr_true = ev.matching_U(U, Uhat_true)
-    M1 = list_M1[j_1]
-    M2 = list_M2[j_2]
-    M3 = list_M3[j_3]
-    M4 = list_M4[j_4]
-    M0 = list_M0[j_0]
+    M1 = list_M1[0]
+    M2 = list_M2[0]
+    M3 = list_M3[0]
+    M4 = list_M4[0]
+    M0 = list_M0[0]
 
     if plot_weight:
         plt.figure(figsize=(12, 4))
@@ -158,7 +153,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         plt.hist(pt.norm(Y, dim=1).reshape(-1).numpy(), bins=100)
         plt.title('data magnitude')
         plt.subplot(132)
-        plt.hist(M2.emission.W.reshape(-1).numpy(), bins=100)
+        plt.hist(M2.emissions[0].W.reshape(-1).numpy(), bins=100)
         plt.title('wVMF magnitude + density')
         plt.subplot(133)
         plt.hist(signal.reshape(-1).numpy(), bins=100)
@@ -199,7 +194,7 @@ def _simulate_VMF_and_wVMF_from_GME(K=5, P=100, N=40, num_sub=10, max_iter=50, b
         z_lines = list()
         # create the coordinate list for the lines
         for i, m in enumerate(Ms):
-            V = m.emission.V * max_length
+            V = m.emissions[0].V * max_length
             this_x, this_y, this_z = [], [], []
             for p in range(K):
                 this_x.append(0)
@@ -451,7 +446,7 @@ if __name__ == '__main__':
 
     # a,b = _check_VMF_and_wVMF_equivalent(K=5, P=5000, N=20, num_sub=1, max_iter=100,
     #                                      kappa=30, plot=True)
-    iter = 100
+    iter = 10
     dof = np.sqrt(iter)
     for i in range(iter):
         print(f'iter - {i}')
