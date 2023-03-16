@@ -4,7 +4,7 @@
 Created on 2/18/2022
 Full Model class
 
-Author: DZHI, jdiedrichsen
+Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import torch as pt

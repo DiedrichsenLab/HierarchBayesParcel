@@ -1,4 +1,11 @@
-# Example Models
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on 12/14/2021
+Arrangement models class
+
+Author: dzhi, jdiedrichsen
+"""
 import os  # to handle path information
 import numpy as np
 import matplotlib.pyplot as plt

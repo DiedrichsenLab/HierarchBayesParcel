@@ -1,8 +1,13 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
+Created on 12/14/2021
 Evaluation - implements evaluation of emission, arrangement, or full models
 Assumes that data, likelihoods, and estimates comes as NxKxP tensors
 First are basic functions for save evaluation -
 Second are more complex functions that use different criteria
+
+Author: dzhi, jdiedrichsen
 """
 import torch as pt
 import numpy as np
@@ -47,7 +52,7 @@ def ARI(U, Uhat, sparse=True):
     if n_01 == 0 and n_10 == 0:
         return pt.tensor(1.0)
 
-    return 1 - 2.0*(n_11*n_00 - n_10*n_01)/((n_11+n_10)*(n_10+n_00)+(n_11+n_01)*(n_01+n_00))
+    return 2.0*(n_11*n_00 - n_10*n_01)/((n_11+n_10)*(n_10+n_00)+(n_11+n_01)*(n_01+n_00))
 
 def BIC(loglik, N, d):
     """Bayesian Information Criterion

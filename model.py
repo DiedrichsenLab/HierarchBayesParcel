@@ -1,4 +1,11 @@
-# Example Models
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on 12/14/2021
+Base model class
+
+Author: dzhi, jdiedrichsen
+"""
 import numpy as np
 import torch as pt
 from copy import copy, deepcopy
