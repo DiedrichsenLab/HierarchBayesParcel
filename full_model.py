@@ -265,7 +265,8 @@ class FullMultiModel:
             self.nsubj_list.append(em.num_subj)
             if isinstance(subj_ind,(list,np.ndarray)):
                 if len(subj_ind[i])!=self.nsubj_list[i]:
-                    raise(NameError(f"length of subj_ind[{i}] does not match number of subjects: {self.n_subj_list[i]}"))
+                    raise NameError(f"length of subj_ind[{i}] does not match number of subjects:"
+                                    f" {self.n_subj_list[i]}")
                 else:
                     self.subj_ind.append(subj_ind[i])
             elif subj_ind == 'separate':
@@ -428,16 +429,21 @@ class FullMultiModel:
                     Otherwise, freeze it
             first_evidence (bool or list of bool): Determines whether evidence
                     is passed from emission models to arrangement model on the
-                    first iteration. Usually set to True. If a list of bools, it determines this for each emission model seperately. To improve alignment between emission models from random starting values, only pass evidence from one or none of the emission models.
+                    first iteration. Usually set to True. If a list of bools,
+                    it determines this for each emission model seperately.
+                    To improve alignment between emission models from random
+                    starting values, only pass evidence from one or none of
+                    the emission models.
 
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
                 If seperate_ll, the first column is ll_A, the second ll_E
             theta (ndarray): History of the parameter vector
-            Uhat (pt.tensor): (n_subj,K,P) matrix of estimates - note that this is in the
-                space of arrangement model - call distribute_evidence(Uhat) to get this
-                in the space of emission model
+            Uhat (pt.tensor): (n_subj,K,P) matrix of estimates - note that
+                this is in the space of arrangement model - call
+                distribute_evidence(Uhat) to get this in the space of
+                emission model
         """
         if not hasattr(fit_emission, "__len__"):
             fit_emission = [fit_emission]*len(self.emissions)
@@ -465,6 +471,8 @@ class FullMultiModel:
                         emLL[:,:,:]=0
             emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
             del emloglik_c
+            pt.cuda.empty_cache()
+
             Uhat, ll_A = self.arrange.Estep(emloglik_comb)
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))

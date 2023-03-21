@@ -16,10 +16,6 @@ from generativeMRF.model import Model
 from generativeMRF.depreciated.AIS_test import rejection_sampling
 import generativeMRF.arrangements as ar
 
-PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
-log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
-
-
 class EmissionModel(Model):
     def __init__(self, K=4, N=10, P=20, data=None, X=None):
         """Abstract constructor of emission models
@@ -34,6 +30,7 @@ class EmissionModel(Model):
         self.K = K  # Number of states
         self.P = P
         self.nparams = 0
+        self.PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
         if X is not None:
             if type(X) is np.ndarray:
                 X = pt.tensor(X, dtype=pt.get_default_dtype())
@@ -196,7 +193,7 @@ class MixGaussian(EmissionModel):
         uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
         YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2*YV + uVVu.reshape((self.K, 1))
-        LL = - 0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2)) \
+        LL = - 0.5 * self.N*(log(self.PI) + log(self.sigma2)) \
              - 0.5 / self.sigma2 * self.rss
 
         return pt.nan_to_num(LL)
@@ -311,10 +308,13 @@ class MixGaussianExp(EmissionModel):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             self.s[i, :, :] = (YV / uVVu - self.beta * self.sigma2).T  # Maximized g
             self.s[i][self.s[i] < 0] = 0  # Limit to 0
-            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s[i, :, :] ** 2 * uVVu.reshape((self.K, 1))
+            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :]\
+                                + self.s[i, :, :] ** 2 * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
-                          + self.alpha * pt.log(self.beta) - pt.special.gammaln(self.alpha) - self.beta * self.s[i, :, :]
+            LL[i, :, :] = - 0.5 * self.N * (log(2*self.PI) + pt.log(self.sigma2)) \
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+                          + self.alpha * pt.log(self.beta) - \
+                          pt.special.gammaln(self.alpha) - self.beta * self.s[i, :, :]
 
         return LL
 
@@ -341,9 +341,11 @@ class MixGaussianExp(EmissionModel):
             if signal is None:
                 for k in range(self.K):
                     for p in range(self.P):
-                        # Here try to sampling the posterior of p(s_i|y_i, u_i) for each given y_i and u_i(k)
+                        # Here try to sampling the posterior of p(s_i|y_i, u_i)
+                        # for each given y_i and u_i(k)
                         x = pt.linspace(0,self.maxlength*1.1,77)
-                        loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
+                        loglike = - 0.5 * (1 / self.sigma2) \
+                                  * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
                         # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                         post = loglik2prob(loglike)
                         self.s[i, k, p] = pt.sum(x * post)
@@ -356,9 +358,11 @@ class MixGaussianExp(EmissionModel):
                 self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
                 self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
-            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
+            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] \
+                                + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+            LL[i, :, :] = - 0.5 * self.N * (log(2*self.PI) + pt.log(self.sigma2)) \
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + pt.log(self.beta) - self.beta * self.s[i, :, :]
 
         return LL
@@ -412,8 +416,9 @@ class MixGaussianExp(EmissionModel):
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] \
                                 + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2))\
-                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] + pt.log(self.beta) - self.beta * self.s[i, :, :]
+            LL[i, :, :] = - 0.5 * self.N * (pt.log(2*self.PI) + pt.log(self.sigma2)) \
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+                          + pt.log(self.beta) - self.beta * self.s[i, :, :]
 
         return pt.nan_to_num(LL)
 
@@ -437,7 +442,7 @@ class MixGaussianExp(EmissionModel):
         dist = pt.distributions.exponential.Exponential(self.beta)
         x = dist.sample((self.num_signal_bins,))
 
-        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+        logpi = pt.log(pt.tensor(2*pt.pi, dtype=pt.get_default_dtype()))
         if signal is None:
             # This is p(y,s|u)
             loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x
@@ -502,7 +507,7 @@ class MixGaussianExp(EmissionModel):
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
                    + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (pt.log(2*PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss \
+        LL = -0.5 * self.N * (pt.log(2*self.PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss \
              + pt.log(self.beta) - self.beta * self.s
 
         return pt.nan_to_num(LL)
@@ -525,7 +530,7 @@ class MixGaussianExp(EmissionModel):
         signal_max = self.maxlength*1.2  # Make the maximum signal 1.2 times the max data magnitude
         signal_bin = signal_max / self.num_signal_bins
         x = pt.linspace(signal_bin/2, signal_max, self.num_signal_bins)
-        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+        logpi = pt.log(pt.tensor(2*pt.pi, dtype=pt.get_default_dtype()))
         if signal is None:
             # This is p(y,s|u)
             loglike = - 0.5/self.sigma2 * (-2*YV.view(n_subj,self.K,self.P,1)*x
@@ -585,7 +590,7 @@ class MixGaussianExp(EmissionModel):
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
                    + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (log(2*PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
+        LL = -0.5 * self.N * (log(2*self.PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
              + pt.log(self.beta) - self.beta * self.s
 
         return pt.nan_to_num(LL)
@@ -799,7 +804,7 @@ class MixVMF(EmissionModel):
 
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
-        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
+        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*self.PI) - \
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.uniform_kappa:
@@ -1213,7 +1218,7 @@ class MixGaussianGamma(EmissionModel):
             # self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, self.s[i, :, :])) + \
             #                     np.dot(VV, self.s2[i, :, :])
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+            LL[i, :, :] = -0.5 * self.N * (pt.log(2*self.PI)
                           + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + self.alpha * pt.log(self.beta) - pt.special.gammaln(self.alpha) \
                           + (self.alpha - 1) * self.logs[i, :, :] - self.beta * self.s[i, :, :]
@@ -1343,10 +1348,12 @@ def log_bessel_function(order, kappa):
         kappa: the input value
     Returns: The values of log of modified bessel function
     """
+    PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
     frac = kappa / order
     square = 1 + frac**2
     root = sqrt(square)
     eta = root + log(frac) - log(1 + root)
     approx = - log(sqrt(2 * PI * order)) + order * eta - 0.25*log(square)
-
-    return approx
+    
+    # Convert result to pytorch default dtype
+    return approx.to(pt.get_default_dtype())
