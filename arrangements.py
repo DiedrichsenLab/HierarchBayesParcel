@@ -40,7 +40,7 @@ class ArrangeIndependent(ArrangementModel):
     """
     def __init__(self, K=3, P=100,
                  spatial_specific=True,
-                 remove_redundancy=True):
+                 remove_redundancy=False):
         super().__init__(K, P)
         # In this model, the spatially independent arrangement has
         # two options, spatially uniformed and spatially specific prior
@@ -160,7 +160,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
                 indx_reduced,
                 same_parcels=False,
                 spatial_specific=True,
-                remove_redundancy=True):
+                remove_redundancy=False):
         if type(indx_full) is np.ndarray:
             indx_full = pt.tensor(indx_full, dtype=pt.get_default_dtype()).long()
 
@@ -255,6 +255,85 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         Returns: p[] marginal probability under the model
         """
         return self.map_to_full(pt.softmax(self.logpi,dim=0))
+
+class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
+    """Independent arrangement model without symmetry constraint, 
+    but like a symmetric model, it keeps the parcels (and emission models)
+    for the left and right hemishere separate. 
+    P is the same to the full data : 
+    K (parcels for arrangement model)
+    K_full (parcels for data)
+    Parameters:
+        K (int):
+            Number of different parcels
+        indx_hem (ndarray/tensor): 
+            1 x P array of indices for the hemisphere
+            -1: Left
+            0: Midline 
+            1: Right
+        spatially_specific (bool):  
+            Use a spatially specific model (default True)
+        remove_redundancy (bool): 
+            Code with K probabilities with K or K-1 parameters? 
+    """
+    def __init__(self, K,
+                indx_hem,
+                spatial_specific=True,
+                remove_redundancy=False):
+        
+        if type(indx_hem) is np.ndarray:
+            indx_hem = pt.tensor(indx_full, dtype=pt.get_default_dtype()).long()
+
+
+        self.indx_hem = indx_hem
+
+        self.P = indx_hem.shape[0]
+        self.K_full = K
+        self.K = int(K/2)
+        super().__init__(self.K, self.P, spatial_specific, remove_redundancy)
+
+    def map_to_full(self,Uhat):
+        """ remapping evidence from an
+        arrangement space to a emission space (here it doesn't do anything)
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        if Uhat.ndim == 3:
+            Umap = pt.zeros((Uhat.shape[0],self.K_full,self.P))
+            Umap[:,:self.K,:]=Uhat[:,self.indx_hem==-1,:]
+            Umap[:,self.K:,:]=Uhat[:,self.indx_hem==1,:]
+            # Map midline to both 
+            Umap[:,:self.K,:]=Uhat[:,self.indx_hem==0,:]/2
+            Umap[:,self.K:,:]=Uhat[:,self.indx_hem==0,:]/2
+        elif Uhat.ndim==2:
+            Umap = pt.zeros((self.K_full,self.P))
+            Umap[:self.K,:]=Uhat[self.indx_hem==-1,:]
+            Umap[self.K:,:]=Uhat[self.indx_hem==1,:]
+            # Map midline to both 
+            Umap[:self.K,:]=Uhat[self.indx_hem==0,:]/2
+            Umap[self.K:,:]=Uhat[self.indx_hem==0,:]/2
+        return Umap
+
+    def map_to_arrange(self,emloglik):
+        """ Maps emission log likelihoods to the internal size of the
+        representation
+
+        Args:
+            emloglik (list): List of emission logliklihoods
+        Returns:
+            emloglik_comb (ndarray): ndarray of emission logliklihoods
+        """
+        emloglik_comb = pt.zeros((emloglik.shape[0],self.K,self.P))
+        emloglik_comb[:,:,self.indx==-1] = emloglik[:,:self.K,self.indx==-1] 
+        emloglik_comb[:,:,self.indx==1] = emloglik[:,self.K:,self.indx==1] 
+        emloglik_comb[:,:,self.indx==0] = emloglik[:,:self.K,self.indx==0] 
+        emloglik_comb[:,:,self.indx==0] += emloglik[:,self.K:,self.indx==0] 
+    
+        return emloglik_comb
+
+
 
 class PottsModel(ArrangementModel):
     """
