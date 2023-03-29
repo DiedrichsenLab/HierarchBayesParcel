@@ -187,7 +187,7 @@ class MixGaussian(EmissionModel):
         return: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
         if sub is None:
-            sub = sub = range(self.Y.shape[0])
+            sub = range(self.Y.shape[0])
 
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
         uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
@@ -804,7 +804,8 @@ class MixVMF(EmissionModel):
 
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
-        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*self.PI) - \
+        PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
+        logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.uniform_kappa:

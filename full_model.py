@@ -411,10 +411,8 @@ class FullMultiModel:
         else:
             return Uhat, ll_a.sum()+ll_e
 
-    def fit_em(self,iter=30, tol=0.01, seperate_ll=False,
-            fit_emission=True,
-            fit_arrangement=True,
-            first_evidence=True):
+    def fit_em(self,iter=30, tol=0.01, seperate_ll=False, fit_emission=True,
+               fit_arrangement=True, first_evidence=True):
         """ Run the EM-algorithm on a full model
             this demands that both the Emission and Arrangement model
             have a full Estep and Mstep and can calculate the likelihood,
@@ -465,6 +463,7 @@ class FullMultiModel:
             # rather than save a local variable `emloglik` to waste memory
             # If first iteration, only pass the desired emission models (pretraining)
             emloglik_c = [e.Estep() for e in self.emissions]
+            pt.cuda.empty_cache()
             if i==0:                
                 for j,emLL in enumerate(emloglik_c):
                     if not first_evidence[j]:
@@ -588,6 +587,129 @@ class FullMultiModel:
                                            first_evidence=True)
         ll_n = pt.cat([max_ll,ll[1:]])
         theta_n = pt.cat([best_theta,theta[1:, :]])
+        return self, ll_n, theta_n, U_hat, first_lls
+
+    def fit_sml(self, Y, iter=60, stepsize=0.8, estep='sample',
+                seperate_ll=False, fit_emission=True, fit_arrangement=True,
+                first_evidence=True):
+        """ Runs a Stochastic Maximum likelihood algorithm on a full model.
+        The emission model is still assumed to have E-step and Mstep.
+        The arrangement model is has a postive and negative phase estep,
+        and a gradient M-step. The arrangement likelihood is not necessarily
+        FUTURE EXTENSIONS:
+        * Sampling of subjects from training set
+        * initialization of parameters
+        * adaptitive stopping criteria
+        * Adaptive stepsizes
+        * Gradient acceleration methods
+        Args:
+            Y (3d-ndarray): numsubj x N x numvoxel array of data
+            iter (int): Maximal number of iterations
+            stepsize (double): Fixed step size for MStep
+        Returns:
+            model (Full Model): fitted model (also updated)
+            ll (ndarray): Log-likelihood of full model as function of iteration
+                If seperate_ll, the first column is ll_A, the second ll_E
+            theta (ndarray): History of the parameter vector
+        """
+        if not hasattr(fit_emission, "__len__"):
+            fit_emission = [fit_emission]*len(self.emissions)
+        if not hasattr(first_evidence, "__len__"):
+            first_evidence = [first_evidence]*len(self.emissions)
+
+        # Initialize the tracking
+        ll = np.zeros((iter,2))
+        theta = np.zeros((iter, self.nparams))
+
+        for i in range(iter):
+            print(f'start: {i}')
+            # Track the parameters
+            theta[i, :] = self.get_params()
+
+            # Get the (approximate) posterior p(U|Y)
+            emloglik_c = [e.Estep() for e in self.emissions]
+            pt.cuda.empty_cache()
+            if i==0:
+                for j,emLL in enumerate(emloglik_c):
+                    if not first_evidence[j]:
+                        emLL[:,:,:]=0
+            emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
+            del emloglik_c
+            pt.cuda.empty_cache()
+
+            if estep=='sample':
+                Uhat, ll_A = self.arrange.Estep(emloglik_comb)
+                if hasattr(self.arrange, 'Eneg'):
+                    self.arrange.Eneg(emission_model=self.emissions[0])
+
+            # Compute the expected complete logliklihood
+            ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
+            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 1] = pt.sum(ll_E)
+            if pt.isnan(ll[i,:].sum()):
+                raise(NameError('Likelihood returned a NaN'))
+
+            # Updates the parameters
+            Uhat_split = self.distribute_evidence(Uhat)
+            if fit_arrangement:
+                self.arrange.Mstep()
+            for em, Us in enumerate(Uhat_split):
+                if fit_emission[em]:
+                    self.emissions[em].Mstep(Us)
+
+        # Clear the temporary stats from the arrangement model to concerve memory
+        self.arrange.clear()
+
+        if seperate_ll:
+            return self, ll[0:i+1], theta[0:i+1, :], Uhat
+        else:
+            return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
+
+    def fit_sml_ninits(self, n_inits=20, first_iter=7, iter=30, stepsize=0.8,
+                       estep='sample', fit_emission=True, fit_arrangement=True,
+                       init_emission=True, init_arrangement=True, align='arrange',
+                       verbose=True):
+        max_ll = pt.tensor([-pt.inf])
+        first_lls = pt.full((n_inits, first_iter), pt.nan)
+        # Set the first passing of evidence based on alignment pretraining:
+        if align is None:
+            first_ev = [True] * len(self.emissions)
+        elif align == 'arrange':
+            first_ev = [False] * len(self.emissions)
+        else:
+            first_ev = [False] * len(self.emissions)
+            first_ev[align] = True
+        if verbose:
+            print('n_inits starting')
+            report_cuda_memory()
+
+        for i in range(n_inits):
+            # Making the new set of emission models with random initializations
+            fm = deepcopy(self)
+            if verbose:
+                print(f'{i} n inits')
+                report_cuda_memory()
+            if init_arrangement:
+                fm.arrange.random_params()
+            if init_emission:
+                for em in fm.emissions:
+                    em.random_params()
+
+            fm, this_ll, theta, _ = fm.fit_sml(first_iter, tol=tol, seperate_ll=False,
+                                               fit_emission=fit_emission,
+                                               fit_arrangement=fit_arrangement,
+                                               first_evidence=first_ev)
+            first_lls[i, :len(this_ll)] = this_ll
+            if this_ll[-1] > max_ll[-1]:
+                max_ll = this_ll
+                self = fm
+                best_theta = theta
+        self, ll, theta, U_hat = self.fit_sml(iter=iter-first_iter, tol=tol, seperate_ll=False,
+                                              fit_emission=fit_emission,
+                                              fit_arrangement=fit_arrangement,
+                                              first_evidence=True)
+        ll_n = pt.cat([max_ll, ll[1:]])
+        theta_n = pt.cat([best_theta, theta[1:, :]])
         return self, ll_n, theta_n, U_hat, first_lls
 
     def get_params(self):

@@ -181,7 +181,9 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
         T: Pandas data frame with epoch level performance metrics
         thetaH: History of fitted thetas
     """
+    emM.initialize(Ytrain)
     emlog_train = emM.Estep(Ytrain)
+    emM.initialize(Ytest)
     emlog_test = emM.Estep(Ytest)
     num_subj = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
@@ -480,8 +482,10 @@ def simulation_2():
         #         theta_mu=20,theta_w=2,sigma2=sigma2,
         #         do_plot=1)
 
-        emloglik_train = Mtrue.emission.Estep(Y=Ytrain)
-        emloglik_test = Mtrue.emission.Estep(Y=Ytest)
+        Mtrue.emission.initialize(Ytrain)
+        emloglik_train = Mtrue.emission.Estep()
+        Mtrue.emission.initialize(Ytest)
+        emloglik_test = Mtrue.emission.Estep()
         P = Mtrue.emission.P
 
         # Generate partitions for region-completion testing
