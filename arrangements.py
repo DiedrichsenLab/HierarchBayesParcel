@@ -301,7 +301,7 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
 
         self.indx_hem = indx_hem
 
-        self.P = indx_full.shape[1]
+        self.P = indx_hem.shape[0]
         self.K_full = K
         self.K = int(K / 2)
 
@@ -341,15 +341,15 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
         Returns:
             emloglik_comb (ndarray): ndarray of emission logliklihoods
         """
-        emloglik_comb = pt.zeros((emloglik.shape[0], self.K_full, self.P_full))
-        emloglik_comb[:, :, self.indx_hem == -
-                      1] = emloglik[:, :self.K_full, self.indx_hem == -1]
-        emloglik_comb[:, :, self.indx_hem ==
-                      1] = emloglik[:, self.K_full:, self.indx_hem == 1]
-        emloglik_comb[:, :, self.indx_hem ==
-                      0] = emloglik[:, :self.K_full, self.indx_hem == 0]
-        emloglik_comb[:, :, self.indx_hem ==
-                      0] += emloglik[:, self.K_full:, self.indx_hem == 0]
+        emloglik_comb = pt.zeros((emloglik.shape[0], self.K, self.P))
+        emloglik_comb[:, :, self.indx == -
+                      1] = emloglik[:, :self.K, self.indx == -1]
+        emloglik_comb[:, :, self.indx ==
+                      1] = emloglik[:, self.K:, self.indx == 1]
+        emloglik_comb[:, :, self.indx ==
+                      0] = emloglik[:, :self.K, self.indx == 0]
+        emloglik_comb[:, :, self.indx ==
+                      0] += emloglik[:, self.K:, self.indx == 0]
 
         return emloglik_comb
 
