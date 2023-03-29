@@ -291,8 +291,8 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
     """
 
     def __init__(self, K,
-                 indx_full,
                  indx_hem,
+                 indx_reduced,
                  spatial_specific=True,
                  remove_redundancy=False):
 
@@ -305,7 +305,7 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
         self.K_full = K
         self.K = int(K / 2)
 
-        super().__init__(self.K, indx_full, indx_hem,
+        super().__init__(self.K, indx_hem, indx_reduced,
                          spatial_specific=spatial_specific, remove_redundancy=remove_redundancy)
 
     def map_to_full(self, Uhat):
