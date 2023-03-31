@@ -331,11 +331,11 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
                                                        midline.squeeze()] / 2
         elif Uhat.ndim == 2:
             Umap = pt.zeros((self.K_full, self.P))
-            Umap[:self.K, left.squeeze()] = Uhat[left.squeeze(), :]
-            Umap[self.K:, right.squeeze()] = Uhat[right.squeeze(), :]
+            Umap[:self.K, left.squeeze()] = Uhat[:, left.squeeze()]
+            Umap[self.K:, right.squeeze()] = Uhat[:, right.squeeze()]
             # Map midline to both
-            Umap[:self.K, midline.squeeze()] = Uhat[midline.squeeze(), :] / 2
-            Umap[self.K:, midline.squeeze()] = Uhat[midline.squeeze(), :] / 2
+            Umap[:self.K, midline.squeeze()] = Uhat[:, midline.squeeze()] / 2
+            Umap[self.K:, midline.squeeze()] = Uhat[:, midline.squeeze()] / 2
         return Umap
 
     def map_to_arrange(self, emloglik):
