@@ -301,33 +301,41 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
 
         self.indx_hem = indx_hem
 
-        self.P = indx_hem.shape[0]
-        self.K_full = K
+        self.P = indx_hem.shape[1]
+
         self.K = int(K / 2)
-        super().__init__(self.K, self.P, spatial_specific, remove_redundancy)
+        super().__init__(K, indx_full=indx_hem,
+                         indx_reduced=indx_hem.T, spatial_specific=spatial_specific, remove_redundancy=remove_redundancy)
 
     def map_to_full(self, Uhat):
         """ remapping evidence from an
-        arrangement space to a emission space (here it doesn't do anything)
+        arrangement space to a emission space
         Args:
             Uhat (ndarray): tensor of estimated arrangement
         Returns:
             Uhat (ndarray): tensor of estimated arrangements
         """
+        left = self.indx_hem == -1
+        right = self.indx_hem == 1
+        midline = self.indx_hem == 0
         if Uhat.ndim == 3:
             Umap = pt.zeros((Uhat.shape[0], self.K_full, self.P))
-            Umap[:, :self.K, :] = Uhat[:, self.indx_hem == -1, :]
-            Umap[:, self.K:, :] = Uhat[:, self.indx_hem == 1, :]
+            # left hemisphere
+            Umap[:, :self.K, left.squeeze()] = Uhat[:, :, left.squeeze()]
+            # right hemisphere
+            Umap[:, self.K:, right.squeeze()] = Uhat[:, :, right.squeeze()]
             # Map midline to both
-            Umap[:, :self.K, :] = Uhat[:, self.indx_hem == 0, :] / 2
-            Umap[:, self.K:, :] = Uhat[:, self.indx_hem == 0, :] / 2
+            Umap[:, :self.K, midline.squeeze()] = Uhat[:, :,
+                                                       midline.squeeze()] / 2
+            Umap[:, self.K:, midline.squeeze()] = Uhat[:, :,
+                                                       midline.squeeze()] / 2
         elif Uhat.ndim == 2:
             Umap = pt.zeros((self.K_full, self.P))
-            Umap[:self.K, :] = Uhat[self.indx_hem == -1, :]
-            Umap[self.K:, :] = Uhat[self.indx_hem == 1, :]
+            Umap[:self.K, left.squeeze()] = Uhat[left.squeeze(), :]
+            Umap[self.K:, right.squeeze()] = Uhat[right.squeeze(), :]
             # Map midline to both
-            Umap[:self.K, :] = Uhat[self.indx_hem == 0, :] / 2
-            Umap[self.K:, :] = Uhat[self.indx_hem == 0, :] / 2
+            Umap[:self.K, midline.squeeze()] = Uhat[midline.squeeze(), :] / 2
+            Umap[self.K:, midline.squeeze()] = Uhat[midline.squeeze(), :] / 2
         return Umap
 
     def map_to_arrange(self, emloglik):
@@ -339,15 +347,20 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
         Returns:
             emloglik_comb (ndarray): ndarray of emission logliklihoods
         """
-        emloglik_comb = pt.zeros((emloglik.shape[0], self.K, self.P))
-        emloglik_comb[:, :, self.indx == -
-                      1] = emloglik[:, :self.K, self.indx == -1]
-        emloglik_comb[:, :, self.indx ==
-                      1] = emloglik[:, self.K:, self.indx == 1]
-        emloglik_comb[:, :, self.indx ==
-                      0] = emloglik[:, :self.K, self.indx == 0]
-        emloglik_comb[:, :, self.indx ==
-                      0] += emloglik[:, self.K:, self.indx == 0]
+        emloglik_comb = pt.zeros((emloglik.shape[0], self.K, self.P_full))
+        # left hemisphere
+        emloglik_comb[:, :, self.indx_hem[0, :] == -1] \
+            = emloglik[:, :self.K, self.indx_hem[0, :] == -1]
+        # right hemisphere
+        emloglik_comb[:, :, self.indx_hem[0, :] == 1] \
+            = emloglik[:, self.K:, self.indx_hem[0, :] == 1]
+
+        # midline from left
+        emloglik_comb[:, :, self.indx_hem[0, :] == 0] \
+            = emloglik[:, :self.K, self.indx_hem[0, :] == 0]
+        # midline from right
+        emloglik_comb[:, :, self.indx_hem[0, :] == 0] \
+            += emloglik[:, self.K:, self.indx_hem[0, :] == 0]
 
         return emloglik_comb
 
