@@ -717,7 +717,6 @@ class cmpRBM(mpRBM):
         """convolutional multinomial (categorial) restricted Boltzman machine
         for learning of brain parcellations for probabilistic input
         Uses variational stochastic maximum likelihood for learning
-
         Args:
             K (int): number of classes
             P (int): number of brain locations
@@ -742,6 +741,7 @@ class cmpRBM(mpRBM):
             if Wc.ndim==2:
                 self.Wc= Wc.view(Wc.shape[0],Wc.shape[1],1)
             self.nh = Wc.shape[0]
+
             if theta is None:
                 self.theta = pt.randn((self.Wc.shape[2],))
             else:
@@ -808,7 +808,6 @@ class cmpRBM(mpRBM):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
             gather_ss (bool):
                 Gather Sufficient statistics for M-step (default = True)
-
         Returns:
             Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
@@ -853,6 +852,274 @@ class cmpRBM(mpRBM):
             emloglik = emission_model.Estep(Y)
             _,H = self.sample_h(U)
             _,U = self.sample_U(H,emloglik)
+        self.eneg_H = H
+        self.eneg_U = U
+        # Persistent: Keep the new gibbs samples around
+        self.gibbs_U[use_chains]=U
+        return self.eneg_U,self.eneg_H
+
+    def Mstep(self):
+        """Performs gradient step on the parameters
+        Args:
+            alpha (float, optional): [description]. Defaults to 0.8.
+        """
+        N = self.epos_Hhat.shape[0]
+        M = self.eneg_H.shape[0]
+        # Update the connectivity
+        if self.fit_W:
+            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),self.epos_Uhat).sum(dim=0)/N
+            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),self.eneg_U).sum(dim=0)/M
+            # If we are dealing with component Wc:
+            if self.Wc is not None:
+                gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
+                weights = pt.sum(self.Wc,dim=(0,1))
+                gradT   = pt.sum(gradW*self.Wc,dim=(0,1))/weights
+                self.theta += self.alpha * gradT
+                self.W = (self.Wc * self.theta).sum(dim=2)
+            else:
+                self.W += self.alpha * gradW
+
+        # Update the bias term
+        if self.fit_bu:
+            gradBU =   1 / N * pt.sum(self.epos_Uhat,0)
+            gradBU -=  1 / M * pt.sum(self.eneg_U,0)
+            self.bu += self.alpha * gradBU
+
+class wcmDBM(ArrangementModel, pt.nn.Module):
+    def __init__(self, K, P, nh=None, W=None, theta=None, dist=None,
+                 eneg_iter=10, epos_iter=10, eneg_numchains=77):
+        """weighted convolutional multinomial Deep Boltzman Machine
+           (wcmDBM) for learning of brain parcellations for probabilistic
+           input Uses variational stochastic maximum likelihood for learning
+
+        Args:
+            K (int): number of classes
+            P (int): number of brain locations
+            nh (int): number of hidden multinomial nodes
+            Wc (tensor): 2d/3d-tensor for connecticity weights
+            theta (tensor): 1d vector of parameters
+            eneg_iter (int): HOw many iterations for each negative step.
+                Defaults to 3.
+            eneg_numchains (int): How many chains. Defaults to 77.
+        """
+        super().__init__(K, P) # Initialize the base class 1
+        super().__init__() # Initialize the base class 2
+
+        # If no hidden nodes are specified, nh is the number of voxels
+        self.nh = nh if nh is not None else self.P
+        self.bu = pt.nn.Parameter(pt.randn(self.K, self.P))
+
+        # Initialize the connectivity weights between H and U layers
+        if W is not None:
+            # If W is specified, use it as fixed connection weights
+            self.W = W
+            self.nh = W.shape[0]
+            self.set_param_list(['bu'])
+        else:
+            if dist is None:
+                # If dist is not specified, W becomes free parameters
+                # that are initialized randomly
+                self.W = pt.nn.Parameter(pt.randn(self.nh, self.P))
+                self.set_param_list(['bu', 'W'])
+            else:
+                # If dist is specified, W is initialized to be spatially
+                # dependent weights, usually sparsed due to dist is a
+                # sparse matrix
+                W = dist.max() - dist
+                # Initialize the model parameters
+                self.W = pt.nn.Parameter(pt.randn(self.nh, self.P))
+
+                self.set_param_list(['bu', 'theta'])
+
+        self.Wc  = Wc
+        self.theta = None
+        self.set_param_list(['bu','W'])
+
+        self.gibbs_U = None # samples from the hidden layer for negative phase
+        self.alpha = 0.01
+        self.epos_iter = epos_iter
+        self.eneg_iter = eneg_iter
+        self.eneg_numchains = eneg_numchains
+        self.fit_bu = True
+        self.fit_W = True
+        self.use_tempered_transition = False
+        # pretrain: use only the top RBM for the positive and negative phases
+        self.pretrain = False
+        self.tmp_list = ['epos_Uhat','epos_Hhat','eneg_U','eneg_H']
+
+    def random_params(self):
+        """ Sets prior parameters to random starting values
+        """
+        self.bu = pt.randn(self.K, self.P)
+        if self.Wc is not None:
+            self.theta = pt.randn((1,))
+
+        else:
+            self.W = pt.randn(self.nh, self.P)
+
+    def sample_h(self, U):
+        """Sample hidden nodes given an activation state of the outer nodes
+        Args:
+            U (NxKxP tensor): Indicator or probability tensor of outer layer
+        Returns:
+            p_h: (N x nh tensor): probability of the hidden nodes
+            sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
+        """
+        wv = pt.matmul(U,self.W.t())
+        # activation = wv + self.b
+        # p_h = pt.sigmoid(activation)
+        # sample_h = pt.bernoulli(p_h)
+        p_h = pt.softmax(wv,1)
+        sample_h = sample_multinomial(p_h, kdim=1)
+        return p_h, sample_h
+
+    def sample_U(self, h, emloglik = None):
+        """ Returns a sampled U as a unpacked indicator variable
+        Args:
+            h tensor: Hidden states (NxKxnh)
+        Returns:
+            p_u: Probability of each node [N,K,P] array
+            sample_U: One-hot encoding of random sample [N,K,P] array
+        """
+        N = h.shape[0]
+        act = pt.matmul(h, self.W) + self.bu
+        if emloglik is not None and not self.pretrain:
+            act += emloglik
+        p_u = pt.softmax(act ,1)
+        sample = sample_multinomial(p_u,kdim=1)
+        return p_u, sample
+
+    def marginal_prob(self):
+        # If not given, then initialize:
+        if self.gibbs_U is None:
+            return pt.softmax(self.bu,0)
+        else:
+            pi  = pt.mean(self.gibbs_U,dim=0)
+        return pi
+
+    def unnormalized_prob(self, U, H):
+        bias = (U * self.bu).sum((1, 2))
+        connection = (H @ self.W * U).sum((1, 2))
+        return pt.exp(bias + connection).mean()
+
+    def tempered_transition(self, U, betas, emission_model):
+        """Sample from the model using tempered transitions.
+        (cs.cmu.edu/~rsalakhu/papers/trans.pdf)
+        Args:
+            U (pt.Tensor): The initial value of U
+            betas (list[float]): The temperature coefficient for each intermediate distribution
+                where betas[-1] = 1
+        """
+        # save the current parameters
+        true_W = self.W.detach().clone()
+        true_bu = self.bu.detach().clone()
+        accept = 0.0
+        _, H = self.sample_U(U)
+        U_p = U
+        while (accept < np.random.uniform(0.0, 1.0)):
+            accept = 1.0
+            for beta in reversed(betas):
+                accept /= self.unnormalized_prob(U, H)
+                self.W = true_W * beta
+                self.bu = true_bu * beta
+                accept *= self.unnormalized_prob(U, H)
+
+                Y = emission_model.sample(compress_mn(U_p))
+                emloglik = emission_model.Estep(Y)
+                _, H = self.sample_h(U_p)
+                U_p, U = self.sample_U(H, emloglik)
+
+            # inverse transition T tilde (Gibbs sample in reverse)
+            for beta in betas[1:]:
+                Y = emission_model.sample(compress_mn(U_p))
+                emloglik = emission_model.Estep(Y)
+                U_p, U = self.sample_U(H, emloglik)
+                _, H = self.sample_h(U_p)
+
+                accept /= self.unnormalized_prob(U, H)
+                self.W = true_W * beta
+                self.bu = true_bu * beta
+                accept *= self.unnormalized_prob(U, H)
+            accept = min(1, accept)
+        # reload the true parameters
+        self.W = true_W
+        self.bu = true_bu
+        return U, H
+
+    def Estep(self, emloglik,gather_ss=True,iter=None):
+        """ Positive Estep for the multinomial boltzman model
+        Uses mean field approximation to posterior to U and hidden parameters.
+        Parameters:
+            emloglik (pt.tensor):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss (bool):
+                Gather Sufficient statistics for M-step (default = True)
+
+        Returns:
+            Uhat (pt.tensor):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (pt.tensor):
+                Nan - returned for consistency
+        """
+        if type(emloglik) is np.ndarray:
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        if iter is None:
+            iter = self.epos_iter
+        N=emloglik.shape[0]
+        Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
+        if self.pretrain:
+            # single pass for just the top RBM
+            wv = pt.matmul(Uhat, self.W.t())
+            Hhat = pt.softmax(wv, 1)
+        else:
+            # mean field approximation for the entire network
+            for i in range(iter):
+                wv = pt.matmul(Uhat, self.W.t())
+                Hhat = pt.softmax(wv, 1)
+                wh = pt.matmul(Hhat, self.W)
+                Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+
+        if gather_ss:
+            self.epos_Uhat = Uhat
+            self.epos_Hhat = Hhat
+        return Uhat, pt.nan
+
+    def Eneg(self, iter=None, use_chains=None, emission_model=None):
+        # If no iterations specified - use standard
+        if iter is None:
+            iter = self.eneg_iter
+        # If no markov chain are initialized, start them off
+        if self.gibbs_U is None:
+            p = pt.softmax(self.bu,0)
+            self.gibbs_U = sample_multinomial(p,
+                    shape=(self.eneg_numchains,self.K,self.P),
+                    kdim=0,
+                    compress=False)
+        # Grab the current chains
+        if use_chains is None:
+            use_chains = pt.arange(self.eneg_numchains)
+
+        U = self.gibbs_U[use_chains]
+        U0 = U.detach().clone()
+
+        if self.pretrain:
+            # gibbs sample for only the top RBM
+            for i in range(iter):
+                _, H = self.sample_h(U)
+                _, U = self.sample_U(H)
+        else:
+            # sampling using tempered transitions
+            if self.use_tempered_transition:
+                U, H = self.tempered_transition(U0, np.linspace(0.9, 1.0, iter),
+                                                emission_model)
+            else:
+                # standard gibbs sampling
+                for i in range(iter):
+                    Y = emission_model.sample(compress_mn(U))
+                    emloglik = emission_model.Estep(Y)
+                    _, H = self.sample_h(U)
+                    _, U = self.sample_U(H, emloglik)
+
         self.eneg_H = H
         self.eneg_U = U
         # Persistent: Keep the new gibbs samples around

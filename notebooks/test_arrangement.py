@@ -13,6 +13,11 @@ import pandas as pd
 import seaborn as sb
 import copy
 
+# pytorch cuda global flag
+# pt.cuda.is_available = lambda : False
+pt.set_default_tensor_type(pt.cuda.FloatTensor
+                           if pt.cuda.is_available() else
+                           pt.FloatTensor)
 
 def make_mrf_data(width=10,K=5,N=20,num_subj=30,
             theta_mu=20,theta_w=2,sigma2=0.5,
@@ -190,7 +195,7 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
 
     crit_types = ['train','marg','test','compl'] # different evaluation types
     CR = np.zeros((len(crit_types),n_epoch))
-    theta_hist = np.zeros((arM.nparams,n_epoch))
+    theta_hist = pt.zeros((arM.nparams,n_epoch))
     # Intialize negative sampling
     for epoch in range(n_epoch):
         # Get test error
@@ -456,7 +461,7 @@ def simulation_2():
     pt.set_default_dtype(pt.float32)
     TT=pd.DataFrame()
     DD=pd.DataFrame()
-    HH = np.zeros((num_sim,n_epoch))
+    HH = pt.zeros((num_sim,n_epoch))
     # REcorded bias parameter 
     RecBu = pt.zeros((num_sim,K,P))
     RecLp = pt.zeros((num_sim,K,P))
@@ -577,7 +582,7 @@ def simulation_2():
             ,y='crit',x='iter',hue='model')
     plt.ylabel('Compl coserr')
     plt.subplot(3,1,3)
-    plt.plot(HH.T)
+    plt.plot(HH.T.cpu().numpy())
     plt.ylabel('Theta')
 
     # Get the final error and the true pott models
