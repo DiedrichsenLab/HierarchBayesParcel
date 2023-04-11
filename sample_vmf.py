@@ -6,18 +6,39 @@ Supplementary functions for sampling from von-Mises Fisher distribution
 using code provided in git repo (References [1] and [2]).
 Special thanks to the author of the blog [1], Daniel L. Whittenbury
 
-Modified by: dzhi, to meet the generative framework use
+Modified by: dzhi, for the generative framework use
 
 References:
-    [1] https://dlwhittenbury.github.io/ds-2-sampling-and-visualising-the-von-mises-fisher-distribution-in-p-dimensions.html
+    [1] https://dlwhittenbury.github.io/ds-2-sampling-and-visualising
+        -the-von-mises-fisher-distribution-in-p-dimensions.html
     [2] https://github.com/dlwhittenbury/von-Mises-Fisher-Sampling
 """
 import numpy as np
-from scipy.linalg import null_space
-import numpy.matlib
+import torch as pt
 
-fs = 16
+def _nullspace(A, rcond=None):
+    """Compute an approximate basis for the nullspace of A. This
+     is equivalent function in pyTorch to the scipy.linalg.null_space
 
+    Args:
+        A: (torch.tensor) A should be at most 2-D. A 1-D array
+            with length
+        rcond: (float) Cut-off ratio for small singular values
+            of A. If None, the value is calculated using the
+            machine precision of the data type
+
+    Returns:
+        nullspace: (torch.tensor) An array whose columns form a basis
+         for the nullspace of A.
+    """
+    U, S, V = pt.linalg.svd(A)
+    if rcond is None:
+        rcondt = pt.finfo(S.dtype).eps * max(U.shape[0], V.shape[0])
+    tolt = pt.max(S) * rcondt
+    numt= pt.sum(S > tolt, dtype=int)
+    nullspace = V[numt:,:].T
+
+    return nullspace
 
 def rand_uniform_hypersphere(N, p):
     """Generate random samples from the uniform distribution
@@ -36,15 +57,10 @@ def rand_uniform_hypersphere(N, p):
     if (N <= 0) or not isinstance(N, int):
         raise Exception("N must be a non-zero positive integer.")
 
-    v = np.random.normal(0, 1, (N, p))
-
-    #    for i in range(N):
-    #        v[i,:] = v[i,:]/np.linalg.norm(v[i,:])
-
-    v = np.divide(v, np.linalg.norm(v, axis=1, keepdims=True))
+    v = pt.randn(N, p)
+    v = v / pt.norm(v, dim=1, keepdim=True)
 
     return v
-
 
 def rand_t_marginal(kappa, p, N=1):
     """Samples the marginal distribution of t using rejection
@@ -57,7 +73,6 @@ def rand_t_marginal(kappa, p, N=1):
     Returns:
         samples: (N,1) samples of the marginal distribution of t
     """
-
     # Check kappa >= 0 is numeric
     if (kappa < 0) or (isinstance(kappa, float) and isinstance(kappa, int)):
         raise Exception("kappa must be a non-negative number.")
@@ -70,29 +85,26 @@ def rand_t_marginal(kappa, p, N=1):
         raise Exception("N must be a non-zero positive integer.")
 
     # Start of algorithm
-    b = (p - 1.0) / (2.0 * kappa + np.sqrt(4.0 * kappa ** 2 + (p - 1.0) ** 2))
+    b = (p - 1.0) / (2.0 * kappa + pt.sqrt(4.0 * kappa ** 2 + (p - 1.0) ** 2))
     x0 = (1.0 - b) / (1.0 + b)
-    c = kappa * x0 + (p - 1.0) * np.log(1.0 - x0 ** 2)
+    c = kappa * x0 + (p - 1.0) * pt.log(1.0 - x0 ** 2)
 
-    samples = np.zeros((N, 1))
-
+    samples = pt.zeros((N, 1))
     # Loop over number of samples
     for i in range(N):
         while True:
             # Sample Beta distribution
-            Z = np.random.beta((p - 1.0) / 2.0, (p - 1.0) / 2.0)
-
+            Z = pt.distributions.beta.Beta((p - 1.0) / 2.0, (p - 1.0) / 2.0).sample()
             # Sample Uniform distribution
-            U = np.random.uniform(low=0.0, high=1.0)
+            U = pt.distributions.uniform.Uniform(0.0, 1.0).sample()
             W = (1.0 - (1.0 + b) * Z) / (1.0 - (1.0 - b) * Z)
 
             # Check whether to accept or reject
-            if kappa * W + (p - 1.0) * np.log(1.0 - x0 * W) - c >= np.log(U):
+            if kappa * W + (p - 1.0) * pt.log(1.0 - x0 * W) - c >= pt.log(U):
                 samples[i] = W  # Accept sample
                 break
 
     return samples
-
 
 def rand_von_mises_fisher(mu, kappa, N=1):
     """Samples the von Mises-Fisher distribution with mean
@@ -107,8 +119,8 @@ def rand_von_mises_fisher(mu, kappa, N=1):
     """
     # Check that mu is a unit vector
     eps = 10 ** (-8)  # Precision
-    norm_mu = np.linalg.norm(mu)
-    if abs(norm_mu - 1.0) > eps:
+    norm_mu = pt.linalg.norm(mu)
+    if pt.abs(norm_mu - 1.0) > eps:
         raise Exception("mu must be a unit vector.")
 
     # Check kappa >= 0 is numeric
@@ -120,20 +132,19 @@ def rand_von_mises_fisher(mu, kappa, N=1):
         raise Exception("N must be a non-zero positive integer.")
 
     p = len(mu)
-    mu = np.reshape(mu, (p, 1))
-    samples = np.zeros((N, p))
+    mu = pt.reshape(mu, (p, 1))
+    samples = pt.zeros((N, p))
     t = rand_t_marginal(kappa, p, N)  # Component in the direction of mu (Nx1)
-    xi = rand_uniform_hypersphere(N, p - 1)  # Component orthogonal to mu (Nx(p-1))
+    xi = rand_uniform_hypersphere(N, p-1)  # Component orthogonal to mu (Nx(p-1))
 
     # von-Mises-Fisher samples Nxp
     samples[:, [0]] = t
-
     # Component orthogonal to mu (Nx(p-1))
-    samples[:, 1:] = np.matlib.repmat(np.sqrt(1 - t ** 2), 1, p - 1) * xi
+    samples[:, 1:] = pt.sqrt(1 - t**2).expand(-1, p-1) * xi
 
     # Rotation of samples to desired mu
-    O = null_space(mu.T)
-    R = np.concatenate((mu, O), axis=1)
-    samples = np.dot(R, samples.T).T
+    O = _nullspace(mu.T)
+    R = pt.cat((mu, O), dim=1)
+    samples = pt.mm(R, samples.T).T
 
     return samples

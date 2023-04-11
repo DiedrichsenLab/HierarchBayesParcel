@@ -186,9 +186,7 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
         T: Pandas data frame with epoch level performance metrics
         thetaH: History of fitted thetas
     """
-    emM.initialize(Ytrain)
     emlog_train = emM.Estep(Ytrain)
-    emM.initialize(Ytest)
     emlog_test = emM.Estep(Ytest)
     num_subj = emlog_train.shape[0]
     Utrain=pt.softmax(emlog_train,dim=1)
@@ -360,6 +358,10 @@ def plot_evaluation(D,criteria=['uerr','cos_err','Ecos_err']
             sb.barplot(data=D[D.type==types[j]],x='model',y=criteria[i])
             plt.title(f'{criteria[i]}{types[j]}')
 
+    plt.suptitle(f'final errors')
+    plt.tight_layout()
+    plt.show()
+
 def plot_evaluation2(): 
     # Get the final error and the true pott models
     plt.figure(figsize=(3,4))
@@ -440,25 +442,24 @@ def simulation_1():
 
 def simulation_2():
     K = 5
-    width = 30
+    width = 50
     P = width * width
-    theta_mu = P / 2
-    num_subj=30
-    batch_size=30
+    theta_mu = P / 4
+    num_subj=20
+    batch_size=10
     n_epoch=80
     theta = 1.3
     # Multinomial 
     w = 2.0
     # MixGaussian 
-    sigma2 = 0.4
+    sigma2 = 0.2
     N = 10
 
-    eneg_iter = 10
-    epos_iter = 10
-    num_sim = 20 
+    eneg_iter = 20
+    epos_iter = 20
+    num_sim = 20
     
-    
-    pt.set_default_dtype(pt.float32)
+    # Record the results
     TT=pd.DataFrame()
     DD=pd.DataFrame()
     HH = pt.zeros((num_sim,n_epoch))
@@ -486,11 +487,8 @@ def simulation_2():
         #         num_subj=num_subj,
         #         theta_mu=20,theta_w=2,sigma2=sigma2,
         #         do_plot=1)
-
-        Mtrue.emission.initialize(Ytrain)
-        emloglik_train = Mtrue.emission.Estep()
-        Mtrue.emission.initialize(Ytest)
-        emloglik_test = Mtrue.emission.Estep()
+        emloglik_train = Mtrue.emission.Estep(Ytrain)
+        emloglik_test = Mtrue.emission.Estep(Ytest)
         P = Mtrue.emission.P
 
         # Generate partitions for region-completion testing
@@ -521,7 +519,7 @@ def simulation_2():
         # rbm2.W = Mtrue.arrange.W.detach().clone()
         rbm2.bu= indepAr.logpi.detach().clone()
         # rbm2.bu=  Mtrue.arrange.bu.detach().clone()
-        rbm2.alpha = 1
+        rbm2.alpha = 2
         rbm2.fit_W = True
         rbm2.fit_bu = True
 
@@ -532,11 +530,10 @@ def simulation_2():
                             eneg_iter=eneg_iter,
                             epos_iter=epos_iter,
                             eneg_numchains=num_subj)
-        rbm3.bu = pt.zeros((K,P))
         rbm3.bu = indepAr.logpi.detach().clone()
         # rbm3.bu = rbm.bu.detach().clone()
         rbm3.name=f'cRBM_Wc'
-        rbm3.fit_W = False
+        rbm3.fit_W = True
         rbm3.fit_bu = True
         rbm3.alpha = 1
 
@@ -552,9 +549,8 @@ def simulation_2():
         TH = [theta1]
         for m in Models[1:2]:
 
-            m, T1,theta_hist = train_sml(m,Mtrue.emission,Ytrain,Ytest,part,
-                batch_size=batch_size,
-                n_epoch=n_epoch)
+            m, T1,theta_hist = train_sml(m, Mtrue.emission, Ytrain, Ytest, part,
+                                         batch_size=batch_size, n_epoch=n_epoch)
             TH.append(theta_hist)
             T = pd.concat([T,T1],ignore_index=True)
 
@@ -583,7 +579,10 @@ def simulation_2():
     plt.ylabel('Compl coserr')
     plt.subplot(3,1,3)
     plt.plot(HH.T.cpu().numpy())
+    plt.axhline(y=HH[:,-1].cpu().numpy().mean(), color='r', linestyle='-')
+    plt.axhline(y=theta, color='k', linestyle='-')
     plt.ylabel('Theta')
+    plt.show()
 
     # Get the final error and the true pott models
     plot_evaluation(DD)
@@ -595,11 +594,13 @@ def simulation_2():
                 RecLp.mean(dim=0),
                 RecBu.mean(dim=0),
                 pt.softmax(rbm.bu,0)],grid)
+    plt.show()
 
     plot_individual_Uhat(Models,Utrue[0:1],emloglik_train[0:1],
                     grid,style='mixed')
     # plot_individual_Uhat(Models,Utrue[0:1],emloglik_train[0:1],
     #                grid,style='argmax')
+    plt.show()
     pass
 
 def simulation_chain():

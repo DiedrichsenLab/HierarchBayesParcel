@@ -15,6 +15,7 @@ from decimal import Decimal
 from torch import exp,log,sqrt
 from generativeMRF.model import Model
 import torch as pt
+import time
 
 import sys
 
@@ -743,7 +744,7 @@ class cmpRBM(mpRBM):
             self.nh = Wc.shape[0]
 
             if theta is None:
-                self.theta = pt.randn((self.Wc.shape[2],))
+                self.theta = pt.abs(pt.randn((self.Wc.shape[2],)))
             else:
                 self.theta = pt.tensor(theta)
                 if self.theta.ndim ==0:
@@ -799,7 +800,6 @@ class cmpRBM(mpRBM):
             pi  = pt.mean(self.gibbs_U,dim=0)
         return pi
 
-
     def Estep(self, emloglik,gather_ss=True,iter=None):
         """ Positive Estep for the multinomial boltzman model
         Uses mean field approximation to posterior to U and hidden parameters.
@@ -823,6 +823,8 @@ class cmpRBM(mpRBM):
         for i in range(iter):
             wv = pt.matmul(Uhat,self.W.t())
             Hhat = pt.softmax(wv,1)
+            # Hsamples = sample_multinomial_pt(Hhat, kdim=1)
+            # wh = pt.matmul(Hsamples, self.W)
             wh = pt.matmul(Hhat, self.W)
             Uhat = pt.softmax(wh + self.bu + emloglik,1)
         if gather_ss:
@@ -837,21 +839,25 @@ class cmpRBM(mpRBM):
         # If no markov chain are initialized, start them off
         if (self.gibbs_U is None):
             p = pt.softmax(self.bu,0)
-            self.gibbs_U = sample_multinomial(p,
-                    shape=(self.eneg_numchains,self.K,self.P),
-                    kdim=0,
-                    compress=False)
+            # Old sample
+            self.gibbs_U = sample_multinomial(p, shape=(self.eneg_numchains,self.K,self.P),
+                                              kdim=0, compress=False)
+            # sample using pytorch
+            # self.gibbs_U = sample_multinomial_pt(p, num_subj=self.eneg_numchains, kdim=0)
+
         # Grab the current chains
         if use_chains is None:
             use_chains = pt.arange(self.eneg_numchains)
 
         U = self.gibbs_U[use_chains]
         U0 = U.detach().clone()
+        # standard gibbs sampling
         for i in range(iter):
             Y = emission_model.sample(compress_mn(U))
             emloglik = emission_model.Estep(Y)
-            _,H = self.sample_h(U)
-            _,U = self.sample_U(H,emloglik)
+            _, H = self.sample_h(U)
+            _, U = self.sample_U(H, emloglik)
+
         self.eneg_H = H
         self.eneg_U = U
         # Persistent: Keep the new gibbs samples around
@@ -996,6 +1002,24 @@ class wcmDBM(ArrangementModel, pt.nn.Module):
         else:
             pi  = pt.mean(self.gibbs_U,dim=0)
         return pi
+
+    def free_energy(self, emloglik):
+        """TODO: finish the free energy function
+        Args:
+            emloglik:
+
+        Returns:
+
+        """
+        if self.epos_Uhat is None:
+            Uhat = pt.softmax(emloglik + self.bu, dim=1)
+        else:
+            Uhat = self.epos_Uhat
+
+        v_sample = sample_multinomial(Uhat, kdim=1)
+        wv = pt.matmul(v_sample, self.W.t())
+        vWh = pt.matmul(self.gibbs_U, self.W.t())
+        vWh = vWh + self.bu
 
     def unnormalized_prob(self, U, H):
         bias = (U * self.bu).sum((1, 2))
@@ -1154,6 +1178,24 @@ class wcmDBM(ArrangementModel, pt.nn.Module):
             gradBU -=  1 / M * pt.sum(self.eneg_U,0)
             self.bu += self.alpha * gradBU
 
+def sample_multinomial_pt(p, num_subj=1, kdim=0, compress=False):
+    K = p.shape[kdim]
+    if p.dim() == 2:
+        # p is K x P matrix
+        sample = pt.multinomial(p.t(), num_subj, replacement=True).t()
+    elif p.dim() == 3:
+        # p is num_subjects x K x P matrix
+        sample = pt.stack([pt.multinomial(this_p.t(), 1, replacement=True).reshape(-1)
+                           for this_p in p])
+    else:
+        raise ValueError("p must be 2 or 3 dimensional")
+
+    if compress:
+        return sample
+    else:
+        # No compress, return indicator coding
+        return expand_mn(sample, K)
+
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
     """Samples from a multinomial distribution
     Fast smpling from matrix probability without looping
@@ -1208,8 +1250,8 @@ def expand_mn_1d(u,K):
         U (2d-tensor): K x P matrix of indicator variables [default float]
     """
     P = u.shape[0]
-    U = pt.zeros(K,P)
-    U[u, np.arange(P)] = 1
+    U = pt.zeros(K, P)
+    U[u, pt.arange(P)] = 1
     return U
 
 def compress_mn(U):

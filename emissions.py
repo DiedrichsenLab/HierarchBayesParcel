@@ -186,6 +186,9 @@ class MixGaussian(EmissionModel):
         specify which subject to optimize
         return: the expected log likelihood for emission model, shape (nSubject * K * P)
         """
+        if Y is not None:
+            self.initialize(Y)
+        n_subj = self.Y.shape[0]
         if sub is None:
             sub = range(self.Y.shape[0])
 
