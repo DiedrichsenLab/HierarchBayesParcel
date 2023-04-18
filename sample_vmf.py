@@ -17,8 +17,8 @@ import numpy as np
 import torch as pt
 
 def _nullspace(A, rcond=None):
-    """Compute an approximate basis for the nullspace of A. This
-     is equivalent function in pyTorch to the scipy.linalg.null_space
+    """ Compute an approximate basis for the nullspace of A. This
+        is equivalent function in pyTorch to the scipy.linalg.null_space
 
     Args:
         A: (torch.tensor) A should be at most 2-D. A 1-D array
@@ -41,12 +41,14 @@ def _nullspace(A, rcond=None):
     return nullspace
 
 def rand_uniform_hypersphere(N, p):
-    """Generate random samples from the uniform distribution
-    on the (p-1)-dimensional hypersphere
+    """ Generate random samples from the uniform distribution
+        on the (p-1)-dimensional hypersphere
+
     Args:
         N: (int) Number of samples
         p: (int) The dimension of the generated samples on
            the (p-1)-dimensional hypersphere.
+
     Returns:
         random samples
     """
@@ -63,13 +65,14 @@ def rand_uniform_hypersphere(N, p):
     return v
 
 def rand_t_marginal(kappa, p, N=1):
-    """Samples the marginal distribution of t using rejection
-       sampling.
+    """ Samples the marginal distribution of t using rejection
+        sampling.
     Args:
         kappa: concentration parameter (float)
         p: The dimension of the generated samples on the
            (p-1)-dimensional hypersphere. (int)
         N: number of samples (int)
+
     Returns:
         samples: (N,1) samples of the marginal distribution of t
     """
@@ -107,12 +110,14 @@ def rand_t_marginal(kappa, p, N=1):
     return samples
 
 def rand_von_mises_fisher(mu, kappa, N=1):
-    """Samples the von Mises-Fisher distribution with mean
-       direction mu and concentration kappa.
+    """ Samples the von Mises-Fisher distribution with mean
+        direction mu and concentration kappa.
+
     Args:
         mu: (p,1) mean direction. This should be a unit vector.
         kappa: concentration parameter (float)
         N: number of samples (int)
+
     Returns:
         samples: samples of the von Mises-Fisher distribution
         using mean direction mu and concentration kappa.

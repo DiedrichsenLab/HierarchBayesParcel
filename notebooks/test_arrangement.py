@@ -530,10 +530,10 @@ def simulation_2():
                             eneg_iter=eneg_iter,
                             epos_iter=epos_iter,
                             eneg_numchains=num_subj)
-        rbm3.bu = indepAr.logpi.detach().clone()
-        # rbm3.bu = rbm.bu.detach().clone()
+        # rbm3.bu = indepAr.logpi.detach().clone()
+        rbm3.bu = rbm.bu.detach().clone()
         rbm3.name=f'cRBM_Wc'
-        rbm3.fit_W = True
+        rbm3.fit_W = False
         rbm3.fit_bu = True
         rbm3.alpha = 1
 
