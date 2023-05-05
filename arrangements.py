@@ -819,7 +819,8 @@ class cmpRBM(mpRBM):
         Uses variational stochastic maximum likelihood for learning
     """
     def __init__(self, K, P, nh=None, Wc=None, theta=None,
-                 eneg_iter=10, epos_iter=10, eneg_numchains=77):
+                 eneg_iter=10, epos_iter=10, eneg_numchains=77,
+                 momentum=True):
         """ Constructor for the cmpRBM class
 
         Args:
@@ -835,6 +836,7 @@ class cmpRBM(mpRBM):
         self.P = P
         self.Wc  = Wc
         self.bu = pt.randn(K,P)
+        self.momentum = momentum
         if Wc is None:
             if nh is None:
                 raise NameError('Provide Connectivty kernel (Wc)'
@@ -851,13 +853,19 @@ class cmpRBM(mpRBM):
             if theta is None:
                 self.theta = pt.abs(pt.randn((self.Wc.shape[2],)))
             else:
-                self.theta = pt.tensor(theta)
+                self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
                 if self.theta.ndim ==0:
                     self.theta = self.theta.view(1)
             self.W = (self.Wc * self.theta).sum(dim=2)
             self.set_param_list(['bu','theta'])
         self.gibbs_U = None # samples from the hidden layer for negative phase
         self.alpha = 0.01
+
+        if self.momentum:
+            self.MOMENTUM_COEF = 0.9
+            self.velocity_W = 0
+            self.velocity_bu = 0
+
         self.epos_iter = epos_iter
         self.eneg_iter = eneg_iter
         self.eneg_numchains = eneg_numchains
@@ -944,7 +952,13 @@ class cmpRBM(mpRBM):
             self.epos_Uhat = Uhat
             self.epos_Hhat = Hhat
 
-        return Uhat, pt.nan
+        # The unnormalized log likelihood
+        ll_A = pt.sum(Uhat * self.bu) \
+               + pt.sum(self.W * pt.matmul(pt.transpose(Uhat, 1, 2), Hhat))
+        if pt.isnan(ll_A):
+            raise ValueError('likelihood is nan')
+
+        return Uhat, ll_A
 
     def Eneg(self, iter=None, use_chains=None, emission_model=None):
         """ Negative phase of the E-step for the multinomial boltzman model
@@ -962,7 +976,7 @@ class cmpRBM(mpRBM):
         if iter is None:
             iter = self.eneg_iter
         # If no markov chain are initialized, start them off
-        if (self.gibbs_U is None):
+        if self.gibbs_U is None:
             p = pt.softmax(self.bu,0)
             # Old sample
             self.gibbs_U = sample_multinomial(p, shape=(self.eneg_numchains,self.K,self.P),
@@ -980,9 +994,14 @@ class cmpRBM(mpRBM):
         for i in range(iter):
             Y = emission_model.sample(compress_mn(U))
             emloglik = emission_model.Estep(Y)
-            _, H = self.sample_h(U)
-            _, U = self.sample_U(H, emloglik)
+            ph, H = self.sample_h(U)
+            pu, U = self.sample_U(H, emloglik)
 
+        # TODO: For the last update of the hidden units, it is common
+        #  to use the probability instead of sampling a multinomial value
+        #  to avoid unnecessary sampling noise.
+        #  Refererce: 'A Practical Guide to Training Restricted Boltzmann Machines'
+        #  https://www.cs.toronto.edu/~hinton/absps/guideTR.pdf
         self.eneg_H = H
         self.eneg_U = U
         # Persistent: Keep the new gibbs samples around
@@ -1004,19 +1023,39 @@ class cmpRBM(mpRBM):
                                self.eneg_U).sum(dim=0)/M
             # If we are dealing with component Wc:
             if self.Wc is not None:
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    gradW = self.velocity_W
+
                 gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
                 weights = pt.sum(self.Wc,dim=(0,1))
                 gradT   = pt.sum(gradW*self.Wc,dim=(0,1))/weights
-                self.theta += self.alpha * gradT
+                if self.momentum:
+                    self.theta += gradT
+                else:
+                    self.theta += self.alpha * gradT
+
                 self.W = (self.Wc * self.theta).sum(dim=2)
             else:
-                self.W += self.alpha * gradW
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    self.W += self.velocity_W
+                else:
+                    self.W += self.alpha * gradW
 
         # Update the bias term
         if self.fit_bu:
             gradBU =   1 / N * pt.sum(self.epos_Uhat,0)
             gradBU -=  1 / M * pt.sum(self.eneg_U,0)
-            self.bu += self.alpha * gradBU
+
+            if self.momentum:
+                self.velocity_bu = self.MOMENTUM_COEF * self.velocity_bu \
+                                 + self.alpha * gradBU
+                self.bu += self.velocity_bu
+            else:
+                self.bu += self.alpha * gradBU
 
 
 class wcmDBM(ArrangementModel, pt.nn.Module):
