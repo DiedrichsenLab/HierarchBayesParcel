@@ -146,7 +146,7 @@ class MultiNomial(EmissionModel):
         mean_uy = pt.mean(pt.sum(self.Y * self.U_hat, dim=1)) # this is E(yTu)
         self.w = log(1-self.K+(self.K-1)/(1-mean_uy)) 
 
-    def sample(self, U):
+    def sample(self, U, signal=None):
         """ Generate random data given this emission model
         Args:
             U (pt.tensor): The prior arrangement U from arrangement model
@@ -268,7 +268,7 @@ class MixGaussian(EmissionModel):
                pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
         self.sigma2 = pt.nansum(this_U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
-    def sample(self, U):
+    def sample(self, U, signal=None):
         """ Generate random data given this emission model
 
         Args:
