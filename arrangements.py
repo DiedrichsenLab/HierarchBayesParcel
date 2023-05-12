@@ -842,7 +842,7 @@ class cmpRBM(mpRBM):
                 raise NameError('Provide Connectivty kernel (Wc)'
                                 ' matrix or number of hidden nodes (nh)')
             self.nh = nh
-            self.W = pt.randn(nh,P)
+            self.W = pt.randn(nh,P) * 0.1
             self.theta = None
             self.set_param_list(['bu','W'])
         else:
@@ -1002,8 +1002,8 @@ class cmpRBM(mpRBM):
         #  to avoid unnecessary sampling noise.
         #  Refererce: 'A Practical Guide to Training Restricted Boltzmann Machines'
         #  https://www.cs.toronto.edu/~hinton/absps/guideTR.pdf
-        self.eneg_H = H
-        self.eneg_U = U
+        self.eneg_H = ph
+        self.eneg_U = pu
         # Persistent: Keep the new gibbs samples around
         self.gibbs_U[use_chains]=U
 
@@ -1058,7 +1058,7 @@ class cmpRBM(mpRBM):
                 self.bu += self.alpha * gradBU
 
 
-class wcmDBM(ArrangementModel, pt.nn.Module):
+class wcmDBM(mpRBM):
     """ wcmDBM: weighted convolutional multinomial Deep Boltzman Machine
         for learning of brain parcellations for probabilistic
         input Uses variational stochastic maximum likelihood for learning
@@ -1077,50 +1077,49 @@ class wcmDBM(ArrangementModel, pt.nn.Module):
                 Defaults to 3.
             eneg_numchains (int): How many chains. Defaults to 77.
         """
-        super().__init__(K, P) # Initialize the base class 1
-        super().__init__() # Initialize the base class 2
-
-        # If no hidden nodes are specified, nh is the number of voxels
-        self.nh = nh if nh is not None else self.P
-        self.bu = pt.nn.Parameter(pt.randn(self.K, self.P))
-
-        # Initialize the connectivity weights between H and U layers
-        if W is not None:
-            # If W is specified, use it as fixed connection weights
-            self.W = W
-            self.nh = W.shape[0]
-            self.set_param_list(['bu'])
+        self.K = K
+        self.P = P
+        self.Wc = Wc
+        self.bu = pt.randn(K, P)
+        self.momentum = momentum
+        if Wc is None:
+            if nh is None:
+                raise NameError('Provide Connectivty kernel (Wc)'
+                                ' matrix or number of hidden nodes (nh)')
+            self.nh = nh
+            self.W = pt.randn(nh, P) * 0.1
+            self.theta = None
+            self.set_param_list(['bu', 'W'])
         else:
-            if dist is None:
-                # If dist is not specified, W becomes free parameters
-                # that are initialized randomly
-                self.W = pt.nn.Parameter(pt.randn(self.nh, self.P))
-                self.set_param_list(['bu', 'W'])
+            assert Wc.ndim == 2, 'Currently only support Wc is a 2d tensor'
+            self.Wc = Wc.to_sparse() if not Wc.is_sparce else Wc
+            self.nh = Wc.shape[0]
+
+            if theta is None:
+                self.theta = pt.abs(pt.randn((1,)))
             else:
-                # If dist is specified, W is initialized to be spatially
-                # dependent weights, usually sparsed due to dist is a
-                # sparse matrix
-                W = dist.max() - dist
-                # Initialize the model parameters
-                self.W = pt.nn.Parameter(pt.randn(self.nh, self.P))
+                self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
+                assert self.theta.ndim == 0, 'theta must be a scalar'
 
-                self.set_param_list(['bu', 'theta'])
+            self.W = self.Wc * self.theta
+            self.set_param_list(['bu', 'theta'])
 
-        self.Wc  = Wc
-        self.theta = None
-        self.set_param_list(['bu','W'])
-
-        self.gibbs_U = None # samples from the hidden layer for negative phase
+        self.gibbs_U = None  # samples from the hidden layer for negative phase
         self.alpha = 0.01
+
+        if self.momentum:
+            self.MOMENTUM_COEF = 0.9
+            self.velocity_W = 0
+            self.velocity_bu = 0
+
         self.epos_iter = epos_iter
         self.eneg_iter = eneg_iter
         self.eneg_numchains = eneg_numchains
         self.fit_bu = True
         self.fit_W = True
         self.use_tempered_transition = False
-        # pretrain: use only the top RBM for the positive and negative phases
         self.pretrain = False
-        self.tmp_list = ['epos_Uhat','epos_Hhat','eneg_U','eneg_H']
+        self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
 
     def random_params(self):
         """ Sets prior parameters to random starting values
@@ -1349,40 +1348,61 @@ class wcmDBM(ArrangementModel, pt.nn.Module):
                 for i in range(iter):
                     Y = emission_model.sample(compress_mn(U))
                     emloglik = emission_model.Estep(Y)
-                    _, H = self.sample_h(U)
-                    _, U = self.sample_U(H, emloglik)
+                    ph, H = self.sample_h(U)
+                    pu, U = self.sample_U(H, emloglik)
 
-        self.eneg_H = H
-        self.eneg_U = U
+        self.eneg_H = ph
+        self.eneg_U = pu
         # Persistent: Keep the new gibbs samples around
         self.gibbs_U[use_chains]=U
         return self.eneg_U,self.eneg_H
 
     def Mstep(self):
         """ Performs gradient step on the parameters
-            given by the learning rate self.alpha
+            given the learning rate self.alpha
         """
         N = self.epos_Hhat.shape[0]
         M = self.eneg_H.shape[0]
         # Update the connectivity
         if self.fit_W:
-            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),self.epos_Uhat).sum(dim=0)/N
-            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),self.eneg_U).sum(dim=0)/M
+            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),
+                              self.epos_Uhat).sum(dim=0)/N
+            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),
+                               self.eneg_U).sum(dim=0)/M
             # If we are dealing with component Wc:
             if self.Wc is not None:
-                gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
-                weights = pt.sum(self.Wc,dim=(0,1))
-                gradT   = pt.sum(gradW*self.Wc,dim=(0,1))/weights
-                self.theta += self.alpha * gradT
-                self.W = (self.Wc * self.theta).sum(dim=2)
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    gradW = self.velocity_W
+
+                weights = pt.sparse.sum(self.Wc)
+                gradT   = pt.sparse.sum(gradW * self.Wc) / weights
+                if self.momentum:
+                    self.theta += gradT
+                else:
+                    self.theta += self.alpha * gradT
+
+                self.W = self.Wc * self.theta
             else:
-                self.W += self.alpha * gradW
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    self.W += self.velocity_W
+                else:
+                    self.W += self.alpha * gradW
 
         # Update the bias term
         if self.fit_bu:
             gradBU =   1 / N * pt.sum(self.epos_Uhat,0)
             gradBU -=  1 / M * pt.sum(self.eneg_U,0)
-            self.bu += self.alpha * gradBU
+
+            if self.momentum:
+                self.velocity_bu = self.MOMENTUM_COEF * self.velocity_bu \
+                                 + self.alpha * gradBU
+                self.bu += self.velocity_bu
+            else:
+                self.bu += self.alpha * gradBU
 
 
 ####################################################################

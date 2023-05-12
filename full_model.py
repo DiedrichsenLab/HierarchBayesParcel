@@ -8,6 +8,7 @@ Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import torch as pt
+from torch.utils.data import DataLoader, TensorDataset
 import generativeMRF.emissions as emi
 import generativeMRF.arrangements as arr
 import warnings
@@ -589,7 +590,7 @@ class FullMultiModel:
         theta_n = pt.cat([best_theta,theta[1:, :]])
         return self, ll_n, theta_n, U_hat, first_lls
 
-    def fit_sml(self, Y, iter=60, stepsize=0.8, estep='sample',
+    def fit_sml(self, Y, iter=60, batch_size=None, stepsize=0.8, estep='sample',
                 seperate_ll=False, fit_emission=True, fit_arrangement=True,
                 first_evidence=True):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
@@ -636,18 +637,40 @@ class FullMultiModel:
             emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
             del emloglik_c
             pt.cuda.empty_cache()
+            # Create a DataLoader object for training data
+            train_loader = DataLoader(TensorDataset(emloglik_comb),
+                                      batch_size=batch_size, shuffle=True,
+                                      num_workers=num_workers)
 
-            if estep=='sample':
-                Uhat, ll_A = self.arrange.Estep(emloglik_comb)
+            # Update the arrangment model in batches
+            for j, bat_emlog_train in enumerate(train_loader):
+                # 1. arrangement E-step: positive phase
+                self.arrange.Estep(bat_emlog_train)
+                # 2. arrangement E-step: negative phase
                 if hasattr(self.arrange, 'Eneg'):
-                    self.arrange.Eneg(emission_model=self.emissions[0])
+                    self.arrange.eneg_numchains = bat_emlog_train.shape[0]
+                    self.arrange.Eneg(use_chains=None,
+                                      emission_model=self.emissions[0])
+                # 3. arrangement M-step
+                arM.Mstep()
 
-            # Compute the expected complete logliklihood
+            # Monitor the RBM training - cross entropy
+            CE = ev.cross_entropy(pt.softmax(emlog_train, dim=1),
+                                         arM.eneg_U)
+            # Don't gather the sufficient statistics
+            # - as the model is already updated
+            Uhat, _ = self.arrange.Estep(emloglik_comb, gather_ss=False)
+
+            # Compute the expected emission logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
-            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 0] = -pt.sum(CE) # negative entropy as a penalty term
             ll[i, 1] = pt.sum(ll_E)
             if pt.isnan(ll[i,:].sum()):
                 raise(NameError('Likelihood returned a NaN'))
+
+            # TODO: contruct a convergence criterion?
+            if i==iter-1:
+                break
 
             # Updates the parameters
             Uhat_split = self.distribute_evidence(Uhat)

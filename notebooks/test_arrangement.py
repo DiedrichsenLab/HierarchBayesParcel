@@ -14,6 +14,8 @@ import pandas as pd
 import seaborn as sb
 import copy
 
+from FusionModel.evaluate import calc_test_dcbc
+
 # pytorch cuda global flag
 # pt.cuda.is_available = lambda : False
 pt.set_default_tensor_type(pt.cuda.FloatTensor
@@ -304,9 +306,9 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
         if arM.name.startswith('idenp'):
             CE[epoch] = 0
         else:
-            # CE[epoch] = ev.cross_entropy(pt.softmax(emlog_train, dim=1),
-            #                              arM.eneg_U)
-            CE[epoch] = pt.abs(pt.softmax(emlog_train, dim=1) - arM.eneg_U).sum()
+            CE[epoch] = ev.cross_entropy(pt.softmax(emlog_train, dim=1),
+                                         arM.eneg_U)
+            # CE[epoch] = pt.abs(pt.softmax(emlog_train, dim=1) - arM.eneg_U).sum()
 
         theta_hist[:,epoch]=arM.get_params()
 
@@ -320,6 +322,49 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
         T = pd.concat([T,T1],ignore_index=True)
 
     return arM, T, theta_hist, CE
+
+def eval_dcbc(models, emM, Ytrain, Ytest, grid, Utrue_group, Utrue_indiv,
+              max_dist=10, bin_width=1):
+    D= pd.DataFrame()
+    emloglik_train = emM.Estep(Ytrain)
+    group_par, indiv_par = [], []
+
+    for m in models:
+        if m=='data':
+            this_Ugroup = pt.softmax(emloglik_train.sum(dim=0), dim=0).argmax(dim=0)
+            this_Uindiv = pt.softmax(emloglik_train,1).argmax(dim=1)
+            name = m
+        elif m=='Utrue':
+            this_Ugroup = Utrue_group
+            this_Uindiv = Utrue_indiv
+            name = m
+        else:
+            # EU,_ = m.Estep(emloglik_train, gather_ss=False)
+            if m.name.startswith('idenp'):
+                this_Ugroup = m.marginal_prob().argmax(dim=0)
+                this_Uindiv = m.estep_Uhat.argmax(dim=1)
+            elif m.name.startswith('cRBM'):
+                this_Ugroup = pt.softmax(m.bu, dim=0).argmax(dim=0)
+                this_Uindiv = m.epos_Uhat.argmax(dim=1)
+            else:
+                raise NameError('Unknown model name')
+            name = m.name
+
+        dcbc_group = calc_test_dcbc(this_Ugroup, Ytest, grid.Dist,
+                                    max_dist=int(max_dist), bin_width=bin_width)
+        dcbc_indiv = calc_test_dcbc(this_Uindiv, Ytest, grid.Dist,
+                                    max_dist=int(max_dist), bin_width=bin_width)
+
+        group_par.append(this_Ugroup)
+        indiv_par.append(this_Uindiv)
+
+        dict = {'model':[name],
+                'type':['test'],
+                'dcbc_group':dcbc_group.mean().item(),
+                'dcbc_indiv':dcbc_indiv.mean().item()}
+        D = pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
+
+    return D, group_par, indiv_par
 
 def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
     D= pd.DataFrame()
@@ -395,11 +440,24 @@ def plot_Uhat_maps(models,emloglik,grid):
         grid.plot_maps(Uh[0],cmap='jet',vmax=1,grid=(n_models,K),offset=i*K+1)
 
 def plot_P_maps(pmaps,grid):
-    plt.figure(figsize=(10,7))
     n_models = len(pmaps)
     K = pmaps[0].shape[0]
+
+    plt.figure(figsize=(K*3, n_models*3))
     for i,m in enumerate(pmaps):
         grid.plot_maps(m,cmap='jet',vmax=1,grid=(n_models,K),offset=i*K+1)
+
+    plt.show()
+
+def plot_U_maps(pmaps, grid, title):
+    n_models = len(pmaps)
+
+    plt.figure(figsize=(n_models * 3, 4))
+    for i,m in enumerate(pmaps):
+        grid.plot_maps(m,cmap='tab20',vmax=19,grid=(1, n_models),offset=i+1)
+        plt.title(title[i])
+
+    plt.show()
 
 def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
     # Get the expectation
@@ -407,13 +465,16 @@ def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
     K = emloglik.shape[1]
     P = emloglik.shape[2]
     
-    Uh = [] 
-    plt.figure(figsize=(10,7))
-    Uh.append(ar.expand_mn(Utrue[0:1],K))
+    Uh = []
+    height = 2 if style=='mixed' else 1
+    plt.figure(figsize=(n_models*3, height*4))
+
+    # Uh order: data -> models -> Utrue
     Uh.append(pt.softmax(emloglik[0:1],dim=1))
     for i,m in enumerate(models):
         A,_=m.Estep(emloglik[0:1])
         Uh.append(A)
+    Uh.append(ar.expand_mn(Utrue[0:1], K))
 
     if style=='prob':
         for i,uh in enumerate(Uh): 
@@ -439,17 +500,20 @@ def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
                     grid=(2,n_models),
                     offset = n_models+1)
 
-def plot_evaluation(D,criteria=['uerr','cos_err','Ecos_err']
-                      ,types=['test','compl']): 
+    plt.show()
+
+def plot_evaluation(D, criteria=['uerr','cos_err','Ecos_err','dcbc_group','dcbc_indiv'],
+                    types=['test','compl']):
     # Get the final error and the true pott models
-    plt.figure(figsize=(12,7))
     ncrit = len(criteria)
     ntypes = len(types)
+    plt.figure(figsize=(5*ncrit, 5*ntypes))
     for j in range(ntypes): 
         for i in range(ncrit): 
             plt.subplot(ntypes,ncrit,i+j*ncrit+1)
             sb.barplot(data=D[D.type==types[j]],x='model',y=criteria[i])
             plt.title(f'{criteria[i]}{types[j]}')
+            plt.xticks(rotation=45)
 
     plt.suptitle(f'final errors')
     plt.tight_layout()
@@ -533,10 +597,9 @@ def simulation_1():
     plot_Uhat_maps([None,indepAr,rbm,Mpotts],emloglik_test[0:1],grid)
     pass
 
-def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.2,
-                 emission='gmm', epos_iter=20, eneg_iter=20, num_sim=10):
+def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1.2,
+                 theta_mu=180, emission='gmm', epos_iter=20, eneg_iter=20, num_sim=10):
     P = width * width
-    theta_mu = P/4
     if emission == 'gmm': # MixGaussian
         sigma2 = 0.2
         N = 10
@@ -553,14 +616,11 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.
     HH = pt.zeros((num_sim,n_epoch))
     CE_rbm1 = pt.zeros((num_sim, n_epoch))
     CE_rbm2 = pt.zeros((num_sim, n_epoch))
+    GM, IM = [], []
 
     # REcorded bias parameter
-    RecLp1 = pt.zeros((num_sim, K, P))
-    RecLp2 = pt.zeros((num_sim, K, P))
-    RecBu1 = pt.zeros((num_sim, K, P))
-    RecBu2 = pt.zeros((num_sim, K, P))
-    RecUtrue = pt.zeros((num_sim,K,P))
-    RecEmLog = pt.zeros((num_sim,K,P))
+    SD = np.linspace(0.1,1,10)
+    Rec = pt.zeros((len(SD)+4, num_sim, K, P)) # unsmooth + 2 rbms + 1 emloglik
 
     # Generate partitions for region-completion testing
     num_part = 4
@@ -573,14 +633,13 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.
                                         do_plot=0)
 
         # Get the smoothed training data
-        blur_transform = transforms.GaussianBlur(kernel_size=3, sigma=1)
-        Ytrain_smooth = blur_transform(Ytrain.view(Ytrain.shape[0],-1,width,width))
-        Ytrain_smooth = Ytrain_smooth.view(Ytrain.shape[0],Ytrain.shape[1],-1)
-        # seeds = [0,width-1,int(P/2+width/2),P-width,P-1]
-        # Ytrain,Ytest,Utrue,Mtrue,grid = make_potts_data(width, K, N=N,
-        #                                                 nsubj=num_subj,
-        #                                                 sigma2=sigma2,
-        #                                                 inits=seeds)
+        Ytrain_smooth = []
+        for smooth in SD:
+            blur_transform = transforms.GaussianBlur(kernel_size=5, sigma=smooth)
+            Ys = blur_transform(Ytrain.view(Ytrain.shape[0],-1,width,width))
+            Ys = Ys.view(Ytrain.shape[0],Ytrain.shape[1],-1)
+            Ytrain_smooth.append(Ys)
+
         emloglik_train = Mtrue.emission.Estep(Ytrain)
         emloglik_test = Mtrue.emission.Estep(Ytest)
         P = Mtrue.emission.P
@@ -591,7 +650,9 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.
 
         # Make list of fitting models
         Models, fitted_M = [], []
-        for nam in ['idenp_1','idenp_2','cRBM_W','cRBM_Wc']:
+        fitting_names = ['idenp_unsmooth'] + [f'idenp_{s}' for s in SD] + ['cRBM_Wc','cRBM_W']
+        Y_fit = [Ytrain] + Ytrain_smooth + [Ytrain, Ytrain]
+        for nam in fitting_names:
             Models.append(make_train_model(model_name=nam, K=K, P=P,
                                            num_subj=num_subj, eneg_iter=eneg_iter,
                                            epos_iter=epos_iter, Wc=rbm.Wc, theta=None,
@@ -606,8 +667,7 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.
                 # m.W = rbm.W.detach().clone()
                 m.bu = rbm.bu.detach().clone()
 
-            m, T1, theta_hist, ce = train_sml(m, Mtrue.emission,
-                                              Ytrain_smooth if i == 1 else Ytrain,
+            m, T1, theta_hist, ce = train_sml(m, Mtrue.emission, Y_fit[i],
                                               Ytest, part, batch_size=batch_size,
                                               n_epoch=n_epoch)
             fitted_M.append(m)
@@ -616,34 +676,52 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.
             T = pd.concat([T,T1],ignore_index=True)
 
         # Evaluate overall
+        # 1. u_absolute error, cos_err, and expected cos_err
         D = eval_arrange(['data'] + fitted_M + ['Utrue'],
                          Mtrue.emission, Ytrain, Ytest, Utrue=Utrue)
-        D1 = eval_arrange_compl(fitted_M, Mtrue.emission, Ytest,
-                                part=part, Utrue=Utrue)
+
+        # 2. DCBC
+        binWidth = 5
+        max_dist = binWidth * pt.ceil(grid.Dist.max() / binWidth)
+        D1, group_map, indiv_map = eval_dcbc(['data'] + fitted_M + ['Utrue'], Mtrue.emission,
+                                             Ytrain, Ytest, grid,
+                                             pt.softmax(rbm.bu, dim=0).argmax(dim=0), Utrue,
+                                             max_dist=max_dist, bin_width=binWidth)
+
+        GM.append(group_map)
+        IM.append(indiv_map)
+        # 3. Region completion test
+        # D1 = eval_arrange_compl(fitted_M, Mtrue.emission, Ytest,
+        #                         part=part, Utrue=Utrue)
+
         DD = pd.concat([DD,D,D1],ignore_index=True)
         TT = pd.concat([TT,T],ignore_index=True)
 
         # Record the theta for rbm_Wc model only
-        HH[s,:]= TH[-1][fitted_M[-1].get_param_indices('theta'),:]
+        HH[s,:]= TH[-2][fitted_M[-2].get_param_indices('theta'),:]
 
         # Record cross entropy for rbms
         CE_rbm1[s, :] = CE[-2]
         CE_rbm2[s, :] = CE[-1]
         
         # record the different fitting runs into structure
-        RecEmLog[s] = pt.softmax(emloglik_train, 1).mean(dim=0)
-        RecLp1[s] = pt.softmax(fitted_M[0].logpi, 0)
-        RecLp2[s] = pt.softmax(fitted_M[1].logpi, 0)
-        RecBu1[s] = pt.softmax(fitted_M[2].bu, 0)
-        RecBu2[s] = pt.softmax(fitted_M[3].bu, 0)
-        RecUtrue[s] = ar.expand_mn(Utrue,K).mean(dim=0)
+        Rec[0,s,:,:] = pt.softmax(emloglik_train, 1).mean(dim=0) # first is data
+        for j, fm in enumerate(fitted_M):
+            if fm.name.startswith('idenp'):
+                Rec[j+1,s,:,:] =  pt.softmax(fm.logpi, 0)
+            elif fm.name.startswith('cRBM'):
+                Rec[j+1,s,:,:] = pt.softmax(fm.bu, 0)
+            else:
+                raise ValueError('Unknown model name')
+        # Rec[-1,s,:,:] = ar.expand_mn(Utrue, K).mean(dim=0)
 
-
+    # Plot learning curves by epoch
     fig = plt.figure(figsize=(10,10))
     plt.subplot(2, 2, 1)
-    plt.plot(CE_rbm1.T.cpu().numpy(), linestyle='-')
-    plt.plot(CE_rbm2.T.cpu().numpy(), linestyle=':')
+    plt.plot(CE_rbm1.T.cpu().numpy(), linestyle='-', label='rbm_Wc')
+    plt.plot(CE_rbm2.T.cpu().numpy(), linestyle=':', label='rbm_W')
     plt.ylabel('Cross Entropy')
+    plt.legend(['rbm_Wc (solid)','rbm_W (dotted)'])
     plt.subplot(2, 2, 2)
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='test')], y='crit',
                 x='iter', hue='model')
@@ -659,27 +737,8 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=80, theta=1.
     plt.ylabel('Theta')
     plt.show()
 
-    # Get the final error and the true pott models
-    plot_evaluation(DD)
-
-    # OPtional: Plot the last maps of prior estimates
-    # plot_Uhat_maps([None,indepAr,rbm3,Mtrue.arrange],emloglik_test[0:1],grid)
-    # Optimal: plot the pmaps
-    plot_P_maps([RecEmLog.mean(dim=0),
-                 RecLp1.mean(dim=0),
-                 RecLp2.mean(dim=0),
-                 RecBu1.mean(dim=0),
-                 RecBu2.mean(dim=0),
-                 pt.softmax(rbm.bu, 0)],
-                grid)
-    plt.show()
-
-    plot_individual_Uhat(Models, Utrue[0:1], emloglik_train[0:1],
-                         grid, style='mixed')
-    # plot_individual_Uhat(Models,Utrue[0:1],emloglik_train[0:1],
-    #                grid,style='argmax')
-    plt.show()
-    pass
+    # records = [RecEmLog, RecLp1, RecLp2, RecLp3, RecLp4, RecLp5, RecBu1, RecBu2]
+    return grid, DD, Rec, rbm, fitted_M, Utrue, emloglik_train, GM, IM
 
 def simulation_chain():
     K = 3
@@ -865,9 +924,30 @@ if __name__ == '__main__':
     # train_rbm_to_mrf2('notebooks/sim_500.pt',n_hidden=[30,100],batch_size=20,n_epoch=20,sigma2=0.5)
     # simulation_2()
     # simulation_chain()
-    simulation_2() 
-    # plot_evaluation2()
+    grid, DD, records, rbm, Models, Utrue, emloglik_train, GM, IM = simulation_2(theta_mu=240,
+                                                                                 num_sim=10)
+
+    # Get the final error and the true pott models
+    plot_evaluation(DD, types=['test'])
+
+    # OPtional: Plot the last maps of prior estimates
+    # plot_Uhat_maps([None,indepAr,rbm3,Mtrue.arrange],emloglik_test[0:1],grid)
+
+    # Optimal: plot the prob maps by K
+    plot_P_maps(pt.cat((records.mean(dim=1), pt.softmax(rbm.bu, 0).unsqueeze(0)), dim=0),
+                grid)
+
+    # plot the group reconstructed U maps
+    plot_U_maps(pt.stack(GM[0]), grid, title=['data'] + [m.name for m in Models] + ['true'])
+
+    plot_individual_Uhat(Models, Utrue[0:1], emloglik_train[0:1],
+                         grid, style='mixed')
+    # plot_individual_Uhat(Models,Utrue[0:1],emloglik_train[0:1],
+    #                grid,style='argmax')
     pass
+
+
+    # plot_evaluation2()
     # test_cmpRBM_Estep()
     # test_sample_multinomial()
     # train_RBM()
