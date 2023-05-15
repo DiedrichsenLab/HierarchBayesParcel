@@ -1063,8 +1063,8 @@ class wcmDBM(mpRBM):
         for learning of brain parcellations for probabilistic
         input Uses variational stochastic maximum likelihood for learning
     """
-    def __init__(self, K, P, nh=None, W=None, theta=None, dist=None,
-                 eneg_iter=10, epos_iter=10, eneg_numchains=77):
+    def __init__(self, K, P, nh=None, Wc=None, theta=None, eneg_iter=10,
+                 epos_iter=10, eneg_numchains=77, momentum=True):
         """ Constructor for the wcmDBM class
 
         Args:
@@ -1092,16 +1092,19 @@ class wcmDBM(mpRBM):
             self.set_param_list(['bu', 'W'])
         else:
             assert Wc.ndim == 2, 'Currently only support Wc is a 2d tensor'
-            self.Wc = Wc.to_sparse() if not Wc.is_sparce else Wc
+            self.Wc = Wc.to_sparse() if not Wc.is_sparse else Wc
+            # self.Wc = Wc
             self.nh = Wc.shape[0]
 
             if theta is None:
-                self.theta = pt.abs(pt.randn((1,)))
+                theta = pt.abs(pt.randn((1,))).item()
+                self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
             else:
                 self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
                 assert self.theta.ndim == 0, 'theta must be a scalar'
 
             self.W = self.Wc * self.theta
+            self.Wc = 1 # Remove Wc
             self.set_param_list(['bu', 'theta'])
 
         self.gibbs_U = None  # samples from the hidden layer for negative phase

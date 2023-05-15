@@ -123,7 +123,7 @@ def rand_von_mises_fisher(mu, kappa, N=1):
         using mean direction mu and concentration kappa.
     """
     # Check that mu is a unit vector
-    eps = 10 ** (-8)  # Precision
+    eps = 10 ** (-5)  # Precision
     norm_mu = pt.linalg.norm(mu)
     if pt.abs(norm_mu - 1.0) > eps:
         raise Exception("mu must be a unit vector.")

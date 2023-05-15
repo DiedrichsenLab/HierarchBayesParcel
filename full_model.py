@@ -590,7 +590,7 @@ class FullMultiModel:
         theta_n = pt.cat([best_theta,theta[1:, :]])
         return self, ll_n, theta_n, U_hat, first_lls
 
-    def fit_sml(self, Y, iter=60, batch_size=None, stepsize=0.8, estep='sample',
+    def fit_sml(self, iter=60, batch_size=None, stepsize=0.8, estep='sample',
                 seperate_ll=False, fit_emission=True, fit_arrangement=True,
                 first_evidence=True):
         """ Runs a Stochastic Maximum likelihood algorithm on a full model.
@@ -619,8 +619,8 @@ class FullMultiModel:
             first_evidence = [first_evidence]*len(self.emissions)
 
         # Initialize the tracking
-        ll = np.zeros((iter,2))
-        theta = np.zeros((iter, self.nparams))
+        ll = pt.zeros((iter,2))
+        theta = pt.zeros((iter, self.nparams))
 
         for i in range(iter):
             print(f'start: {i}')
@@ -640,15 +640,17 @@ class FullMultiModel:
             # Create a DataLoader object for training data
             train_loader = DataLoader(TensorDataset(emloglik_comb),
                                       batch_size=batch_size, shuffle=True,
-                                      num_workers=num_workers)
+                                      generator=pt.Generator(device='cuda'
+                                      if pt.cuda.is_available() else 'cpu'),
+                                      num_workers=0)
 
             # Update the arrangment model in batches
             for j, bat_emlog_train in enumerate(train_loader):
                 # 1. arrangement E-step: positive phase
-                self.arrange.Estep(bat_emlog_train)
+                self.arrange.Estep(bat_emlog_train[0])
                 # 2. arrangement E-step: negative phase
                 if hasattr(self.arrange, 'Eneg'):
-                    self.arrange.eneg_numchains = bat_emlog_train.shape[0]
+                    self.arrange.eneg_numchains = bat_emlog_train[0].shape[0]
                     self.arrange.Eneg(use_chains=None,
                                       emission_model=self.emissions[0])
                 # 3. arrangement M-step

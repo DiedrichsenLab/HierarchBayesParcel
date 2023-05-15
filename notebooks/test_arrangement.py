@@ -330,22 +330,28 @@ def eval_dcbc(models, emM, Ytrain, Ytest, grid, Utrue_group, Utrue_indiv,
     group_par, indiv_par = [], []
 
     for m in models:
+        smooth = 0
         if m=='data':
             this_Ugroup = pt.softmax(emloglik_train.sum(dim=0), dim=0).argmax(dim=0)
             this_Uindiv = pt.softmax(emloglik_train,1).argmax(dim=1)
             name = m
+            model_type = 'data'
         elif m=='Utrue':
             this_Ugroup = Utrue_group
             this_Uindiv = Utrue_indiv
             name = m
+            model_type = 'true'
         else:
             # EU,_ = m.Estep(emloglik_train, gather_ss=False)
             if m.name.startswith('idenp'):
                 this_Ugroup = m.marginal_prob().argmax(dim=0)
                 this_Uindiv = m.estep_Uhat.argmax(dim=1)
+                smooth = float(m.name.split('_')[1])
+                model_type = 'idenp'
             elif m.name.startswith('cRBM'):
                 this_Ugroup = pt.softmax(m.bu, dim=0).argmax(dim=0)
                 this_Uindiv = m.epos_Uhat.argmax(dim=1)
+                model_type = 'cRBM'
             else:
                 raise NameError('Unknown model name')
             name = m.name
@@ -360,6 +366,8 @@ def eval_dcbc(models, emM, Ytrain, Ytest, grid, Utrue_group, Utrue_indiv,
 
         dict = {'model':[name],
                 'type':['test'],
+                'smooth': smooth,
+                'arrangement': model_type,
                 'dcbc_group':dcbc_group.mean().item(),
                 'dcbc_indiv':dcbc_indiv.mean().item()}
         D = pd.concat([D,pd.DataFrame(dict)],ignore_index=True)
@@ -372,18 +380,24 @@ def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
     emloglik_train = emM.Estep(Ytrain)
     
     for m in models:
+        smooth = 0
         if m=='data':
             EU = pt.softmax(emloglik_train,1)
-            name = m 
+            name = m
+            model_type = 'data'
         elif m=='Utrue':
             EU = Utrue_mn
-            name = m 
+            name = m
+            model_type = 'true'
         else: 
             # EU,_ = m.Estep(emloglik_train, gather_ss=False)
             if m.name.startswith('idenp'):
                 EU = m.estep_Uhat
+                smooth = float(m.name.split('_')[1])
+                model_type = 'idenp'
             elif m.name.startswith('cRBM'):
                 EU = m.epos_Uhat
+                model_type = 'cRBM'
             else:
                 raise NameError('Unknown model name')
             name = m.name
@@ -395,6 +409,8 @@ def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
 
         dict ={'model':[name],
                'type':['test'],
+               'smooth':smooth,
+               'arrangement': model_type,
                'uerr':uerr_test1,
                'cos_err':cos_err,
                'Ecos_err':Ecos_err}
@@ -511,9 +527,27 @@ def plot_evaluation(D, criteria=['uerr','cos_err','Ecos_err','dcbc_group','dcbc_
     for j in range(ntypes): 
         for i in range(ncrit): 
             plt.subplot(ntypes,ncrit,i+j*ncrit+1)
-            sb.barplot(data=D[D.type==types[j]],x='model',y=criteria[i])
+            # sb.barplot(data=D[D.type==types[j]], x='model', y=criteria[i])
+
+            df = D[(D.type == types[j]) & (D.arrangement == 'idenp')]
+            sb.lineplot(data=df, x='smooth', y=criteria[i],
+                        err_style="bars", markers=False)
+
+            emlog = D[(D.type == types[j]) & (D.arrangement == 'data')]
+            plt.axhline(emlog[criteria[i]].mean().item(), color='k', ls=':',
+                        label='data')
+
+            rbm_wc = D[(D.type == types[j]) & (D.model == 'cRBM_Wc')]
+            plt.axhline(rbm_wc[criteria[i]].mean().item(), color='r', ls=':',
+                        label='cRBM_Wc')
+
+            rbm_wc = D[(D.type == types[j]) & (D.model == 'Utrue')]
+            plt.axhline(rbm_wc[criteria[i]].mean().item(), color='b', ls=':',
+                        label='Utrue')
+
             plt.title(f'{criteria[i]}{types[j]}')
-            plt.xticks(rotation=45)
+            plt.legend()
+            # plt.xticks(rotation=45)
 
     plt.suptitle(f'final errors')
     plt.tight_layout()
@@ -619,7 +653,8 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
     GM, IM = [], []
 
     # REcorded bias parameter
-    SD = np.linspace(0.1,1,10)
+    SD = np.concatenate((np.linspace(0.1,1,2), np.linspace(1.5,3,2)))
+    SD = np.round(SD, decimals=2)
     Rec = pt.zeros((len(SD)+4, num_sim, K, P)) # unsmooth + 2 rbms + 1 emloglik
 
     # Generate partitions for region-completion testing
@@ -650,7 +685,7 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
 
         # Make list of fitting models
         Models, fitted_M = [], []
-        fitting_names = ['idenp_unsmooth'] + [f'idenp_{s}' for s in SD] + ['cRBM_Wc','cRBM_W']
+        fitting_names = ['idenp_0'] + [f'idenp_{s}' for s in SD] + ['cRBM_Wc','cRBM_W']
         Y_fit = [Ytrain] + Ytrain_smooth + [Ytrain, Ytrain]
         for nam in fitting_names:
             Models.append(make_train_model(model_name=nam, K=K, P=P,
@@ -693,9 +728,9 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
         # 3. Region completion test
         # D1 = eval_arrange_compl(fitted_M, Mtrue.emission, Ytest,
         #                         part=part, Utrue=Utrue)
-
-        DD = pd.concat([DD,D,D1],ignore_index=True)
-        TT = pd.concat([TT,T],ignore_index=True)
+        res = pd.merge(D, D1, how='outer')
+        DD = pd.concat([DD, res],ignore_index=True)
+        TT = pd.concat([TT, T],ignore_index=True)
 
         # Record the theta for rbm_Wc model only
         HH[s,:]= TH[-2][fitted_M[-2].get_param_indices('theta'),:]
@@ -925,7 +960,7 @@ if __name__ == '__main__':
     # simulation_2()
     # simulation_chain()
     grid, DD, records, rbm, Models, Utrue, emloglik_train, GM, IM = simulation_2(theta_mu=240,
-                                                                                 num_sim=10)
+                                                                                 num_sim=20)
 
     # Get the final error and the true pott models
     plot_evaluation(DD, types=['test'])

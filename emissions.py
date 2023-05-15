@@ -910,6 +910,9 @@ class MixVMF(EmissionModel):
             LL (pt.tensor): the expected log likelihood for emission model,
             shape (nSubject * K * P)
         """
+        if Y is not None:
+            self.initialize(Y)
+
         if sub is None:
             sub = range(self.Y.shape[0])
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
