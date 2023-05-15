@@ -1,8 +1,8 @@
-Fusion Framework
+HierarchBayesParcel: A Hierarchical Bayesian Brain Parcellation Framework for fusion of functional imaging datasets
 ====
 Diedrichsen Lab, Western University
 
-A generative modelling framework for individual brain organization across a number of different data. 
+A Bayesian framework for individual brain organization across a number of different data. 
 The Model is partitioned into a model that determines the probability of the spatial arrangement of 
 regions in each subject s, $p(\mathbf{U}^{(s)};\theta_A)$ and the probability of observing a set of 
 data at each given brain location. We introduce the Markov property that the observations are mutually 
