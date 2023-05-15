@@ -52,7 +52,7 @@ class Model:
         """move all torch.Tensor object in Model
            class to the targe device
        Args:
-        M: a FullMultiModel or FullMultiModelSymmetric
+        M: a FullMultiModel
            object
         device: the target device to store the tensor
                 default - 'cpu'
