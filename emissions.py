@@ -8,7 +8,6 @@ Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import torch as pt
-import matplotlib.pyplot as plt
 from scipy import stats, special
 from torch import log, exp, sqrt
 from generativeMRF.sample_vmf import rand_von_mises_fisher
@@ -16,13 +15,11 @@ from generativeMRF.model import Model
 from generativeMRF.depreciated.AIS_test import rejection_sampling
 import generativeMRF.arrangements as ar
 
-PI = pt.tensor(np.pi, dtype=pt.get_default_dtype())
-log_PI = pt.log(pt.tensor(np.pi, dtype=pt.get_default_dtype()))
-
-
 class EmissionModel(Model):
+    """ Abstract class for emission models
+    """
     def __init__(self, K=4, N=10, P=20, data=None, X=None):
-        """Abstract constructor of emission models
+        """ Abstract constructor of emission models
         Args:
             K: the number of clusters
             N: the number of observations if given
@@ -34,6 +31,7 @@ class EmissionModel(Model):
         self.K = K  # Number of states
         self.P = P
         self.nparams = 0
+        self.PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
         if X is not None:
             if type(X) is np.ndarray:
                 X = pt.tensor(X, dtype=pt.get_default_dtype())
@@ -50,9 +48,10 @@ class EmissionModel(Model):
         self.tmp_list=['Y']
     
     def initialize(self, data, X=None):
-        """Initializes the emission model with data set. 
-        The data are stored in the object itself
-        call clear() to remove.
+        """ Initializes the emission model with data set.
+            The data are stored in the object itself
+            call clear() to remove.
+
         Args:
             data (pt.tensor, ndarray): numsubj x N x P data tensor
             X (array, optional): Design matrix. Defaults to None.
@@ -76,29 +75,30 @@ class EmissionModel(Model):
         self.num_subj = data.shape[0]
 
     def Estep(self, sub=None):
-        """Implemnents E-step and returns
-            Parameters:
-                sub (list):
-                    List of indices of subjects to use. Default=all (None)
-            Returns:
-                emloglik (np.array):
-                    emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
+        """ Implemnents E-step and returns
+
+        Args:
+            sub (list):
+                List of indices of subjects to use. Default=all (None)
+
+        Returns:
+            emloglik (np.array):
+                emission log likelihood log p(Y|u,theta_E) a numsubjxPxK matrix
         """
         pass
 
     def Mstep(self, U_hat):
-        """Implements M-step for the model
+        """ Implements M-step for the model
         """
         pass
 
     def random_params(self):
-        """Sets parameters to random values
+        """ Sets parameters to random values
         """
         pass
 
 class MultiNomial(EmissionModel):
-    """
-    Multinomial emission model with coupling strength theta_s
+    """ Multinomial emission model with coupling strength theta_s
     """
     def __init__(self, K=4, P=20, params=None):
         super().__init__(K, 1, P)
@@ -110,37 +110,49 @@ class MultiNomial(EmissionModel):
             self.set_params(params)
 
     def initialize(self, Y):
-        """Stores the data in emission model itself
-        Calculates sufficient stats on the data that does not depend on u,
-        and allocates memory for the sufficient stats that does.
+        """ Stores the data in emission model itself
+            Calculates sufficient stats on the data that does not depend on u,
+            and allocates memory for the sufficient stats that does.
         """
         self.Y = Y
 
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
-            Collects the sufficient statistics for the M-step
-        specify which subject to optimize
-        return: the expected log likelihood for emission model, shape (nSubject * K * P)
+            Collects the sufficient statistics for the M-step specify which
+            subject to optimize
+
+        Args:
+            Y (pt.tensor, optional): numsubj x N x P data tensor. Defaults to None.
+            sub (list, optional): List of indices of subjects to use. Defaults to None.
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
         n_subj = self.Y.shape[0]
 
         LL = self.Y * self.w - log(self.K-1+exp(self.w))
-        return(LL)
+        return LL
 
     def Mstep(self, U_hat):
-        """ Performs the M-step on a specific U-hat.
-            In this emission model, the parameters need to be updated
-            are V and sigma2.
+        """ Performs the M-step on a specific U-hat. In this emission model,
+            the parameters need to be updated are V and sigma2.
+
+        Args:
+            U_hat (pt.tensor): the posterior mean of U, shape (nSubject * K * P)
         """
         mean_uy = pt.mean(pt.sum(self.Y * self.U_hat, dim=1)) # this is E(yTu)
         self.w = log(1-self.K+(self.K-1)/(1-mean_uy)) 
 
-    def sample(self, U):
+    def sample(self, U, signal=None):
         """ Generate random data given this emission model
-        :The prior arrangement U from arrangement model
-        :sampled data Y (compressed form)
+        Args:
+            U (pt.tensor): The prior arrangement U from arrangement model
+
+        Returns:
+            Y (pt.tensor): sampled data Y (compressed form)
         """
         Ue = ar.expand_mn(U,self.K)
         p = pt.softmax(Ue*self.w,1)
@@ -148,10 +160,24 @@ class MultiNomial(EmissionModel):
         return Y
 
 class MixGaussian(EmissionModel):
+    """ Mixture of Gaussians with isotropic noise
     """
-    Mixture of Gaussians with isotropic noise
-    """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None, params=None, std_V=True):
+    def __init__(self, K=4, N=10, P=20, data=None, X=None,
+                 params=None, std_V=True):
+        """ Constructor for the emission model
+
+        Args:
+            K (int, optional): Number of parcels.
+            N (int, optional): Number of tasks.
+            P (int, optional): Number of brain voxels.
+            data (pt.tensor, optional): numsubj x N x P data tensor.
+                Defaults to None.
+            X (pt.tensor, optional): Design matrix of the tasks.
+                Defaults to None.
+            params (dict, optional): Dictionary of parameters.
+                Defaults to None.
+            std_V (bool, optional): Whether to standardize the Vs.
+        """
         super().__init__(K, N, P, data, X)
         self.std_V = std_V
         self.random_params()
@@ -161,50 +187,68 @@ class MixGaussian(EmissionModel):
             self.set_params(params)
         self.tmp_list=['Y','rss','YY']
 
-
     def initialize(self, data, X=None):
-        """Stores the data in emission model itself
-        Calculates sufficient stats on the data that does not depend on u,
-        and allocates memory for the sufficient stats that does.
+        """ Stores the data in emission model itself. Calculates
+            sufficient stats on the data that does not depend on u,
+            and allocates memory for the sufficient stats that does.
+
+        Args:
+            data (pt.tensor): numsubj x N x P data tensor
+            X (pt.tensor, optional): Design matrix of the tasks.
         """
         super().initialize(data, X=X)
         self.YY = self.Y**2
         self.rss = pt.empty((self.num_subj, self.K, self.P))
 
     def random_params(self):
-        """ In this mixture gaussians, the parameters are parcel-specific mean V_k
-            and variance. Here, we assume the variance is equal across different parcels.
-            Therefore, there are total k+1 parameters in this mixture model
-            set the initial random parameters for gaussian mixture
+        """ In this mixture gaussians, the parameters are parcel-specific
+            mean V_k and variance. Here, we assume the variance is equally
+            across different parcels. Therefore, there are total k+1
+            parameters in this mixture model. We set the initial random
+            parameters for gaussian mixture here.
         """
         self.V = pt.randn(self.M, self.K)/np.sqrt(self.M)
         if self.std_V:  # standardise V to unit length
             # Not clear why this should be constraint for GMM, but ok
             self.V = self.V / pt.sqrt(pt.sum(self.V**2, dim=0))
-        self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)), dtype=pt.get_default_dtype())
+        self.sigma2 = pt.tensor(np.exp(np.random.normal(0, 0.3)),
+                                dtype=pt.get_default_dtype())
 
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each value of U, up to a constant
-            Collects the sufficient statistics for the M-step
-        specify which subject to optimize
-        return: the expected log likelihood for emission model, shape (nSubject * K * P)
+            Collects the sufficient statistics for the M-step specify
+            which subject to optimize
+
+        Args:
+            Y (pt.tensor, optional): numsubj x N x P data tensor.
+                Defaults to None.
+            sub (list, optional): List of indices of subjects to use.
+                Defaults to None.
+
+        Return:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
+        if Y is not None:
+            self.initialize(Y)
+        n_subj = self.Y.shape[0]
         if sub is None:
-            sub = sub = range(self.Y.shape[0])
+            sub = range(self.Y.shape[0])
 
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
-        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)  # This is u.T V.T V u for each u
+        # This is u.T V.T V u for each u
+        uVVu = pt.sum(pt.matmul(self.X, self.V)**2, dim=0)
         YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
-        self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2*YV + uVVu.reshape((self.K, 1))
-        LL = - 0.5 * self.N*(log(pt.as_tensor(2*np.pi)) + log(self.sigma2)) \
+        self.rss = pt.sum(self.YY, dim=1, keepdim=True) \
+                   - 2*YV + uVVu.reshape((self.K, 1))
+        LL = - 0.5 * self.N*(log(self.PI) + log(self.sigma2)) \
              - 0.5 / self.sigma2 * self.rss
 
         return pt.nan_to_num(LL)
 
     def Mstep(self, U_hat):
-        """ Performs the M-step on a specific U-hat.
-            In this emission model, the parameters need to be updated
-            are V and sigma2.
+        """ Performs the M-step on a specific U-hat. In this emission model,
+            the parameters need to be updated are V and sigma2.
         """
         regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
@@ -224,14 +268,15 @@ class MixGaussian(EmissionModel):
                pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
         self.sigma2 = pt.nansum(this_U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
-        # rss is calculated using V at (t-1) iteration
-        # ERSS = pt.sum(U_hat * self.rss)
-        # self.sigma2 = ERSS / (self.N * self.P * self.num_subj)
-
-    def sample(self, U):
+    def sample(self, U, signal=None):
         """ Generate random data given this emission model
-        :param U: The prior arrangement U from arrangement model
-        :return: sampled data Y
+
+        Args:
+            U (pt.tensor): prior arrangement U from arrangement model.
+                numsubj x N x P tensor of assignments
+
+        Returns:
+            Y (pt.tensor): numsubj x N x P tensor of sample data
         """
         if type(U) is np.ndarray:
             U = pt.tensor(U, dtype=pt.int)
@@ -245,13 +290,13 @@ class MixGaussian(EmissionModel):
         for s in range(num_subj):
             # And the V_k given by the U, then X*V_k*U = (n_sub, N, P)
             Y[s, :, :] = Y[s, :, :] + pt.matmul(self.X, self.V[:, U[s, :].long()])
+
         return Y
 
 
 class MixGaussianExp(EmissionModel):
-    """
-    Mixture of Gaussians with signal strength (fit gamma distribution)
-    for each voxel. Scaling factor on the signal and a fixed noise variance
+    """ Mixture of Gaussians with signal strength (fit gamma distribution)
+        for each voxel. Scaling factor on the signal and a fixed noise variance
     """
     def __init__(self, K=4, N=10, P=20, num_signal_bins=88, data=None, X=None, params=None,
                  std_V=True, type_estep='linspace'):
@@ -266,11 +311,14 @@ class MixGaussianExp(EmissionModel):
         self.type_estep = type_estep  # Added for a period until we have the best technique
         self.tmp_list=['Y','YY','s','s2','rss']
 
-
     def initialize(self, data, X=None):
-        """Stores the data in emission model itself
-        Calculates sufficient stats on the data that does not depend on u,
-        and allocates memory for the sufficient stats that does.
+        """ Stores the data in emission model itself. Calculates sufficient stats
+            on the data that does not depend on u, and allocates memory for the
+            sufficient stats that does.
+
+        Args:
+            data (pt.tensor): numsubj x N x P tensor of data
+            X (pt.tensor): numsubj x N x M tensor of design matrix
         """
         super().initialize(data, X=X)
         self.YY = self.Y ** 2
@@ -295,9 +343,14 @@ class MixGaussianExp(EmissionModel):
     def Estep_max(self, Y=None, sub=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
-        :param Y: the real data
-        :param sub: specify which subject to optimize
-        :return: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Args:
+            Y (pt.tensor): numsubj x N x P tensor of real data
+            sub (list): specify which subject to optimize
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model.
+                shape of numsubj x K x P tensor
         """
         if Y is not None:
             self.initialize(Y)
@@ -311,19 +364,26 @@ class MixGaussianExp(EmissionModel):
             YV = pt.mm(self.Y[i, :, :].T, self.V)
             self.s[i, :, :] = (YV / uVVu - self.beta * self.sigma2).T  # Maximized g
             self.s[i][self.s[i] < 0] = 0  # Limit to 0
-            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s[i, :, :] ** 2 * uVVu.reshape((self.K, 1))
+            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :]\
+                                + self.s[i, :, :] ** 2 * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
-                          + self.alpha * pt.log(self.beta) - pt.special.gammaln(self.alpha) - self.beta * self.s[i, :, :]
+            LL[i, :, :] = - 0.5 * self.N * (log(2*self.PI) + pt.log(self.sigma2)) \
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+                          + self.alpha * pt.log(self.beta) - \
+                          pt.special.gammaln(self.alpha) - self.beta * self.s[i, :, :]
 
         return LL
 
     def Estep_old(self, Y=None, signal=None, sub=None):
-        """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
-            Collects the sufficient statistics for the M-step
+        """ Approximate the log p(Y, s|U) for each value of U by sampling,
+            up to a constant. Collects the sufficient statistics for the M-step
+
         Args:
             sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Returns:
+             LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
@@ -336,14 +396,17 @@ class MixGaussianExp(EmissionModel):
 
         for i in sub:
             YV = pt.mm(self.Y[i, :, :].T, self.V)
-            # Importance sampling from p(s_i|y_i, u_i). First try sample from uniformed distribution
+            # Importance sampling from p(s_i|y_i, u_i).
+            # First try sample from uniformed distribution
             # plt.figure()
             if signal is None:
                 for k in range(self.K):
                     for p in range(self.P):
-                        # Here try to sampling the posterior of p(s_i|y_i, u_i) for each given y_i and u_i(k)
+                        # Here try to sampling the posterior of p(s_i|y_i, u_i)
+                        # for each given y_i and u_i(k)
                         x = pt.linspace(0,self.maxlength*1.1,77)
-                        loglike = - 0.5 * (1 / self.sigma2) * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
+                        loglike = - 0.5 * (1 / self.sigma2) \
+                                  * (-2 * YV[p, k] * x + uVVu[k] * x ** 2) - self.beta * x
                         # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                         post = loglik2prob(loglike)
                         self.s[i, k, p] = pt.sum(x * post)
@@ -356,19 +419,28 @@ class MixGaussianExp(EmissionModel):
                 self.s = signal.unsqueeze(1).repeat(1, self.K, 1)
                 self.s2 = signal.unsqueeze(1).repeat(1, self.K, 1)**2
 
-            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
+            self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] \
+                                + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+            LL[i, :, :] = - 0.5 * self.N * (log(2*self.PI) + pt.log(self.sigma2)) \
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + pt.log(self.beta) - self.beta * self.s[i, :, :]
 
         return LL
 
     def Estep_ais(self, Y=None, signal=None, sub=None):
-        """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
+        """ Approximate the log p(Y, s|U) for each value of U using AIS
+            (annealed importance sampling) up to a constant.
             Collects the sufficient statistics for the M-step
+
         Args:
+            Y (pt.tensor): shape (nSubject * N * P)
+            signal (pt.tensor): shape (nSubject * nTime)
             sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
@@ -381,21 +453,25 @@ class MixGaussianExp(EmissionModel):
 
         for i in sub:
             YV = pt.mm(self.Y[i, :, :].T, self.V)
-            # Importance sampling from p(s_i|y_i, u_i). First try sample from uniformed distribution
+            # Importance sampling from p(s_i|y_i, u_i).
+            # First try sample from uniformed distribution
             # plt.figure()
             if signal is None:
                 f_n = lambda x: pt.exp(-(x - 1) ** 2 / (2 * 2 ** 2))
                 q_n = pt.distributions.normal.Normal(3, 3)
                 for k in range(self.K):
                     for p in range(self.P):
-                        # Here try to sampling the posterior of p(s_i|y_i, u_i) for each given y_i and u_i(k)
+                        # Here try to sampling the posterior of p(s_i|y_i, u_i)
+                        # for each given y_i and u_i(k)
                         x = pt.linspace(0,self.maxlength*1.1,77)
-                        loglike = lambda a: -0.5*(1/self.sigma2) * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a
-                        likelihood = lambda a: exp(-0.5*(1/self.sigma2) * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a)
+                        loglike = lambda a: -0.5*(1/self.sigma2) \
+                                            * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a
+                        likelihood = lambda a: exp(-0.5*(1/self.sigma2)
+                                                   * (-2*YV[p, k]*a + uVVu[k]*a**2) - self.beta*a)
 
-                        # res1, res2 = annealed_importance_sampling(likelihood, f_n, q_n, num_sample=100, interval=10)
-                        res1, res2 = rejection_sampling(likelihood, q_x=q_n, sampling_range=x, num_sample=1000)
-                        # res1, res2 = importance_sampling(likelihood, q_x=q_n, sampling_range=x, num_sample=1000)
+                        res1, res2 = annealed_importance_sampling(likelihood, f_n, q_n,
+                                                                  num_sample=100, interval=10)
+
                         # This is the posterior prob distribution of p(s_i|y_i,u_i(k))
                         # post = loglik2prob(loglike)
                         self.s[i, k, p] = res1
@@ -412,18 +488,24 @@ class MixGaussianExp(EmissionModel):
             self.rss[i, :, :] = pt.sum(self.YY[i, :, :], dim=0) - 2 * YV.T * self.s[i, :, :] \
                                 + self.s2[i, :, :] * uVVu.reshape((self.K, 1))
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype())) + pt.log(self.sigma2))\
-                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] + pt.log(self.beta) - self.beta * self.s[i, :, :]
+            LL[i, :, :] = - 0.5 * self.N * (pt.log(2*self.PI) + pt.log(self.sigma2)) \
+                          - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
+                          + pt.log(self.beta) - self.beta * self.s[i, :, :]
 
         return pt.nan_to_num(LL)
 
     def Estep_import(self, Y=None, signal=None):
-        """ Estep using importance sampling from exp(beta):
-        Sampling is done per iteration for all voxels and clusters
-        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+        """ Estep using importance sampling from exp(beta): Sampling is done per
+            iteration for all voxels and clusters. The weighting is simply
+            the p(y|s,u), as the p(s) is already done in the sampling
+
         Args:
+            Y (pt.tensor): shape (nSubject * N * P)
             sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
@@ -437,7 +519,7 @@ class MixGaussianExp(EmissionModel):
         dist = pt.distributions.exponential.Exponential(self.beta)
         x = dist.sample((self.num_signal_bins,))
 
-        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+        logpi = pt.log(pt.tensor(2*pt.pi, dtype=pt.get_default_dtype()))
         if signal is None:
             # This is p(y,s|u)
             loglike = - 0.5/self.sigma2 * (-2 * YV.view(n_subj,self.K,self.P,1) * x
@@ -459,12 +541,17 @@ class MixGaussianExp(EmissionModel):
         return pt.nan_to_num(LL)
 
     def Estep_reject(self, Y=None, signal=None):
-        """ Estep using importance sampling from exp(beta):
-        Sampling is done per iteration for all voxels and clusters
-        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+        """ Estep using reject sampling from exp(beta): Sampling is done per
+            iteration for all voxels and clusters. The weighting is simply
+            the p(y|s,u), as the p(s) is already done in the sampling
+
         Args:
+            Y (tensor): the data, shape (nSubject, N, P)
             sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
@@ -502,17 +589,23 @@ class MixGaussianExp(EmissionModel):
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
                    + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (pt.log(2*PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss \
+        LL = -0.5 * self.N * (pt.log(2*self.PI) + pt.log(self.sigma2)) - 0.5/self.sigma2*self.rss \
              + pt.log(self.beta) - self.beta * self.s
 
         return pt.nan_to_num(LL)
 
     def Estep_linspace(self, Y=None, signal=None):
-        """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
-            Collects the sufficient statistics for the M-step
+        """ Estep sampling using simple linear sapcing from exp(beta): Sampling
+            is done per iteration for all voxels and clusters. The weighting is simply
+            the p(y|s,u), as the p(s) is already done in the sampling
+
         Args:
+            Y (tensor): the data, shape (nSubject, N, P)
             sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
@@ -525,7 +618,7 @@ class MixGaussianExp(EmissionModel):
         signal_max = self.maxlength*1.2  # Make the maximum signal 1.2 times the max data magnitude
         signal_bin = signal_max / self.num_signal_bins
         x = pt.linspace(signal_bin/2, signal_max, self.num_signal_bins)
-        logpi = pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+        logpi = pt.log(pt.tensor(2*pt.pi, dtype=pt.get_default_dtype()))
         if signal is None:
             # This is p(y,s|u)
             loglike = - 0.5/self.sigma2 * (-2*YV.view(n_subj,self.K,self.P,1)*x
@@ -548,10 +641,16 @@ class MixGaussianExp(EmissionModel):
 
     def Estep_mcmc_hasting(self, Y=None, signal=None, iters=10):
         """ Estep using MCMC: Sampling is done per iteration for all voxels and clusters
-        The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+            The weighting is simply the p(y|s,u), as the p(s) is already done in the sampling
+
         Args:
-            sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+            Y (tensor): the data, shape (nSubject, N, P)
+            signal (tensor): the signal, shape (nSubject, K, P)
+            iters (int): number of iterations for MCMC
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         if Y is not None:
             self.initialize(Y)
@@ -585,12 +684,21 @@ class MixGaussianExp(EmissionModel):
         self.rss = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV * self.s \
                    + self.s2 * uVVu.reshape((self.K, 1))
         # the log likelihood for emission model (GMM in this case)
-        LL = -0.5 * self.N * (log(2*PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
+        LL = -0.5 * self.N * (log(2*self.PI) + pt.log(self.sigma2)) - 0.5 / self.sigma2 * self.rss \
              + pt.log(self.beta) - self.beta * self.s
 
         return pt.nan_to_num(LL)
 
     def Estep(self, Y=None, signal=None):
+        """ Performs the E-step on the data Y and signal s using different methods
+
+        Args:
+            Y (tensor): the data, shape (nSubject, N, P)
+            signal (tensor): the signal, shape (nSubject, K, P)
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+        """
         if self.type_estep == 'linspace':
             return self.Estep_linspace(Y, signal)
         elif self.type_estep == 'import':
@@ -608,9 +716,9 @@ class MixGaussianExp(EmissionModel):
         """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
             In this emission model, the parameters need to be updated
             are V, sigma2, alpha, and beta
+
         Args:
             U_hat: The expected emission log likelihood
-        Returns: Update all model parameters, self attributes
         """
         regressX = pt.matmul(pt.linalg.inv(pt.matmul(self.X.T, self.X)), self.X.T)  # (N, M)
         nan_voxIdx = self.Y[:, 0, :].isnan().unsqueeze(1).repeat(1, self.K, 1)
@@ -638,11 +746,15 @@ class MixGaussianExp(EmissionModel):
 
     def sample(self, U, signal=None, return_signal=False):
         """ Generate random data given this emission model and parameters
+
         Args:
             U: The prior arrangement U from the arrangement model
             V: Given the initial V. If None, then randomly generate
             return_signal (bool): Return signal as well? False by default for compatibility
-        Returns: Sampled data Y
+
+        Returns:
+            Y (tensor): The generated sample data, shape (num_subj, N, P)
+            signal (tensor, optional): The generated signal, shape (num_subj, P)
         """
         num_subj = U.shape[0]
         if signal is not None:
@@ -669,7 +781,7 @@ class MixVMF(EmissionModel):
     def __init__(self, K=4, N=10, P=20, data=None, 
                 X=None, part_vec=None, params=None,
                 uniform_kappa=True):
-        """ Constructor
+        """ Constructor for the vmf mixture emission model
         Args:
             K (int): the number of clusters
             N (int): the number of observations 
@@ -677,8 +789,10 @@ class MixVMF(EmissionModel):
             data (ndarray,pt.tensor): n_sub x N x P  training data
             X (ndarray or tensor): N x M design matrix for task conditions 
             part_vec (ndarray or tensor): N-Vector indicating the number of the 
-                      data partition (repetition). Expample = [1,2,3,1,2,3,...]None: no data partition
-            params: if None, no parameters to pass in. Otherwise take the passing parameters as the model params
+                      data partition (repetition).
+                      Expample = [1,2,3,1,2,3,...] None: no data partition
+            params: if None, no parameters to pass in.
+                Otherwise take the passing parameters as the model params
             uniform_kappa: if True, the model learns a common kappa. Otherwise,
                            cluster-specific kappa
         """
@@ -708,10 +822,12 @@ class MixVMF(EmissionModel):
             data for further fitting is X^T (shape M, N) * Y which has a shape
             (num_sub, M, P)
             Note: The shape of X (N, M) - N is # of observations, M is # of conditions
+
         Args:
             data: the input data array (or torch tensor). shape (n_subj, N, P)
 
         Returns: None. Store the data in emission model itself.
+
         Class attributes:
             self.num_part:  Number of available partitions per voxels. numsubj x 1 x P tensor 
                 used in M step 
@@ -765,6 +881,7 @@ class MixVMF(EmissionModel):
     def random_params(self):
         """ In this mixture vmf model, the parameters are parcel-specific direction V_k
             and concentration value kappa_k.
+
         Returns: None, just passes the random parameters to the model
         """
         # standardise V to unit length
@@ -783,12 +900,12 @@ class MixVMF(EmissionModel):
 
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each voxel and value of U, 
-        up to a constant
-        Collects the sufficient statistics for the M-step
+            up to a constant. Collects the sufficient statistics for the M-step
         
         Args:
             Y (pt.tensor): Data (optional)
             sub (pt.tensor): vector of integer indices specify which subject to estimate (optional)
+
         Returns:
             LL (pt.tensor): the expected log likelihood for emission model,
             shape (nSubject * K * P)
@@ -799,6 +916,7 @@ class MixVMF(EmissionModel):
 
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
+        PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
@@ -813,8 +931,10 @@ class MixVMF(EmissionModel):
         """ Performs the M-step on a specific U-hat. In this emission model,
             the parameters need to be updated are Vs (unit norm projected on
             the N-1 sphere) and kappa (concentration value).
+
         Args:
             U_hat: the expected log likelihood from the arrangement model
+
         Returns:
             Update all the object's parameters
         """
@@ -848,8 +968,11 @@ class MixVMF(EmissionModel):
 
     def sample(self, U, signal=None):
         """ Draw data sample from this model and given parameters
+
         Args:
-            U(pt.tensor): num_subj x P arrangement for each subject  
+            U(pt.tensor): num_subj x P arrangement for each subject
+            signal(pt.tensor): num_subj x P signal for each subject
+
         Returns: The samples data from this distribution
         """
         if type(U) is np.ndarray:
@@ -890,12 +1013,12 @@ class MixVMF(EmissionModel):
 
 class wMixVMF(MixVMF):
     """ Mixture of von-Mises Fisher distribution weighted by SNR. 
-    This implementation follows the Model1: if a data point as a weight of w, 
-    we treat it as if it had been observed w times. 
+        This implementation follows the Model1: if a data point as a weight of w,
+        we treat it as if it had been observed w times.
     """
     def __init__(self, K=4, N=10, P=20, data=None, X=None, part_vec=None,
                  params=None, uniform_kappa=True, weighting='lsquare'):
-        """ Constructor
+        """ Constructor for the wMixVMF class
         Args:
             K (int): the number of clusters
             N (int): the number of observations
@@ -903,8 +1026,10 @@ class wMixVMF(MixVMF):
             data (ndarray,pt.tensor): n_sub x N x P  training data
             X (ndarray or tensor): N x M design matrix for task conditions
             part_vec (ndarray or tensor): N-Vector indicating the number of the
-                      data partition (repetition). Expample = [1,2,3,1,2,3,...]None: no data partition
-            params: if None, no parameters to pass in. Otherwise take the passing parameters as the model params
+                      data partition (repetition).
+                      Expample = [1,2,3,1,2,3,...]None: no data partition
+            params: if None, no parameters to pass in.
+                Otherwise take the passing parameters as the model params
             uniform_kappa: if True, the model learns a common kappa. Otherwise,
                            cluster-specific kappa
             weighting: the weighting strategy, default 1 is data magnitude
@@ -925,12 +1050,15 @@ class wMixVMF(MixVMF):
             data for further fitting is X^T (shape M, N) * Y which has a shape
             (num_sub, M, P)
             Note: The shape of X (N, M) - N is # of observations, M is # of conditions
+
         Args:
             data: the input data array (or torch tensor). shape (n_subj, N, P)
             signal: pass in the weight for each data points is given
+
         Returns: 
             None. Store the data in emission model itself.
-        Class attributes added:
+
+        Class attributes:
             self.num_part: the number of partitions (usually runs)
                            shape (n_subj, 1, P)
             self.W: the weights associated to each data points
@@ -985,6 +1113,7 @@ class wMixVMF(MixVMF):
     def _cal_weights(self, Y, type='lsquare_sum2P'):
         """Calculate the weights per each of the independent observation
            (per voxel, partition, and subject)
+
         Args:
             Y (pt.Tensor): the input data, shape (partition, n_sub, M, P)
             type: the tupe to calculate the weights
@@ -1000,6 +1129,7 @@ class wMixVMF(MixVMF):
                             magnitude [0, 1]. So in total the range is
                             [0, 2]
                 'ones': the weights are all 1, same as VMF
+
         Returns:
             the weights associated to each independent observation
         """
@@ -1058,10 +1188,12 @@ class wMixVMF(MixVMF):
         """ Compute the initial weights of data based on gaussian kernel
             w_i = \sum_j exp(-d(x_i, x_j)^2 / sigma), where j is the set of
             q-nearest neighbours of i. sigma is a positive scalar
+
         Args:
             Y: the initialzed data, shape (n_subj, N, P)
             q: the number of nearest neighbours. Defalut q = 20
             sigma: a positive scalar. Default sigma = 5
+
         Returns:
             the initial weights associated with each data point.
             shape (n_subj, 1, P)
@@ -1082,56 +1214,21 @@ class wMixVMF(MixVMF):
 
         return W
 
-    # def Mstep(self, U_hat, regularize=10):
-    #     super(wMixVMF, self).Mstep(U_hat)
-    #
-    #     if regularize is not None:
-    #         self.kappa = self.kappa + regularize
-
-    # def sample(self, U):
-    #     """ Draw data sample from this model and given parameters
-    #     Args:
-    #         U: The prior arrangement U from arragnment model (tensor)
-    #     Returns: The samples data form this distribution
-    #     """
-    #     if type(U) is np.ndarray:
-    #         U = pt.tensor(U, dtype=pt.int)
-    #     elif type(U) is pt.Tensor:
-    #         U = U.int()
-    #     else:
-    #         raise ValueError('The given U must be numpy ndarray or torch Tensor!')
-    #
-    #     num_subj = U.shape[0]
-    #     Y = pt.empty((num_subj, self.N, self.P))
-    #     new_V = pt.matmul(self.X, self.V)
-    #     new_V = new_V / pt.sqrt(pt.sum(new_V ** 2, dim=0))
-    #     kappas = pt.where(self.W > 1, self.kappa * self.W **2, self.kappa * self.W**2)
-    #
-    #     for s in range(num_subj):
-    #         for p in range(self.P):
-    #             # Draw sample from the vmf distribution given the input U
-    #             # JD: Ideally re-write this routine to native Pytorch...
-    #             # So here the mean direction for sampling is the new V which
-    #             # calculated by X * V, shape of (N, k)
-    #             if self.uniform_kappa:
-    #                 Y[s, :, p] = pt.tensor(
-    #                     rand_von_mises_fisher(new_V[:, U[s, p]], kappas[s,:,p]),
-    #                     dtype=pt.get_default_dtype())
-    #             else:
-    #                 Y[s, :, p] = pt.tensor(
-    #                     rand_von_mises_fisher(new_V[:, U[s, p]], self.kappa[U[s, p]]),
-    #                     dtype=pt.get_default_dtype())
-    #
-    #     Y = Y * self.W
-    #
-    #     return Y
 
 class MixGaussianGamma(EmissionModel):
-    """
-    Mixture of Gaussians with signal strength (fit gamma distribution)
-    for each voxel. Scaling factor on the signal and a fixed noise variance
+    """ Mixture of Gaussians with signal strength (fit gamma distribution)
+        for each voxel. Scaling factor on the signal and a fixed noise variance
     """
     def __init__(self, K=4, N=10, P=20, data=None, params=None):
+        """ Constructor for the Gaussian Mixture with gamma signal class
+
+        Args:
+            K (int): number of parcels
+            N (int): number of tasks
+            P (int): number of brain voxels
+            data (np.array or pt.tensor): the data matrix, shape (n_subj, N, P)
+            params (dict): the parameters of the model
+        """
         super().__init__(K, N, P, data)
         self.random_params()
         self.set_param_list(['V', 'sigma2', 'alpha', 'beta'])
@@ -1142,9 +1239,9 @@ class MixGaussianGamma(EmissionModel):
 
 
     def initialize(self, data, X=None):
-        """Stores the data in emission model itself
-        Calculates sufficient stats on the data that does not depend on u,
-        and allocates memory for the sufficient stats that does.
+        """ Stores the data in emission model itself
+            Calculates sufficient stats on the data that does not depend on u,
+            and allocates memory for the sufficient stats that does.
         """
         super().initialize(data,X=X)
         self.YY = self.Y ** 2
@@ -1170,9 +1267,14 @@ class MixGaussianGamma(EmissionModel):
     def Estep(self, signal=None, sub=None):
         """ Estep: Returns log p(Y, s|U) for each value of U, up to a constant
             Collects the sufficient statistics for the M-step
+
         Args:
+            signal: the signal strength for each subject, shape (nSubject, 1, P)
             sub: specify which subject to optimize
-        Returns: the expected log likelihood for emission model, shape (nSubject * K * P)
+
+        Returns:
+            LL (pt.tensor): the expected log likelihood for emission model,
+                shape (nSubject * K * P)
         """
         n_subj = self.Y.shape[0]
         if sub is None:
@@ -1213,7 +1315,7 @@ class MixGaussianGamma(EmissionModel):
             # self.rss[i, :, :] = np.sum(self.YY[i, :, :], axis=0) - np.diag(np.dot(2*YV, self.s[i, :, :])) + \
             #                     np.dot(VV, self.s2[i, :, :])
             # the log likelihood for emission model (GMM in this case)
-            LL[i, :, :] = -0.5 * self.N * (pt.log(pt.tensor(2*np.pi, dtype=pt.get_default_dtype()))
+            LL[i, :, :] = -0.5 * self.N * (pt.log(2*self.PI)
                           + pt.log(self.sigma2)) - 0.5 * (1 / self.sigma2) * self.rss[i, :, :] \
                           + self.alpha * pt.log(self.beta) - pt.special.gammaln(self.alpha) \
                           + (self.alpha - 1) * self.logs[i, :, :] - self.beta * self.s[i, :, :]
@@ -1224,9 +1326,9 @@ class MixGaussianGamma(EmissionModel):
         """ Performs the M-step on a specific U-hat. U_hat = E[u_i ^(k), s_i]
             In this emission model, the parameters need to be updated
             are V, sigma2, alpha, and beta
+
         Args:
             U_hat: The expected emission log likelihood
-        Returns: Update all model parameters, self attributes
         """
         # SU = self.s * U_hat
         YUs = pt.zeros((self.N, self.K))
@@ -1266,11 +1368,15 @@ class MixGaussianGamma(EmissionModel):
 
     def sample(self, U, signal=None, return_signal=False):
         """ Generate random data given this emission model and parameters
+
         Args:
             U: The prior arrangement U from the arrangement model
             V: Given the initial V. If None, then randomly generate
             return_signal: If true, return both data and signal; Otherwise, only data
-        Returns: Sampled data Y
+
+        Returns:
+            Y: The generated data with a shape of (num_subj, N, P)
+            signal: The generated signal with a shape of (num_subj, P)
         """
         if type(U) is np.ndarray:
             U = pt.tensor(U, dtype=pt.int)
@@ -1300,6 +1406,9 @@ class MixGaussianGamma(EmissionModel):
             return Y
 
 
+####################################################################
+## Belows are the helper functions for the emission models        ##
+####################################################################
 def loglik2prob(loglik, dim=0):
     """Safe transformation and normalization of
     logliklihood
@@ -1327,10 +1436,13 @@ def loglik2prob(loglik, dim=0):
 
 def bessel_function(self, order, kappa):
     """ The modified bessel function of the first kind of real order
+
     Args:
         order: the real order
         kappa: the input value
-    Returns: The values of modified bessel function
+
+    Returns:
+        res: The values of modified bessel function
     """
     # res = np.empty(kappa.shape)
     res = special.iv(order, kappa)
@@ -1338,15 +1450,20 @@ def bessel_function(self, order, kappa):
 
 def log_bessel_function(order, kappa):
     """ The log of modified bessel function of the first kind of real order
+
     Args:
         order: the real order
         kappa: the input value
-    Returns: The values of log of modified bessel function
+
+    Returns:
+         The values of log of modified bessel function
     """
+    PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
     frac = kappa / order
     square = 1 + frac**2
     root = sqrt(square)
     eta = root + log(frac) - log(1 + root)
     approx = - log(sqrt(2 * PI * order)) + order * eta - 0.25*log(square)
-
-    return approx
+    
+    # Convert result to pytorch default dtype
+    return approx.to(pt.get_default_dtype())
