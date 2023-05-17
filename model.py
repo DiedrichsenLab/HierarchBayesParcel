@@ -37,7 +37,11 @@ class Model:
             if k in self.tmp_list:
                 setattr(result, k, v)
             else:
-                setattr(result, k, deepcopy(v, memo))
+                # Make exception for csr sparse tensor
+                if pt.is_tensor(v) and v.layout == pt.sparse_csr:
+                    setattr(result, k, v.clone())
+                else:
+                    setattr(result, k, deepcopy(v, memo))
         return result
 
     def clear(self):
@@ -80,7 +84,7 @@ class Model:
                 isTensor = isinstance(vars(self)[s], pt.Tensor)
                 if (isTensor and vars(self)[s].numel() > 1) or (not isTensor and vars(self)[s].size > 1):  # vector
                     self.param_size.append(vars(self)[s].shape)
-                    self.nparams = self.nparams + np.int(np.prod(vars(self)[s].shape))
+                    self.nparams = self.nparams + np.prod(vars(self)[s].shape)
                 else:
                     self.param_size.append(1)  # Tensor Scalar
                     self.nparams = self.nparams + 1

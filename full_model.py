@@ -21,6 +21,7 @@ def report_cuda_memory():
         mr = pt.cuda.memory_reserved()/1024/1024
         print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
 
+
 class FullMultiModel:
     """The full generative model contains arrangement model and multiple
        emission models for training across dataset
@@ -421,12 +422,13 @@ class FullMultiModel:
 
         # Initialize the tracking
         ll = pt.zeros((iter,2))
-        theta = pt.zeros((iter, self.nparams))
+        theta = pt.zeros((iter, 1))
 
         for i in range(iter):
             print(f'start: {i}')
             # Track the parameters
-            theta[i, :] = self.get_params()
+            if 'theta' in self.arrange.param_list:
+                theta[i, :] = self.arrange.theta
 
             # Get the (approximate) posterior p(U|Y)
             emloglik_c = [e.Estep() for e in self.emissions]
@@ -455,7 +457,7 @@ class FullMultiModel:
                     self.arrange.Eneg(use_chains=None,
                                       emission_model=self.emissions[0])
                 # 3. arrangement M-step
-                arM.Mstep()
+                self.arrange.Mstep()
 
             # Monitor the RBM training - cross entropy
             CE = ev.cross_entropy(pt.softmax(emlog_train, dim=1),

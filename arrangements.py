@@ -1092,7 +1092,7 @@ class wcmDBM(mpRBM):
             self.set_param_list(['bu', 'W'])
         else:
             assert Wc.ndim == 2, 'Currently only support Wc is a 2d tensor'
-            self.Wc = Wc.to_sparse() if not Wc.is_sparse else Wc
+            self.Wc = Wc.to_sparse_csr() if not Wc.is_sparse else Wc
             # self.Wc = Wc
             self.nh = Wc.shape[0]
 
@@ -1103,7 +1103,12 @@ class wcmDBM(mpRBM):
                 self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
                 assert self.theta.ndim == 0, 'theta must be a scalar'
 
-            self.W = self.Wc * self.theta
+            if self.Wc.layout == pt.sparse_coo:
+                self.W = self.Wc * self.theta
+            elif self.Wc.layout == pt.sparse_csr:
+                self.W = pt.clone(self.Wc)
+                self.W.values().mul_(self.theta)
+
             self.Wc = 1 # Remove Wc
             self.set_param_list(['bu', 'theta'])
 
@@ -1295,12 +1300,35 @@ class wcmDBM(mpRBM):
             wv = pt.matmul(Uhat, self.W.t())
             Hhat = pt.softmax(wv, 1)
         else:
-            # mean field approximation for the entire network
-            for i in range(iter):
-                wv = pt.matmul(Uhat, self.W.t())
-                Hhat = pt.softmax(wv, 1)
-                wh = pt.matmul(Hhat, self.W)
-                Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+            # mean-field approximation for the entire network
+            try:
+                # First try if cuda can handle this large tensor
+                for i in range(iter):
+                    wv = pt.matmul(Uhat, self.W.t())
+                    # wv = pt.stack([pt.sparse.mm(self.W, Uhat[j].transpose(0, 1))
+                    #           for j in range(N)]).transpose(1,2)
+                    Hhat = pt.softmax(wv, 1)
+                    wh = pt.matmul(Hhat, self.W)
+                    Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+            except BaseException as e:
+                # If the given tensor too large, we convert to cpu computation
+                print(e)
+                print('We have to Fall back to CPU computation.')
+                # First convert these large tensor to cpu
+                Uhat = Uhat.to('cpu')
+                self.W = self.W.to('cpu')
+                # mean-field approximation for the entire network
+                for i in range(iter):
+                    wv = pt.matmul(Uhat, self.W.t())
+                    Hhat = pt.softmax(wv, 1)
+                    wh = pt.matmul(Hhat, self.W)
+                    Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+
+                # Move back to cuda after cpu compuation
+                Uhat = Uhat.to('cuda')
+                self.W = self.W.to('cuda')
+            else:
+                pass
 
         if gather_ss:
             self.epos_Uhat = Uhat
