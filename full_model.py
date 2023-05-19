@@ -292,6 +292,9 @@ class FullMultiModel:
             Uhat, ll_A = self.arrange.Estep(emloglik_comb)
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
+            del emloglik_comb
+            pt.cuda.empty_cache()
+
             ll[i, 0] = pt.sum(ll_A)
             ll[i, 1] = pt.sum(ll_E)
             if pt.isnan(ll[i,:].sum()):
@@ -318,8 +321,11 @@ class FullMultiModel:
                 if fit_emission[em]:
                     self.emissions[em].Mstep(Us)
 
+            pt.cuda.empty_cache()
+
         # Clear the temporary stats from the arrangement model to concerve memory
         self.arrange.clear()
+        pt.cuda.empty_cache()
 
         # Return parameters and Uhat
         if seperate_ll:
