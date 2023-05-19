@@ -10,7 +10,7 @@ import numpy as np
 import torch as pt
 from scipy import stats, special
 from torch import log, exp, sqrt
-from generativeMRF.sample_vmf import rand_von_mises_fisher, sample_vMF
+from generativeMRF.sample_vmf import random_VMF
 from generativeMRF.model import Model
 from generativeMRF.depreciated.AIS_test import rejection_sampling
 import generativeMRF.arrangements as ar
@@ -987,54 +987,30 @@ class MixVMF(EmissionModel):
 
         if self.part_vec is None:
             num_parts = 1
-            ind = pt.arange(self.N)
+            ind = [pt.arange(self.N)]
         else:
             parts = pt.unique(self.part_vec)
             num_parts = len(parts)
+            ind = [self.part_vec == parts[j] for j in range(num_parts)]
     
         num_subj = U.shape[0]
-
         Y = pt.zeros((num_subj, self.N, self.P))
-        # for s in range(num_subj):
-        #     for p in range(self.P):
-        #         for j in range(num_parts):
-        #             if self.uniform_kappa:
-        #                 y = pt.tensor(rand_von_mises_fisher(
-        #                                       self.V[:, U[s, p]],
-        #                                       self.kappa),
-        #                              dtype=pt.get_default_dtype())
-        #             else:
-        #                 y = pt.tensor(rand_von_mises_fisher(
-        #                                       self.V[:, U[s, p]],
-        #                                       self.kappa[U[s, p]]),
-        #                              dtype=pt.get_default_dtype())
-        #             if self.part_vec is not None:
-        #                 ind = self.part_vec==parts[j]
-        #             Y[s,ind,p]=pt.matmul(self.X[ind,:],y.squeeze())
+
         for s in range(num_subj):
             par, counts = pt.unique(U[s], return_counts=True)
             for i, this_par in enumerate(par):
                 y_full = []
                 voxel_ind = pt.nonzero(U[s] == this_par).view(-1)
-                for j in range(num_parts):
-                    # y = rand_von_mises_fisher(
-                    #     self.V[:, this_par],
-                    #     self.kappa if self.uniform_kappa else self.kappa[this_par],
-                    #     N=int(counts[i]))
-
-                    y = pt.tensor(sample_vMF(self.V[:, this_par].cpu().numpy(),
-                                             self.kappa.cpu().numpy(),
-                                             int(counts[i])),
-                                  dtype=pt.get_default_dtype())
-
-                    if self.part_vec is not None:
-                        ind = self.part_vec==parts[j]
-                    else:
-                        ind = pt.arange(self.N)
-
-                    y_full.append(pt.matmul(self.X[ind,:],y.t()))
-
-                Y[s, :, voxel_ind] = pt.vstack(y_full)
+                # samples y shape (num_parts, P, M)
+                y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
+                                         self.kappa.cpu().numpy(),
+                                         int(counts[i] * num_parts)),
+                              dtype=pt.get_default_dtype())
+                y = y.view(num_parts, counts[i], -1)
+                # multiply within each partition
+                y_full = pt.vstack([pt.matmul(self.X[ind[j], :], y[j].t())
+                                    for j in range(num_parts)])
+                Y[s, :, voxel_ind] = y_full
 
         return Y
 

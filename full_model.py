@@ -11,8 +11,10 @@ import torch as pt
 from torch.utils.data import DataLoader, TensorDataset
 import generativeMRF.emissions as emi
 import generativeMRF.arrangements as arr
+import generativeMRF.evaluation as ev
 import warnings
 from copy import copy,deepcopy
+import time
 
 def report_cuda_memory():
     if pt.cuda.is_available():
@@ -21,6 +23,10 @@ def report_cuda_memory():
         mr = pt.cuda.memory_reserved()/1024/1024
         print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
 
+def find_maximum_divisor(N):
+    for i in range(N-1, 0, -1):
+        if N % i == 0:
+            return i
 
 class FullMultiModel:
     """The full generative model contains arrangement model and multiple
@@ -90,6 +96,14 @@ class FullMultiModel:
             em.clear()
         if hasattr(self,'self_ind'):
             delattr(self,'self_ind')
+
+    def random_params(self, init_arrangement=True,
+                      init_emission=True):
+        if init_arrangement:
+            self.arrange.random_params()
+        if init_emission:
+            for em in self.emissions:
+                em.random_params()
 
     def remap_evidence(self,Uhat):
         """Placeholder function of remapping evidence from an
@@ -434,40 +448,76 @@ class FullMultiModel:
             emloglik_c = [e.Estep() for e in self.emissions]
             pt.cuda.empty_cache()
             if i==0:
-                for j,emLL in enumerate(emloglik_c):
+                # Align emission models at the first iteration by
+                # choosing which emloglik to be passed-up
+                for j in range(len(emloglik_c)):
                     if not first_evidence[j]:
-                        emLL[:,:,:]=0
+                        emloglik_c[j].zero_()
+                # for j,emLL in enumerate(emloglik_c):
+                #     if not first_evidence[j]:
+                #         emLL[:,:,:]=0
             emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
             del emloglik_c
             pt.cuda.empty_cache()
+
+            if batch_size is None:
+                batch_size = find_maximum_divisor(emloglik_comb.shape[0])
+
             # Create a DataLoader object for training data
             train_loader = DataLoader(TensorDataset(emloglik_comb),
                                       batch_size=batch_size, shuffle=True,
                                       generator=pt.Generator(device='cuda'
                                       if pt.cuda.is_available() else 'cpu'),
                                       num_workers=0)
+            del emloglik_comb
+            pt.cuda.empty_cache()
 
             # Update the arrangment model in batches
             for j, bat_emlog_train in enumerate(train_loader):
+                print(f'------Batch {j+1}: training batch size '
+                      f'{bat_emlog_train[0].shape} ------')
                 # 1. arrangement E-step: positive phase
+                tic = time.perf_counter()
                 self.arrange.Estep(bat_emlog_train[0])
+                toc = time.perf_counter()
+                print(f'positive phase {self.arrange.epos_iter} '
+                      f'iters used {toc - tic:0.4f} seconds!')
+                pt.cuda.empty_cache()
+
                 # 2. arrangement E-step: negative phase
+                tic = time.perf_counter()
                 if hasattr(self.arrange, 'Eneg'):
                     self.arrange.eneg_numchains = bat_emlog_train[0].shape[0]
+                    # TODO: if there are multiple emission models,
+                    # which emission should be used for sampling?
                     self.arrange.Eneg(use_chains=None,
-                                      emission_model=self.emissions[0])
-                # 3. arrangement M-step
-                self.arrange.Mstep()
+                                      emission_model=deepcopy(self.emissions[0]))
+                toc = time.perf_counter()
+                print(f'negative phase {self.arrange.eneg_iter} '
+                      f'iters used {toc - tic:0.4f} seconds!')
+                pt.cuda.empty_cache()
+
+                if fit_arrangement:
+                    # 3. arrangement M-step
+                    tic = time.perf_counter()
+                    self.arrange.Mstep()
+                    toc = time.perf_counter()
+                    print(f'M-step used {toc - tic:0.4f} seconds!')
+                    pt.cuda.empty_cache()
 
             # Monitor the RBM training - cross entropy
-            CE = ev.cross_entropy(pt.softmax(emlog_train, dim=1),
-                                         arM.eneg_U)
-            # Don't gather the sufficient statistics
-            # - as the model is already updated
-            Uhat, _ = self.arrange.Estep(emloglik_comb, gather_ss=False)
-
+            CE = ev.cross_entropy(self.arrange.epos_Uhat,
+                                  self.arrange.eneg_U)
+            # Compute Uhat in batch - Don't gather the sufficient
+            # statistics as the model is already updated
+            Uhat = []
+            for b in range(0, self.nsubj - batch_size + 1, batch_size):
+                ind = range(b, b + batch_size)
+                Uhat.append(self.arrange.Estep(train_loader.dataset.tensors[0][ind,:,:],
+                                             gather_ss=False)[0])
+            Uhat = pt.vstack(Uhat)
             # Compute the expected emission logliklihood
-            ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
+            ll_E = pt.sum(Uhat * train_loader.dataset.tensors[0], dim=(1, 2))
             ll[i, 0] = -pt.sum(CE) # negative entropy as a penalty term
             ll[i, 1] = pt.sum(ll_E)
             if pt.isnan(ll[i,:].sum()):
@@ -479,14 +529,14 @@ class FullMultiModel:
 
             # Updates the parameters
             Uhat_split = self.distribute_evidence(Uhat)
-            if fit_arrangement:
-                self.arrange.Mstep()
             for em, Us in enumerate(Uhat_split):
                 if fit_emission[em]:
+                    # self.emissions[em].initialize(Us)
                     self.emissions[em].Mstep(Us)
 
         # Clear the temporary stats from the arrangement model to concerve memory
         self.arrange.clear()
+        pt.cuda.empty_cache()
 
         if seperate_ll:
             return self, ll[0:i+1], theta[0:i+1, :], Uhat

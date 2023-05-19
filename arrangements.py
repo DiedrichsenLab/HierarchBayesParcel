@@ -1093,7 +1093,7 @@ class wcmDBM(mpRBM):
         else:
             assert Wc.ndim == 2, 'Currently only support Wc is a 2d tensor'
             self.Wc = Wc.to_sparse_csr() if not Wc.is_sparse else Wc
-            # self.Wc = Wc
+            self.Wc_ind = self.Wc.to_sparse_coo().indices().to('cpu')
             self.nh = Wc.shape[0]
 
             if theta is None:
@@ -1109,6 +1109,7 @@ class wcmDBM(mpRBM):
                 self.W = pt.clone(self.Wc)
                 self.W.values().mul_(self.theta)
 
+            self.Wc_value_coo = self.Wc.to_sparse_coo().values().to('cpu')
             self.Wc = 1 # Remove Wc
             self.set_param_list(['bu', 'theta'])
 
@@ -1134,9 +1135,10 @@ class wcmDBM(mpRBM):
         """
         self.bu = pt.randn(self.K, self.P)
         if self.Wc is not None:
-            self.theta = pt.randn((1,))
+            # theta = pt.abs(pt.randn((1,))).item()
+            self.theta = pt.distributions.uniform.Uniform(0, 10).sample()
         else:
-            self.W = pt.randn(self.nh, self.P)
+            self.W = pt.randn(self.nh, self.P) * 0.1
 
     def sample_h(self, U):
         """Sample hidden nodes given an activation state of the outer nodes
@@ -1322,7 +1324,8 @@ class wcmDBM(mpRBM):
                     wv = pt.matmul(Uhat, self.W.t())
                     Hhat = pt.softmax(wv, 1)
                     wh = pt.matmul(Hhat, self.W)
-                    Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+                    Uhat = pt.softmax(wh + self.bu.to('cpu')
+                                      + emloglik.to('cpu'), 1)
 
                 # Move back to cuda after cpu compuation
                 Uhat = Uhat.to('cuda')
@@ -1362,7 +1365,6 @@ class wcmDBM(mpRBM):
             use_chains = pt.arange(self.eneg_numchains)
 
         U = self.gibbs_U[use_chains]
-        U0 = U.detach().clone()
 
         if self.pretrain:
             # gibbs sample for only the top RBM
@@ -1372,6 +1374,7 @@ class wcmDBM(mpRBM):
         else:
             # sampling using tempered transitions
             if self.use_tempered_transition:
+                U0 = U.detach().clone()
                 U, H = self.tempered_transition(U0, np.linspace(0.9, 1.0, iter),
                                                 emission_model)
             else:
@@ -1396,10 +1399,30 @@ class wcmDBM(mpRBM):
         M = self.eneg_H.shape[0]
         # Update the connectivity
         if self.fit_W:
-            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),
-                              self.epos_Uhat).sum(dim=0)/N
-            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),
-                               self.eneg_U).sum(dim=0)/M
+            try:
+                gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),
+                                  self.epos_Uhat).sum(dim=0)/N
+                gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),
+                                   self.eneg_U).sum(dim=0)/M
+            except BaseException as e:
+                print('No enough cuda memory for calculating the gradW,'
+                      ' we have to back to cpu computation.')
+                gradW = pt.zeros(self.W.shape, device='cpu')
+                for i in range(N):
+                    gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
+                                      self.epos_Uhat[i].to('cpu'))
+                gradW = gradW / N
+
+                for j in range(M):
+                    gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
+                                   self.eneg_U[j].to('cpu'))/M
+            else:
+                pass
+            # Convert gradW to sparse COO on cuda
+            # values = gradW[self.Wc_ind[0], self.Wc_ind[1]]
+            # gradW = pt.sparse_coo_tensor(self.Wc_ind, values,
+            #                              size=gradW.shape).coalesce()
+
             # If we are dealing with component Wc:
             if self.Wc is not None:
                 if self.momentum:
@@ -1407,14 +1430,21 @@ class wcmDBM(mpRBM):
                                       + self.alpha * gradW
                     gradW = self.velocity_W
 
-                weights = pt.sparse.sum(self.Wc)
-                gradT   = pt.sparse.sum(gradW * self.Wc) / weights
+                # weights = pt.sparse.sum(self.Wc)
+                # gradT   = pt.sparse.sum(gradW * self.Wc) / weights
+                gradT = gradW[self.Wc_ind[0], self.Wc_ind[1]].sum() \
+                        / self.Wc_value_coo.sum()
                 if self.momentum:
-                    self.theta += gradT
+                    self.theta += gradT.to('cuda')
                 else:
                     self.theta += self.alpha * gradT
 
-                self.W = self.Wc * self.theta
+                # self.W = self.Wc_value_coo * self.theta
+                self.W = pt.sparse_csr_tensor(self.W.crow_indices(),
+                                              self.W.col_indices(),
+                                              self.Wc_value_coo.to('cuda') * self.theta,
+                                              size=self.W.shape)
+
             else:
                 if self.momentum:
                     self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
