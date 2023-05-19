@@ -516,6 +516,8 @@ class FullMultiModel:
                 Uhat.append(self.arrange.Estep(train_loader.dataset.tensors[0][ind,:,:],
                                              gather_ss=False)[0])
             Uhat = pt.vstack(Uhat)
+            pt.cuda.empty_cache()
+
             # Compute the expected emission logliklihood
             ll_E = pt.sum(Uhat * train_loader.dataset.tensors[0], dim=(1, 2))
             ll[i, 0] = -pt.sum(CE) # negative entropy as a penalty term
@@ -533,6 +535,9 @@ class FullMultiModel:
                 if fit_emission[em]:
                     # self.emissions[em].initialize(Us)
                     self.emissions[em].Mstep(Us)
+
+            # clear cache by the end of each iteration
+            pt.cuda.empty_cache()
 
         # Clear the temporary stats from the arrangement model to concerve memory
         self.arrange.clear()
