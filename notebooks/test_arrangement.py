@@ -15,6 +15,7 @@ import seaborn as sb
 import copy
 
 from FusionModel.evaluate import calc_test_dcbc
+from generativeMRF.depreciated import FullModel
 
 # pytorch cuda global flag
 # pt.cuda.is_available = lambda : False
@@ -62,7 +63,7 @@ def make_mrf_data(width=10,K=5,N=20,num_subj=30,
     emissionT = em.MixGaussian(K=K, N=N, P=grid.P)
     emissionT.random_params()
     emissionT.sigma2=pt.tensor(sigma2)
-    MT = fm.FullModel(arrangeT,emissionT)
+    MT = FullModel(arrangeT,emissionT)
 
     # Step 3: Plot the prior of the true mode
     # plt.figure(figsize=(7,4))
@@ -145,7 +146,7 @@ def make_cmpRBM_data(width=10, K=5, N=10,num_subj=20, theta_mu=20,
     arrangeT.bu = grid.random_smooth_pi(K=K,theta_mu=theta_mu,
             centroids=[0,width-1,int(P/2+width/2),P-width,P-1])
 
-    MT = fm.FullModel(arrangeT,emission_model)
+    MT = FullModel(arrangeT,emission_model)
 
     # grid.plot_maps(pt.softmax(arrangeT.bu,0),cmap='hot',vmax=1,grid=[1,5])
 
@@ -205,7 +206,7 @@ def make_cmpRBM_chain(P=5,K=3,num_subj=20,
     arrangeT.bu[-1,-1]=logpi
 
 
-    MT = fm.FullModel(arrangeT,emission_model)
+    MT = FullModel(arrangeT,emission_model)
     # Step 4: Generate data by sampling from the above model
     Utrue = MT.arrange.sample(num_subj,50)
     Ytrain = MT.emission.sample(Utrue)

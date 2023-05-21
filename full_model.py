@@ -489,6 +489,7 @@ class FullMultiModel:
                 print(f'positive phase {self.arrange.epos_iter} '
                       f'iters used {toc - tic:0.4f} seconds!')
                 pt.cuda.empty_cache()
+                report_cuda_memory()
 
                 # 2. arrangement E-step: negative phase
                 tic = time.perf_counter()
@@ -502,6 +503,7 @@ class FullMultiModel:
                 print(f'negative phase {self.arrange.eneg_iter} '
                       f'iters used {toc - tic:0.4f} seconds!')
                 pt.cuda.empty_cache()
+                report_cuda_memory()
 
                 if fit_arrangement:
                     # 3. arrangement M-step
@@ -510,6 +512,7 @@ class FullMultiModel:
                     toc = time.perf_counter()
                     print(f'M-step used {toc - tic:0.4f} seconds!')
                     pt.cuda.empty_cache()
+                    report_cuda_memory()
 
             # Monitor the RBM training - cross entropy
             CE = ev.cross_entropy(self.arrange.epos_Uhat,

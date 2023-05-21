@@ -1128,7 +1128,10 @@ class wcmDBM(mpRBM):
         self.fit_W = True
         self.use_tempered_transition = False
         self.pretrain = False
-        self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
+        if Wc is not None:
+            self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H', 'W']
+        else:
+            self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
 
     def random_params(self):
         """ Sets prior parameters to random starting values
@@ -1407,15 +1410,21 @@ class wcmDBM(mpRBM):
             except BaseException as e:
                 print('No enough cuda memory for calculating the gradW,'
                       ' we have to back to cpu computation.')
-                gradW = pt.zeros(self.W.shape, device='cpu')
-                for i in range(N):
-                    gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
-                                      self.epos_Uhat[i].to('cpu'))
-                gradW = gradW / N
 
-                for j in range(M):
-                    gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
-                                   self.eneg_U[j].to('cpu'))/M
+                gradW = pt.matmul(pt.transpose(self.epos_Hhat, 1, 2).to('cpu'),
+                                  self.epos_Uhat.to('cpu')).sum(dim=0) / N
+                gradW -= pt.matmul(pt.transpose(self.eneg_H, 1, 2).to('cpu'),
+                                   self.eneg_U.to('cpu')).sum(dim=0) / M
+
+                # gradW = pt.zeros(self.W.shape, device='cpu')
+                # for i in range(N):
+                #     gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
+                #                       self.epos_Uhat[i].to('cpu'))
+                # gradW = gradW / N
+                #
+                # for j in range(M):
+                #     gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
+                #                    self.eneg_U[j].to('cpu'))/M
             else:
                 pass
             # Convert gradW to sparse COO on cuda
@@ -1439,11 +1448,12 @@ class wcmDBM(mpRBM):
                 else:
                     self.theta += self.alpha * gradT
 
-                # self.W = self.Wc_value_coo * self.theta
-                self.W = pt.sparse_csr_tensor(self.W.crow_indices(),
-                                              self.W.col_indices(),
-                                              self.Wc_value_coo.to('cuda') * self.theta,
-                                              size=self.W.shape)
+                # Update W only to its value, without creating new sparse tensor to save memory
+                self.W.values().mul_(0).add_(self.Wc_value_coo.to('cuda')*self.theta)
+                # self.W = pt.sparse_csr_tensor(self.W.crow_indices(),
+                #                               self.W.col_indices(),
+                #                               self.Wc_value_coo.to('cuda') * self.theta,
+                #                               size=self.W.shape)
 
             else:
                 if self.momentum:

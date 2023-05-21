@@ -13,7 +13,7 @@ import generativeMRF.emissions as emi
 import generativeMRF.arrangements as arr
 import warnings
 from copy import copy,deepcopy
-
+from generativeMRF.full_model import FullMultiModel
 
 class FullModel:
     """The full generative model contains single arrangement model and
