@@ -776,7 +776,7 @@ class MixGaussianExp(EmissionModel):
 
 
 class MixVMF(EmissionModel):
-    """ Mixture of Gaussians with isotropic noise
+    """ Mixture of von Mises-Fisher distribution emission model
     """
     def __init__(self, K=4, N=10, P=20, data=None, 
                 X=None, part_vec=None, params=None,

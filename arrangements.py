@@ -14,7 +14,6 @@ from torch import exp,log,sqrt
 from generativeMRF.model import Model
 
 
-
 class ArrangementModel(Model):
     """ Abstract arrangement model class
     """
@@ -134,7 +133,6 @@ class ArrangeIndependent(ArrangementModel):
             pi (pt.tensor): marginal probability under the model
         """
         return pt.softmax(self.logpi, dim=0)
-
 
 
 class ArrangeIndependentSymmetric(ArrangeIndependent):
@@ -365,7 +363,6 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
             += emloglik[:, self.K:, self.indx_hem[0, :] == 0]
 
         return emloglik_comb
-
 
 
 class PottsModel(ArrangementModel):
