@@ -10,10 +10,10 @@ import numpy as np
 import torch as pt
 from scipy import stats, special
 from torch import log, exp, sqrt
-from generativeMRF.sample_vmf import rand_von_mises_fisher
-from generativeMRF.model import Model
-from generativeMRF.depreciated.AIS_test import rejection_sampling
-import generativeMRF.arrangements as ar
+from HierarchBayesParcel.sample_vmf import rand_von_mises_fisher
+from HierarchBayesParcel.model import Model
+from HierarchBayesParcel.depreciated.AIS_test import rejection_sampling
+import HierarchBayesParcel.arrangements as ar
 
 class EmissionModel(Model):
     """ Abstract class for emission models

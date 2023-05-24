@@ -13,10 +13,10 @@ import pandas as pd
 import seaborn as sb
 
 # for testing and evaluating models
-from generativeMRF.full_model import FullMultiModel
-from generativeMRF.arrangements import ArrangeIndependent, expand_mn, sample_multinomial
-from generativeMRF.emissions import MixGaussianExp, MixVMF, wMixVMF
-import generativeMRF.evaluation as ev
+from HierarchBayesParcel.full_model import FullMultiModel
+from HierarchBayesParcel.arrangements import ArrangeIndependent, expand_mn, sample_multinomial
+from HierarchBayesParcel.emissions import MixGaussianExp, MixVMF, wMixVMF
+import HierarchBayesParcel.evaluation as ev
 
 # pytorch cuda global flag
 pt.set_default_tensor_type(pt.cuda.FloatTensor

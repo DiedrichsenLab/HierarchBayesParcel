@@ -11,7 +11,7 @@ import sys
 import numpy as np
 import torch as pt
 from torch import exp,log,sqrt
-from generativeMRF.model import Model
+from HierarchBayesParcel.model import Model
 
 
 class ArrangementModel(Model):

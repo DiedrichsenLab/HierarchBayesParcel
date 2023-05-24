@@ -9,9 +9,9 @@ import torch as pt
 import matplotlib.pyplot as plt
 import Functional_Fusion.matrix as matrix
 # for testing and evaluating models
-import generativeMRF.evaluation as ev
-import generativeMRF.arrangements as ar
-import generativeMRF.emissions as em
+import HierarchBayesParcel.evaluation as ev
+import HierarchBayesParcel.arrangements as ar
+import HierarchBayesParcel.emissions as em
 
 def sim_gaussian(M,N,kappa=5,mu=None):
     if (mu is None):
