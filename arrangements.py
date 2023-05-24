@@ -1114,7 +1114,7 @@ class wcmDBM(mpRBM):
             self.set_param_list(['bu', 'theta'])
 
         self.gibbs_U = None  # samples from the hidden layer for negative phase
-        self.alpha = 0.01
+        self.alpha = 0.1
 
         if self.momentum:
             self.MOMENTUM_COEF = 0.9
@@ -1128,10 +1128,14 @@ class wcmDBM(mpRBM):
         self.fit_W = True
         self.use_tempered_transition = False
         self.pretrain = False
+
+        # Assembly dump list
+        # TODO: keep the gibbs chain in the model for pCD?
+        self.tmp_list = ['epos_Hhat', 'eneg_H']
         if Wc is not None:
-            self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H', 'W']
-        else:
-            self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
+            self.tmp_list += ['W', 'Wc_ind', 'Wc_value_coo']
+        if self.momentum:
+            self.tmp_list += ['velocity_W', 'velocity_bu']
 
     def random_params(self):
         """ Sets prior parameters to random starting values
@@ -1139,7 +1143,7 @@ class wcmDBM(mpRBM):
         self.bu = pt.randn(self.K, self.P)
         if self.Wc is not None:
             # theta = pt.abs(pt.randn((1,))).item()
-            self.theta = pt.distributions.uniform.Uniform(0, 10).sample()
+            self.theta = pt.distributions.uniform.Uniform(0, 5).sample()
         else:
             self.W = pt.randn(self.nh, self.P) * 0.1
 
@@ -1411,20 +1415,20 @@ class wcmDBM(mpRBM):
                 print('No enough cuda memory for calculating the gradW,'
                       ' we have to back to cpu computation.')
 
-                gradW = pt.matmul(pt.transpose(self.epos_Hhat, 1, 2).to('cpu'),
-                                  self.epos_Uhat.to('cpu')).sum(dim=0) / N
-                gradW -= pt.matmul(pt.transpose(self.eneg_H, 1, 2).to('cpu'),
-                                   self.eneg_U.to('cpu')).sum(dim=0) / M
+                # gradW = pt.matmul(pt.transpose(self.epos_Hhat, 1, 2).to('cpu'),
+                #                   self.epos_Uhat.to('cpu')).sum(dim=0) / N
+                # gradW -= pt.matmul(pt.transpose(self.eneg_H, 1, 2).to('cpu'),
+                #                    self.eneg_U.to('cpu')).sum(dim=0) / M
 
-                # gradW = pt.zeros(self.W.shape, device='cpu')
-                # for i in range(N):
-                #     gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
-                #                       self.epos_Uhat[i].to('cpu'))
-                # gradW = gradW / N
-                #
-                # for j in range(M):
-                #     gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
-                #                    self.eneg_U[j].to('cpu'))/M
+                gradW = pt.zeros(self.W.shape, device='cpu')
+                for i in range(N):
+                    gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
+                                      self.epos_Uhat[i].to('cpu'))
+                gradW = gradW / N
+
+                for j in range(M):
+                    gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
+                                   self.eneg_U[j].to('cpu'))/M
             else:
                 pass
             # Convert gradW to sparse COO on cuda

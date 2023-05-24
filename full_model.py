@@ -441,14 +441,15 @@ class FullMultiModel:
             first_evidence = [first_evidence]*len(self.emissions)
 
         # Initialize the tracking
+        self.arrange.alpha = stepsize
         ll = pt.zeros((iter,2))
-        theta = pt.zeros((iter, 1))
+        theta = pt.zeros((iter,))
 
         for i in range(iter):
             print(f'start: {i}')
             # Track the parameters
             if 'theta' in self.arrange.param_list:
-                theta[i, :] = self.arrange.theta
+                theta[i] = self.arrange.theta
 
             # Get the (approximate) posterior p(U|Y)
             emloglik_c = [e.Estep() for e in self.emissions]
@@ -553,9 +554,9 @@ class FullMultiModel:
         pt.cuda.empty_cache()
 
         if seperate_ll:
-            return self, ll[0:i+1], theta[0:i+1, :], Uhat
+            return self, ll[0:i+1], theta, Uhat
         else:
-            return self, ll[0:i+1].sum(axis=1), theta[0:i+1, :], Uhat
+            return self, ll[0:i+1].sum(axis=1), theta, Uhat
 
   
     def get_params(self):
