@@ -15,7 +15,7 @@ import seaborn as sb
 import copy
 
 from FusionModel.evaluate import calc_test_dcbc
-from generativeMRF.depreciated import FullModel
+from generativeMRF.depreciated.full_model_symmetric import FullModel
 
 # pytorch cuda global flag
 # pt.cuda.is_available = lambda : False
@@ -654,7 +654,7 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
     GM, IM = [], []
 
     # REcorded bias parameter
-    SD = np.concatenate((np.linspace(0.1,1,2), np.linspace(1.5,3,2)))
+    SD = np.concatenate((np.linspace(0.1,1,10), np.linspace(1.5,3,4)))
     SD = np.round(SD, decimals=2)
     Rec = pt.zeros((len(SD)+4, num_sim, K, P)) # unsmooth + 2 rbms + 1 emloglik
 
@@ -961,7 +961,7 @@ if __name__ == '__main__':
     # simulation_2()
     # simulation_chain()
     grid, DD, records, rbm, Models, Utrue, emloglik_train, GM, IM = simulation_2(theta_mu=240,
-                                                                                 num_sim=20)
+                                                                                 num_sim=10)
 
     # Get the final error and the true pott models
     plot_evaluation(DD, types=['test'])

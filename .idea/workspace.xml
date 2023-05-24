@@ -3,9 +3,10 @@
   <component name="ChangeListManager">
     <list default="true" id="4c91fd15-1f6e-447e-8bbd-57040dc8fd4a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/arrangements.py" beforeDir="false" afterPath="$PROJECT_DIR$/arrangements.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/test_arrangement.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_arrangement.ipynb" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/notebooks/test_arrangement.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_arrangement.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/spatial.py" beforeDir="false" afterPath="$PROJECT_DIR$/spatial.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sample_vmf.py" beforeDir="false" afterPath="$PROJECT_DIR$/sample_vmf.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -110,13 +111,15 @@
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="97b5a78c-973e-453a-bddb-74f1f374aafa" name="Changes" comment="" />
+      <changelist id="4c91fd15-1f6e-447e-8bbd-57040dc8fd4a" name="Changes" comment="" />
       <created>1677686548177</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1677686548177</updated>
       <workItem from="1677686550645" duration="1315000" />
       <workItem from="1678118717985" duration="4217000" />
+      <workItem from="1684862658740" duration="5509000" />
+      <workItem from="1684943759215" duration="800000" />
     </task>
     <servers />
   </component>
@@ -135,8 +138,10 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/generativeMRF$test_arrangement.coverage" NAME="test_arrangement Coverage Results" MODIFIED="1680458066639" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$test_arrangement.coverage" NAME="test_arrangement Coverage Results" MODIFIED="1684864055397" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
     <SUITE FILE_PATH="coverage/generativeMRF$test_dataloader.coverage" NAME="test_dataloader Coverage Results" MODIFIED="1678983116081" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts" />
+    <SUITE FILE_PATH="coverage/generativeMRF$test_wVMF.coverage" NAME="test_wVMF Coverage Results" MODIFIED="1684345037066" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/generativeMRF$sample_vmf.coverage" NAME="sample_vmf Coverage Results" MODIFIED="1684436195316" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/generativeMRF$test_VMFs.coverage" NAME="test_VMFs Coverage Results" MODIFIED="1677686645477" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
     <SUITE FILE_PATH="coverage/generativeMRF$arrangements.coverage" NAME="arrangements Coverage Results" MODIFIED="1680206818143" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
