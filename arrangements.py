@@ -7,20 +7,16 @@ Arrangement models class
 Author: dzhi, jdiedrichsen
 """
 import os  # to handle path information
-import numpy as np
-import matplotlib.pyplot as plt
-import nibabel as nb
-from nilearn import plotting
-from decimal import Decimal
-from torch import exp, log, sqrt
-from generativeMRF.model import Model
-import torch as pt
-
 import sys
+import numpy as np
+import torch as pt
+from torch import exp,log,sqrt
+from generativeMRF.model import Model
+
 
 
 class ArrangementModel(Model):
-    """Abstract arrangement model
+    """ Abstract arrangement model class
     """
 
     def __init__(self, K, P):
@@ -31,24 +27,20 @@ class ArrangementModel(Model):
 
 class ArrangeIndependent(ArrangementModel):
     """ Independent arrangement model
-    Parameters:
-        K (int):
-            Number of different parcels
-        P (int): 
-            Number of voxels / vertices
-        spatially_specific (bool):  
-            Use a spatially specific model (default True)
-        remove_redundancy (bool): 
-            Code with K probabilities with K or K-1 parameters? 
     """
-
-    def __init__(self, K=3, P=100,
-                 spatial_specific=True,
+    def __init__(self, K=3, P=100, spatial_specific=True,
                  remove_redundancy=False):
+        """Constructor for the independent arrangement model
+
+        Args:
+            K (int): Number of different parcels
+            P (int): Number of voxels / vertices
+            spatial_specific (bool): Use a spatially specific
+                model (default True)
+            remove_redundancy (bool): Code with K or K-1
+                probabilities parameters?
+        """
         super().__init__(K, P)
-        # In this model, the spatially independent arrangement has
-        # two options, spatially uniformed and spatially specific prior
-        # If
         self.spatial_specific = spatial_specific
         if spatial_specific:
             pi = pt.ones(K, P) / K
@@ -70,16 +62,17 @@ class ArrangeIndependent(ArrangementModel):
     def Estep(self, emloglik, gather_ss=True):
         """ Estep for the spatial arrangement model
 
-        Parameters:
-            emloglik (pt.tensor):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
-            gather_ss (bool):
-                Gather Sufficient statistics for M-step (default = True)
+        Args:
+            emloglik: (pt.tensor) emission log likelihood
+                log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss: (bool) Gather Sufficient statistics
+                for M-step (default = True)
+
         Returns:
-            Uhat (pt.tensor):
-                posterior p(U|Y) a numsubj x K x P matrix
-            ll_A (pt.tensor):
-                Expected log-liklihood of the arrangement model
+            Uhat (pt.tensor): posterior p(U|Y) a
+                numsubj x K x P matrix
+            ll_A (pt.tensor): Expected log-liklihood of
+                the arrangement model
         """
         if type(emloglik) is np.ndarray:
             emloglik = pt.tensor(emloglik, dtype=pt.get_default_dtype())
@@ -87,23 +80,22 @@ class ArrangeIndependent(ArrangementModel):
         Uhat = pt.softmax(logq, dim=1)
         if gather_ss:
             self.estep_Uhat = Uhat
-        # The log likelihood for arrangement model p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
-        pi = pt.softmax(self.logpi, dim=0)
-        lpi = pt.nan_to_num(pt.log(pi), neginf=0)  # Prevent underflow
+        # The log likelihood for arrangement model
+        # p(U|theta_A) is sum_i sum_K Uhat_(K)*log pi_i(K)
+        pi = pt.softmax(self.logpi,dim=0)
+        lpi = pt.nan_to_num(pt.log(pi),neginf=0) # Prevent underflow
         ll_A = pt.sum(Uhat * lpi)
         if pt.isnan(ll_A):
             raise (NameError('likelihood is nan'))
         return Uhat, ll_A
 
     def Mstep(self):
-        """ M-step for the spatial arrangement model
-            Update the pi for arrangement model
-            uses the epos_Uhat statistic that is put away from the last e-step.
-
-        Parameters:
-        Returns:
+        """ M-step for the spatial arrangement model. Update
+            the pi for arrangement model uses the epos_Uhat
+            statistic that is put away from the last e-step.
         """
-        pi = pt.mean(self.estep_Uhat, dim=0)  # Averarging over subjects
+        # Averarging over subjects
+        pi = pt.mean(self.estep_Uhat, dim=0)
         if not self.spatial_specific:
             pi = pi.mean(dim=1).reshape(-1, 1)
         self.logpi = log(pi)
@@ -112,63 +104,66 @@ class ArrangeIndependent(ArrangementModel):
         self.logpi = pt.nan_to_num(self.logpi)
 
     def sample(self, num_subj=10):
-        """
-        Samples a number of subjects from the prior.
-        In this i.i.d arrangement model we assume each node has
-        no relation with other nodes, which means it equals to
-        sample from the prior pi.
+        """ Samples a number of subjects from the prior.
+            In this i.i.d arrangement model we assume each node has
+            no relation with other nodes, which means it equals to
+            sample from the prior pi.
 
-        Parameters: 
-            num_subj (int): 
-                the number of subjects to sample
-        Returns (pt.tensor):
-             the sampled data for subjects
+        Args:
+            num_subj (int): the number of subjects to sample
+
+        Returns:
+            U (pt.tensor): the sampled data for subjects
         """
         U = pt.zeros(num_subj, self.P)
         pi = pt.softmax(self.logpi, dim=0)
         for i in range(num_subj):
             if self.spatial_specific:
-                U = sample_multinomial(pi, shape=(
-                    num_subj, self.K, self.P), compress=True)
+                U = sample_multinomial(pi, shape=(num_subj,self.K,self.P),
+                                       compress=True)
             else:
-                pi = pi.expand(self.K, self.P)
-                U = sample_multinomial(pi, shape=(
-                    num_subj, self.K, self.P), compress=True)
+                pi=pi.expand(self.K, self.P)
+                U = sample_multinomial(pi, shape=(num_subj,self.K,self.P),
+                                       compress=True)
         return U
 
     def marginal_prob(self):
-        """Returns marginal probabilty for every node under the model
-        Returns: p[] marginal probability under the model
+        """ Returns marginal probabilty for every node under the model
+
+        Returns:
+            pi (pt.tensor): marginal probability under the model
         """
         return pt.softmax(self.logpi, dim=0)
 
 
-class ArrangeIndependentSymmetric(ArrangeIndependent):
-    """Independent arrangement model with symmetry constraint
-    It has two sizes: 
-    P and K (number of nodes / parcels for arrangement model)
-    P_full and K_full (number of location / parcels for data)
-    Parameters:
-        K (int):
-            Number of different parcels
-        indx_full (ndarray/tensor): 
-            2 x P array of data-indices for each node (L/R)
-        indx_reduced (ndarray): 
-            P_full - vector of node-indices for each data location 
-        same_parcels (bool): 
-            are the means of parcels the same or different across hemispheres?
-        spatially_specific (bool):  
-            Use a spatially specific model (default True)
-        remove_redundancy (bool): 
-            Code with K probabilities with K or K-1 parameters? 
-    """
 
+class ArrangeIndependentSymmetric(ArrangeIndependent):
+    """ Independent arrangement model with symmetry constraint.
+        It has two sizes:
+        P and K (number of nodes / parcels for arrangement model)
+        P_full and K_full (number of location / parcels for data)
+    """
     def __init__(self, K,
                  indx_full,
                  indx_reduced,
                  same_parcels=False,
                  spatial_specific=True,
                  remove_redundancy=False):
+        """ Constructor for the independent arrangement model
+
+        Args:
+            K (int): Number of different parcels
+            indx_full (ndarray/tensor): 2 x P array of data-indices
+                for each node (L/R)
+            indx_reduced (ndarray): P_full - vector of node-indices
+                for each data location
+            same_parcels (bool): are the means of parcels the same
+                or different across hemispheres?
+            spatial_specific (bool): Use a spatially specific model
+                (default True)
+            remove_redundancy (bool): Code with K probabilities
+                with K or K-1 parameters?
+        """
         if type(indx_full) is np.ndarray:
             indx_full = pt.tensor(
                 indx_full, dtype=pt.get_default_dtype()).long()
@@ -188,11 +183,12 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         self.same_parcels = same_parcels
         super().__init__(self.K, self.P, spatial_specific, remove_redundancy)
 
-    def map_to_full(self, Uhat):
-        """ remapping evidence from an
-        arrangement space to a emission space (here it doesn't do anything)
+    def map_to_full(self,Uhat):
+        """ Remapping evidence from an arrangement space to a
+            emission space (here it doesn't do anything)
         Args:
             Uhat (ndarray): tensor of estimated arrangement
+
         Returns:
             Uhat (ndarray): tensor of estimated arrangements
         """
@@ -214,10 +210,11 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
 
     def map_to_arrange(self, emloglik):
         """ Maps emission log likelihoods to the internal size of the
-        representation
+            representation
 
         Args:
             emloglik (list): List of emission logliklihoods
+
         Returns:
             emloglik_comb (ndarray): ndarray of emission logliklihoods
         """
@@ -232,11 +229,12 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
     def Estep(self, emloglik, gather_ss=True):
         """ Estep for the spatial arrangement model
 
-        Parameters:
+        Args:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
             gather_ss (bool):
                 Gather Sufficient statistics for M-step (default = True)
+
         Returns:
             Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
@@ -249,22 +247,26 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         return Uhat, ll_A
 
     def sample(self, num_subj=10):
-        """
-        Samples a number of subjects from the prior.
-        In this i.i.d arrangement model we assume each node has
-        no relation with other nodes, which means it equals to
-        sample from the prior pi.
+        """ Samples a number of subjects from the prior.
+            In this i.i.d arrangement model we assume each node has
+            no relation with other nodes, which means it equals to
+            sample from the prior pi.
 
-        :param num_subj: the number of subjects to sample
-        :return: the sampled data for subjects
+        Args:
+            num_subj (int): the number of subjects to sample
+
+        Returns:
+            U (pt.tensor): the sampled data for subjects
         """
         U = super.sample(num_subj)
         U = self.map_to_full(U)
         return U
 
     def marginal_prob(self):
-        """Returns marginal probabilty for every node under the model
-        Returns: p[] marginal probability under the model
+        """ Returns marginal probabilty for every node under the model
+
+        Returns:
+            pi (pt.tensor): marginal probability under the model
         """
         return self.map_to_full(pt.softmax(self.logpi, dim=0))
 
@@ -365,13 +367,12 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
         return emloglik_comb
 
 
+
 class PottsModel(ArrangementModel):
-    """
-    Potts models (Markov random field on multinomial variable)
-    with K possible states
-    Potential function is determined by linkages
-    parameterization is joint between all linkages, although it could be split
-    into different parameter functions
+    """ Potts models (Markov random field on multinomial variable) with K
+        possible states. Potential function is determined by linkages
+        parameterization is joint between all linkages, although it could
+        be split into different parameter functions
     """
 
     def __init__(self, W, K=3, remove_redundancy=True):
@@ -392,9 +393,8 @@ class PottsModel(ArrangementModel):
         self.nparams = 10
         self.set_param_list(['logpi', 'theta_w'])
 
-    def random_smooth_pi(self, Dist, theta_mu=1, centroids=None):
-        """
-            Defines pi (prior over parcels) using a Ising model with K centroids
+    def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
+        """ Defines pi (prior over parcels) using a Ising model with K centroids
             Needs the Distance matrix to define the prior probability
         """
         if centroids is None:
@@ -406,9 +406,14 @@ class PottsModel(ArrangementModel):
         if self.rem_red:
             self.logpi = self.logpi - self.logpi[-1, :]
 
-    def potential(self, y):
-        """
-        returns the potential functions for the log-linear form of the model
+    def potential(self,y):
+        """ Returns the potential functions for the log-linear form of the model
+
+        Args:
+            y (ndarray): 2d array (NxP) of network states
+
+        Returns:
+            phi (ndarray): 2d array (NxP) of potential functions
         """
         if y.ndim == 1:
             y = y.reshape((-1, 1))
@@ -420,12 +425,13 @@ class PottsModel(ArrangementModel):
             phi[0, i] = pt.sum(S * self.W)
         return (phi)
 
-    def loglike(self, U):
-        """Returns the energy term of the network
-        up to a constant the loglikelihood of the state
+    def loglike(self,U):
+        """ Returns the energy term of the network up to a constant
+            the loglikelihood of the state
 
-        Params:
+        Args:
             U (ndarray): 2d array (NxP) of network states
+
         Returns:
             ll (ndarray)): 1d array (N,) of likelihoods
         """
@@ -435,8 +441,9 @@ class PottsModel(ArrangementModel):
         for n in range(N):
             phi = np.equal(U[n, :], U[n, :].reshape((-1, 1)))
             la[n] = pt.sum(self.theta_w * self.W * phi)
-            lp[n] = pt.sum(self.logpi(U[n, :], range(self.P)))
-        return (la + lp)
+            lp[n] = pt.sum(self.logpi(U[n,:],range(self.P)))
+
+        return(la + lp)
 
     def cond_prob(self, U, node, bias):
         """Returns the conditional probabity vector for node x, given U
@@ -445,16 +452,19 @@ class PottsModel(ArrangementModel):
             U (ndarray): Current state of the network
             node (int): Number of node to get the conditional prov for
             bias (pt.tensor): (1,P) Log-Bias term for the node
+
         Returns:
-            p (pt.tensor): (K,) vector of conditional probabilities for the node
+            p (pt.tensor): (K,) vector of conditional probabilities
+                for the node
         """
         x = np.arange(self.K)
         # Find all the neighbors for node x (precompute!)
-        ind = np.where(self.W[node, :] > 0)
-        nb_x = U[ind]  # Neighbors to node x
-        same = np.equal(x, nb_x.reshape(-1, 1))
+        ind = np.where(self.W[node,:] > 0)
+        nb_x = U[ind] # Neighbors to node x
+        same = np.equal(x,nb_x.reshape(-1, 1))
         loglik = self.theta_w * pt.sum(same, dim=0) + bias
-        return (pt.softmax(loglik, dim=0))
+
+        return(pt.softmax(loglik, dim=0))
 
     def calculate_neighbours(self):
         """Calculate Neighbourhood
@@ -464,29 +474,34 @@ class PottsModel(ArrangementModel):
             # Find all the neighbors for node x (precompute!)
             self.neighbours[p] = pt.where(self.W[p, :] != 0)[0]
 
-    def sample_gibbs(self, U0=None, num_chains=None, bias=None, iter=5, return_hist=False, track=None):
-        """Samples a number of gibbs-chains simulatenously
-        using the same bias term
+    def sample_gibbs(self, U0=None, num_chains=None, bias=None,
+                     iter=5, return_hist=False, track=None):
+        """ Samples a number of gibbs-chains simulatenously
+            using the same bias term
 
         Args:
-            U0 (nd-array): Initial starting point (num_chains x P):
+            U0 (nd-array): Initial starting point (num_chains x P).
                 Default None - and will be initialized by the bias term alone
             num_chains (int): If U0 not provided, number of chains to initialize
             bias (nd-array): Bias term (in log-probability (K,P)).
                  Defaults to None. Assumed to be the same for all the chains
             iter (int): Number of iterations. Defaults to 5.
             return_hist (bool): Return the history as a second return argument?
+
         Returns:
             U (nd-array): A (num_chains,P) array of integers
-            Uhist (nd-array): Full sampling path - (iter,num_chains,P) array of integers (optional, only if return_all = True)
-        Comments:
-            This probably can be made more efficient by doing some of the sampling un bulk?
+            Uhist (nd-array): Full sampling path - (iter,num_chains,P)
+                array of integers (optional, only if return_all = True)
+
+        Notes:
+            This probably can be made more efficient by doing some of the
+            sampling un bulk?
         """
         # Check for initialization of chains
         if U0 is None:
-            prob = pt.softmax(bias, axis=0)
-            U0 = sample_multinomial(prob, shape=(
-                num_chains, self.K, self.P), compress=True)
+            prob = pt.softmax(bias, dim=0)
+            U0 = sample_multinomial(prob, shape=(num_chains, self.K, self.P),
+                                    compress=True)
         else:
             num_chains = U0.shape[0]
 
@@ -511,50 +526,54 @@ class PottsModel(ArrangementModel):
                     for k in range(self.K):
                         Uhist[i, k] = pt.mean(U[:, track] == k)
             # Now loop over noes for all chains at the same tim
-            for p in np.arange(self.P - 1, -1, -1):
-                nb_u = U[:, self.neighbours[p]]  # Neighbors to node x
-                nb_u = nb_u.reshape(num_chains, 1, -1)
-                same = pt.eq(nb_u, u)
-                loglik = self.theta_w * \
-                    pt.sum(same, dim=2) + bias[:, p].reshape(1, self.K)
-                prob = pt.softmax(loglik, dim=1)
-                U[:, p] = sample_multinomial(prob, kdim=1, compress=True)
-        if return_hist:
-            return U, Uhist
-        else:
-            return U
+
+            for p in np.arange(self.P-1,-1,-1):
+                nb_u = U[:,self.neighbours[p]] # Neighbors to node x
+                nb_u = nb_u.reshape(num_chains,1,-1)
+                same = pt.eq(nb_u,u)
+                loglik = self.theta_w * pt.sum(same,dim=2) + bias[:,p].reshape(1,self.K)
+                prob = pt.softmax(loglik,dim=1)
+                U[:,p]=sample_multinomial(prob,kdim=1,compress=True)
+
+        return (U,Uhist) if return_hist else U
 
     def sample(self, num_subj=10, burnin=20):
         """ Samples new subjects from prior: wrapper for sample_gibbs
+
         Args:
             num_subj (int): Number of subjects. Defaults to 10.
             burnin (int): Number of . Defaults to 20.
+
         Returns:
             U (pt.tensor): Labels for all subjects (numsubj x P) array
         """
-        U = self.sample_gibbs(bias=self.logpi, iter=burnin,
-                              num_chains=num_subj)
+        U = self.sample_gibbs(bias = self.logpi, iter = burnin,
+            num_chains = num_subj)
+
         return U
 
     def Estep(self, emloglik):
         """ Positive phase of getting p(U|Y) for the spatial arrangement model
-        Gets the expectations.
+            Gets the expectations.
 
-        Parameters:
+        Args:
             emloglik (pt.tensor):
-                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+                emission log likelihood log p(Y|u,theta_E),
+                a numsubj x K x P matrix
+
         Returns:
             Uhat (pt.tensor):
                 posterior p(U|Y) a numsubj x K x P matrix
             ll_A (pt.tensor):
-                Unnormalized log-likelihood of the arrangement model for each subject. Note that this does not contain the partition function
+                Unnormalized log-likelihood of the arrangement model for
+                each subject. Note that this does not contain the partition function
         """
         numsubj, K, P = emloglik.shape
         bias = emloglik + self.logpi
         self.epos_U = pt.empty((numsubj, self.epos_numchains, P))
         for s in range(numsubj):
-            self.epos_U[s, :, :] = self.sample_gibbs(
-                num_chains=self.epos_numchains, bias=bias[s], iter=self.epos_iter)
+            self.epos_U[s,:,:] = self.sample_gibbs(num_chains=self.epos_numchains,
+                                                   bias=bias[s], iter=self.epos_iter)
 
         # Get Uhat from the sampled examples
         self.epos_Uhat = pt.empty((numsubj, self.K, self.P))
@@ -583,17 +602,25 @@ class PottsModel(ArrangementModel):
             ll_A = ll_Ae + ll_Ap
         else:
             # Calculate Z in the case of P=2
-            pp = exp(self.logpi[:, 0] + self.logpi[:,
-                     1].reshape((-1, 1)) + np.eye(self.K) * self.theta_w)
-            Z = pt.sum(pp)  # full partition function
-            ll_A = self.theta_w * self.epos_phihat + \
-                pt.sum(self.epos_Uhat * self.logpi, dim=(1, 2)) - log(Z)
+            pp=exp(self.logpi[:,0] + self.logpi[:,1].reshape((-1, 1))
+                   + np.eye(self.K) * self.theta_w)
+            Z = pt.sum(pp) # full partition function
+            ll_A = self.theta_w * self.epos_phihat \
+                   + pt.sum(self.epos_Uhat*self.logpi,dim=(1,2)) - log(Z)
+
         return self.epos_Uhat, ll_A
 
     def eneg_sample(self, num_chains=None, iter=5):
-        """Negative phase of the learning: uses persistent contrastive divergence
-        with sampling from the spatial arrangement model (not clampled to data)
-        Uses persistence across negative smapling steps
+        """ Negative phase of the learning: uses persistent contrastive divergence
+            with sampling from the spatial arrangement model (not clampled to data)
+            Uses persistence across negative smapling steps
+
+        Args:
+            num_chains (int, optional): Number of chains to use. Defaults to None.
+            iter (int, optional): Number of iterations. Defaults to 5.
+
+        Returns:
+            eneg_Uhat (pt.tensor): Labels for all subjects (numsubj x P) array
         """
         if self.eneg_U is None:
             self.eneg_U = self.sample_gibbs(num_chains=num_chains,
@@ -620,30 +647,32 @@ class PottsModel(ArrangementModel):
 
     def Mstep(self, stepsize=0.1):
         """ Gradient update for SML or CD algorithm
-        Parameters:
-            stepsize (float):
-                Stepsize for the update of the parameters
+
+        Args:
+            stepsize (float): Stepsize for the update of the parameters
         """
         # Update logpi
         if self.rem_red:
-            # The - pi can be dropped here as we follow the difference between pos and neg anyway
-            gradpos_logpi = self.epos_Uhat[:, :-1, :].mean(dim=0)
-            gradneg_logpi = self.eneg_Uhat[:-1, :]
-            self.logpi[:-1, :] = self.logpi[:-1, :] + \
-                stepsize * (gradpos_logpi - gradneg_logpi)
+            # The - pi can be dropped here as we follow the
+            # difference between pos and neg anyway
+            gradpos_logpi = self.epos_Uhat[:,:-1,:].mean(dim=0)
+            gradneg_logpi = self.eneg_Uhat[:-1,:]
+            self.logpi[:-1,:] = self.logpi[:-1,:] \
+                                + stepsize * (gradpos_logpi - gradneg_logpi)
         else:
             gradpos_logpi = self.epos_Uhat.mean(dim=0)
             gradneg_logpi = self.eneg_Uhat
-            self.logpi = self.logpi + stepsize * \
-                (gradpos_logpi - gradneg_logpi)
+            self.logpi = self.logpi + stepsize * (gradpos_logpi - gradneg_logpi)
+
         if self.fit_theta_w:
             grad_theta_w = self.epos_phihat.mean() - self.eneg_phihat
-            self.theta_w = self.theta_w + stepsize * grad_theta_w
-        return
+            self.theta_w = self.theta_w + stepsize* grad_theta_w
 
     def marginal_prob(self):
-        """Returns marginal probabilty for every node under the model
-        Returns: p[] marginal probability under the model
+        """ Returns marginal probabilty for every node under the model
+
+        Returns:
+            pi (pt.tensor): marginal probability under the model
         """
         # TODO: need find a smarter way to computer marginals
         # U = self.sample(num_subj=1, burnin=20)
@@ -659,22 +688,33 @@ class PottsModel(ArrangementModel):
 
 
 class mpRBM(ArrangementModel):
-    """multinomial (categorial) restricted Boltzman machine
-    for learning of brain parcellations for probabilistic input
-    Uses Contrastive-Divergence k for learning
+    """ multinomial (categorial) restricted Boltzman machine
+        for learning of brain parcellations for probabilistic input
+        Uses Contrastive-Divergence k for learning
+
     Outer nodes (U):
         The outer (most peripheral nodes) are
         categorical with K possible categories.
         There are three different representations:
         a) N x nv: integers between 0 and K-1 (u)
         b) N x K x nv : indicator variables or probabilities (U)
-        c) N x (K * nv):  Vectorized version of b- with all nodes of category 1 first, etc,
+        c) N x (K * nv):  Vectorized version of b- with all nodes
+            of category 1 first, etc,
         If not otherwise noted, we will use presentation b)
+
     Hidden nodes (h):
-        In this version we will use binary hidden nodes - so to get the same capacity as a mmRBM, one would need to set the number of hidden nodes to nh
+        In this version we will use binary hidden nodes -
+        so to get the same capacity as a mmRBM, one would need to
+        set the number of hidden nodes to nh
     """
 
     def __init__(self, K, P, nh):
+        """ Constructor for the mpRBM class
+        Args:
+            K (int): Number of parcels
+            P (int): Number of brain voxels
+            nh (int): Number of hidden nodes
+        """
         super().__init__(K, P)
         self.K = K
         self.P = P
@@ -690,31 +730,41 @@ class mpRBM(ArrangementModel):
         self.tmp_list = ['epos_U', 'epos_Eh', 'eneg_U', 'eneg_Eh']
 
     def sample_h(self, U):
-        """Sample hidden nodes given an activation state of the outer nodes
+        """ Sample hidden nodes given an activation state
+            of the outer nodes
+
         Args:
-            U (NxKxP tensor): Indicator or probability tensor of outer layer
+            U (pt.tensor): Indicator or probability tensor
+                of outer layer, shape (N, K, P)
+
         Returns:
-            p_h: (N x nh tensor): probability of the hidden nodes
-            sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
+            p_h (pt.tensor): probability of the hidden nodes,
+                shape (N, nh)
+            sample_h (pt.tensor): 0/1 values of discretely
+                sampled hidde nodes, shape (N, nh)
         """
         wv = pt.mm(U.reshape(U.shape[0], -1), self.W.t())
         activation = wv + self.bh
         p_h = pt.sigmoid(activation)
         sample_h = pt.bernoulli(p_h)
+
         return p_h, sample_h
 
     def sample_U(self, h):
         """ Returns a sampled U as a unpacked indicator variable
+
         Args:
-            h tensor: Hidden states
+            h (pt.tensor): Hidden states
+
         Returns:
-            p_u: Probability of each node [N,K,nv] array
-            sample_U: One-hot encoding of random sample [N,K,nv] array
+            p_u (pt.tensor): Probability of each node [N,K,nv] array
+            sample_U (pt.tensor): One-hot encoding of random sample [N,K,nv] array
         """
         N = h.shape[0]
-        wh = pt.mm(h, self.W).reshape(N, self.K, self.P)
-        p_u = pt.softmax(wh + self.bu, 1)
-        sample = sample_multinomial(p_u, kdim=1)
+        wh = pt.mm(h, self.W).reshape(N,self.K,self.P)
+        p_u = pt.softmax(wh + self.bu,1)
+        sample = sample_multinomial(p_u,kdim=1)
+
         return p_u, sample
 
     def sample(self, num_subj, iter=10):
@@ -723,6 +773,9 @@ class mpRBM(ArrangementModel):
         Args:
             num_subj (int): Number of subjects
             iter (int): Number of iterations until burn in
+
+        Returns:
+            u (pt.tensor): Sampled subjects
         """
         p = pt.ones(self.K)
         u = pt.multinomial(p, num_subj * self.P, replacement=True)
@@ -732,12 +785,14 @@ class mpRBM(ArrangementModel):
             _, h = self.sample_h(U)
             _, U = self.sample_U(h)
         u = compress_mn(U)
+
         return u
 
     def Estep(self, emloglik, gather_ss=True, iter=None):
         """ Positive Estep for the multinomial boltzman model
-        Uses mean field approximation to posterior to U and hidden parameters.
-        Parameters:
+            Uses mean field approximation to posterior to U and hidden parameters.
+
+        Args:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
             gather_ss (bool):
@@ -761,15 +816,22 @@ class mpRBM(ArrangementModel):
             wh = pt.mm(Eh, self.W).reshape(N, self.K, self.P)
             Uhat = pt.softmax(wh + self.bu + emloglik, 1)
         if gather_ss:
-            if self.Etype == 'vis':  # This is incorrect, but a understandable and information error
-                self.epos_U = pt.softmax(emloglik, dim=1)
-            # This is correct and isthe olny version that should be used.
-            elif self.Etype == 'prob':
+            if self.Etype=='vis':
+                # This is incorrect, but a understandable and information error
+                self.epos_U = pt.softmax(emloglik,dim=1)
+            elif self.Etype=='prob':
+                # This is correct and isthe olny version that should be used.
                 self.epos_U = Uhat
             self.epos_Eh = Eh
+
         return Uhat, pt.nan
 
     def marginal_prob(self):
+        """ Returns marginal probabilty for every node under the model
+
+        Returns:
+            pi (pt.tensor): marginal probability under the model
+        """
         # If not given, then initialize:
         if self.eneg_U is None:
             U, Eh = self.Eneg()
@@ -777,36 +839,48 @@ class mpRBM(ArrangementModel):
         return pi
 
     def Mstep(self):
-        """Performs gradient step on the parameters
-
-        Args:
-            alpha (float, optional): [description]. Defaults to 0.8.
+        """ Performs gradient step on the parameters given
+            the learning rate self.alpha
         """
         N = self.epos_Eh.shape[0]
         M = self.eneg_Eh.shape[0]
-        epos_U = self.epos_U.reshape(N, -1)
-        eneg_U = self.eneg_U.reshape(M, -1)
-        self.W += self.alpha * \
-            (pt.mm(self.epos_Eh.t(), epos_U) - N /
-             M * pt.mm(self.eneg_Eh.t(), eneg_U))
-        self.bu += self.alpha * \
-            (pt.sum(self.epos_U, 0) - N / M * pt.sum(self.eneg_U, 0))
-        self.bh += self.alpha * \
-            (pt.sum(self.epos_Eh, 0) - N / M * pt.sum(self.eneg_Eh, 0))
+        epos_U=self.epos_U.reshape(N,-1)
+        eneg_U=self.eneg_U.reshape(M,-1)
+        self.W += self.alpha * (pt.mm(self.epos_Eh.t(),epos_U)
+                                - N / M * pt.mm(self.eneg_Eh.t(),eneg_U))
+        self.bu += self.alpha * (pt.sum(self.epos_U,0)
+                                 - N / M * pt.sum(self.eneg_U,0))
+        self.bh += self.alpha * (pt.sum(self.epos_Eh,0)
+                                 - N / M * pt.sum(self.eneg_Eh, 0))
 
 
 class mpRBM_pCD(mpRBM):
-    """multinomial (categorial) restricted Boltzman machine
-    for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning
+    """ Multinomial (categorial) restricted Boltzman machine
+        for learning of brain parcellations for probabilistic input
+        Uses persistent Contrastive-Divergence k for learning
     """
-
     def __init__(self, K, P, nh, eneg_iter=3, eneg_numchains=77):
-        super().__init__(K, P, nh)
+        """ Constructor for the mpRBM_pCD class
+        Args:
+            K (int): Number of parcels
+            P (int): Number of brain voxels
+            nh (int): Number of hidden units
+            eneg_iter (int): Number of iterations for negative phase
+            eneg_numchains (int): Number of chains for energy minimization
+        """
+        super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
         self.eneg_numchains = eneg_numchains
 
     def Eneg(self, U=None):
+        """ Negative phase of the persistent contrastive divergence algorithm
+        Args:
+            U (pt.tensor): Initial values for the chains (default = None)
+
+        Returns:
+            EU (pt.tensor): Sampled values for the chains
+            Eh (pt.tensor): Sampled values for the hidden units
+        """
         if (self.eneg_U is None):
             U = pt.empty(self.eneg_numchains, self.K, self.P).uniform_(0, 1)
         else:
@@ -820,16 +894,32 @@ class mpRBM_pCD(mpRBM):
 
 
 class mpRBM_CDk(mpRBM):
-    """multinomial (categorial) restricted Boltzman machine
-    for learning of brain parcellations for probabilistic input
-    Uses persistent Contrastive-Divergence k for learning
+    """ Multinomial (categorial) restricted Boltzman machine
+        for learning of brain parcellations for probabilistic input
+        Uses persistent Contrastive-Divergence k for learning
     """
-
     def __init__(self, K, P, nh, eneg_iter=1):
-        super().__init__(K, P, nh)
+        """ Constructor for the mpRBM_CDk class
+
+        Args:
+            K (int): Number of parcels
+            P (int): Number of brain voxels
+            nh (int): Number of hidden units
+            eneg_iter (int): Number of iterations for negative phase
+        """
+        super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
 
-    def Eneg(self, U):
+    def Eneg(self,U):
+        """ Negative phase of the persistent contrastive divergence algorithm
+
+        Args:
+            U (pt.tensor): Initial values for the chains (default = None)
+
+        Returns:
+            EU (pt.tensor): Sampled values for the chains
+            Eh (pt.tensor): Sampled values for the hidden units
+        """
         for i in range(self.eneg_iter):
             Eh, h = self.sample_h(U)
             EU, U = self.sample_U(h)
@@ -839,11 +929,14 @@ class mpRBM_CDk(mpRBM):
 
 
 class cmpRBM(mpRBM):
-
-    def __init__(self, K, P, nh=None, Wc=None, theta=None, eneg_iter=10, epos_iter=10, eneg_numchains=77):
-        """convolutional multinomial (categorial) restricted Boltzman machine
+    """ Convolutional multinomial (categorial) restricted Boltzman machine
         for learning of brain parcellations for probabilistic input
         Uses variational stochastic maximum likelihood for learning
+    """
+    def __init__(self, K, P, nh=None, Wc=None, theta=None,
+                 eneg_iter=10, epos_iter=10, eneg_numchains=77,
+                 momentum=True):
+        """ Constructor for the cmpRBM class
 
         Args:
             K (int): number of classes
@@ -856,30 +949,38 @@ class cmpRBM(mpRBM):
         """
         self.K = K
         self.P = P
-        self.Wc = Wc
-        self.bu = pt.randn(K, P)
+        self.Wc  = Wc
+        self.bu = pt.randn(K,P)
+        self.momentum = momentum
         if Wc is None:
             if nh is None:
-                raise (NameError(
-                    'Provide Connectivty kernel (Wc) matrix or number of hidden nodes (nh)'))
+                raise NameError('Provide Connectivty kernel (Wc)'
+                                ' matrix or number of hidden nodes (nh)')
             self.nh = nh
-            self.W = pt.randn(nh, P)
+            self.W = pt.randn(nh,P) * 0.1
             self.theta = None
             self.set_param_list(['bu', 'W'])
         else:
             if Wc.ndim == 2:
                 self.Wc = Wc.view(Wc.shape[0], Wc.shape[1], 1)
             self.nh = Wc.shape[0]
+
             if theta is None:
-                self.theta = pt.randn((self.Wc.shape[2],))
+                self.theta = pt.abs(pt.randn((self.Wc.shape[2],)))
             else:
-                self.theta = pt.tensor(theta)
-                if self.theta.ndim == 0:
+                self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
+                if self.theta.ndim ==0:
                     self.theta = self.theta.view(1)
             self.W = (self.Wc * self.theta).sum(dim=2)
             self.set_param_list(['bu', 'theta'])
         self.gibbs_U = None  # samples from the hidden layer for negative phase
         self.alpha = 0.01
+
+        if self.momentum:
+            self.MOMENTUM_COEF = 0.9
+            self.velocity_W = 0
+            self.velocity_bu = 0
+
         self.epos_iter = epos_iter
         self.eneg_iter = eneg_iter
         self.eneg_numchains = eneg_numchains
@@ -888,7 +989,8 @@ class cmpRBM(mpRBM):
         self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
 
     def sample_h(self, U):
-        """Sample hidden nodes given an activation state of the outer nodes
+        """ Sample hidden nodes given an activation state of the outer nodes
+
         Args:
             U (NxKxP tensor): Indicator or probability tensor of outer layer
         Returns:
@@ -906,31 +1008,37 @@ class cmpRBM(mpRBM):
     def sample_U(self, h, emloglik=None):
         """ Returns a sampled U as a unpacked indicator variable
         Args:
-            h tensor: Hidden states (NxKxnh)
+            h (tensor): Hidden states (NxKxnh)
         Returns:
-            p_u: Probability of each node [N,K,P] array
-            sample_U: One-hot encoding of random sample [N,K,P] array
+            p_u (tensor): Probability of each node [N,K,P] array
+            sample_U (tensor): One-hot encoding of random sample [N,K,P] array
         """
         N = h.shape[0]
         act = pt.matmul(h, self.W) + self.bu
         if emloglik is not None:
             act += emloglik
-        p_u = pt.softmax(act, 1)
+        p_u = pt.softmax(act ,1)
         sample = sample_multinomial(p_u, kdim=1)
+
         return p_u, sample
 
     def marginal_prob(self):
-        # If not given, then initialize:
+        """ Returns marginal probabilty for every node under the model
+
+        Returns:
+            pi (pt.tensor): marginal probability under the model
+        """
         if self.gibbs_U is None:
             return pt.softmax(self.bu, 0)
         else:
             pi = pt.mean(self.gibbs_U, dim=0)
         return pi
 
-    def Estep(self, emloglik, gather_ss=True, iter=None):
+    def Estep(self, emloglik,gather_ss=True,iter=None):
         """ Positive Estep for the multinomial boltzman model
-        Uses mean field approximation to posterior to U and hidden parameters.
-        Parameters:
+            Uses mean field approximation to posterior to U and hidden parameters.
+
+        Args:
             emloglik (pt.tensor):
                 emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
             gather_ss (bool):
@@ -949,22 +1057,386 @@ class cmpRBM(mpRBM):
         N = emloglik.shape[0]
         Uhat = pt.softmax(emloglik + self.bu, dim=1)  # Start with hidden = 0
         for i in range(iter):
-            wv = pt.matmul(Uhat, self.W.t())
-            Hhat = pt.softmax(wv, 1)
+            wv = pt.matmul(Uhat,self.W.t())
+            Hhat = pt.softmax(wv,1)
+            # Hsamples = sample_multinomial_pt(Hhat, kdim=1)
+            # wh = pt.matmul(Hsamples, self.W)
             wh = pt.matmul(Hhat, self.W)
             Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+        if gather_ss:
+            self.epos_Uhat = Uhat
+            self.epos_Hhat = Hhat
+
+        # The unnormalized log likelihood
+        ll_A = pt.sum(Uhat * self.bu) \
+               + pt.sum(self.W * pt.matmul(pt.transpose(Uhat, 1, 2), Hhat))
+        if pt.isnan(ll_A):
+            raise ValueError('likelihood is nan')
+
+        return Uhat, ll_A
+
+    def Eneg(self, iter=None, use_chains=None, emission_model=None):
+        """ Negative phase of the E-step for the multinomial boltzman model
+
+        Args:
+            iter (int): Number of iterations to run the negative phase
+            use_chains (list): Which chains to use for the negative phase
+            emission_model (object): Emission model to use for the negative phase
+
+        Returns:
+            eneg_U (pt.tensor): Sampled U from the negative phase
+            eneg_H (pt.tensor): Sampled H from the negative phase
+        """
+        # If no iterations specified - use standard
+        if iter is None:
+            iter = self.eneg_iter
+        # If no markov chain are initialized, start them off
+        if self.gibbs_U is None:
+            p = pt.softmax(self.bu,0)
+            # Old sample
+            self.gibbs_U = sample_multinomial(p, shape=(self.eneg_numchains,self.K,self.P),
+                                              kdim=0, compress=False)
+            # sample using pytorch
+            # self.gibbs_U = sample_multinomial_pt(p, num_subj=self.eneg_numchains, kdim=0)
+
+        # Grab the current chains
+        if use_chains is None:
+            use_chains = pt.arange(self.eneg_numchains)
+
+        U = self.gibbs_U[use_chains]
+        U0 = U.detach().clone()
+        # standard gibbs sampling
+        for i in range(iter):
+            Y = emission_model.sample(compress_mn(U))
+            emloglik = emission_model.Estep(Y)
+            ph, H = self.sample_h(U)
+            pu, U = self.sample_U(H, emloglik)
+
+        # TODO: For the last update of the hidden units, it is common
+        #  to use the probability instead of sampling a multinomial value
+        #  to avoid unnecessary sampling noise.
+        #  Refererce: 'A Practical Guide to Training Restricted Boltzmann Machines'
+        #  https://www.cs.toronto.edu/~hinton/absps/guideTR.pdf
+        self.eneg_H = ph
+        self.eneg_U = pu
+        # Persistent: Keep the new gibbs samples around
+        self.gibbs_U[use_chains]=U
+
+        return self.eneg_U,self.eneg_H
+
+    def Mstep(self):
+        """ Performs gradient step on the parameters
+            given the learning rate self.alpha
+        """
+        N = self.epos_Hhat.shape[0]
+        M = self.eneg_H.shape[0]
+        # Update the connectivity
+        if self.fit_W:
+            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),
+                              self.epos_Uhat).sum(dim=0)/N
+            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),
+                               self.eneg_U).sum(dim=0)/M
+            # If we are dealing with component Wc:
+            if self.Wc is not None:
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    gradW = self.velocity_W
+
+                gradW = gradW.view(gradW.shape[0],gradW.shape[1],1)
+                weights = pt.sum(self.Wc,dim=(0,1))
+                gradT   = pt.sum(gradW*self.Wc,dim=(0,1))/weights
+                if self.momentum:
+                    self.theta += gradT
+                else:
+                    self.theta += self.alpha * gradT
+
+                self.W = (self.Wc * self.theta).sum(dim=2)
+            else:
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    self.W += self.velocity_W
+                else:
+                    self.W += self.alpha * gradW
+
+        # Update the bias term
+        if self.fit_bu:
+            gradBU =   1 / N * pt.sum(self.epos_Uhat,0)
+            gradBU -=  1 / M * pt.sum(self.eneg_U,0)
+
+            if self.momentum:
+                self.velocity_bu = self.MOMENTUM_COEF * self.velocity_bu \
+                                 + self.alpha * gradBU
+                self.bu += self.velocity_bu
+            else:
+                self.bu += self.alpha * gradBU
+
+
+class wcmDBM(mpRBM):
+    """ wcmDBM: weighted convolutional multinomial Deep Boltzman Machine
+        for learning of brain parcellations for probabilistic
+        input Uses variational stochastic maximum likelihood for learning
+    """
+    def __init__(self, K, P, nh=None, W=None, theta=None, dist=None,
+                 eneg_iter=10, epos_iter=10, eneg_numchains=77):
+        """ Constructor for the wcmDBM class
+
+        Args:
+            K (int): number of classes
+            P (int): number of brain locations
+            nh (int): number of hidden multinomial nodes
+            Wc (tensor): 2d/3d-tensor for connecticity weights
+            theta (tensor): 1d vector of parameters
+            eneg_iter (int): HOw many iterations for each negative step.
+                Defaults to 3.
+            eneg_numchains (int): How many chains. Defaults to 77.
+        """
+        self.K = K
+        self.P = P
+        self.Wc = Wc
+        self.bu = pt.randn(K, P)
+        self.momentum = momentum
+        if Wc is None:
+            if nh is None:
+                raise NameError('Provide Connectivty kernel (Wc)'
+                                ' matrix or number of hidden nodes (nh)')
+            self.nh = nh
+            self.W = pt.randn(nh, P) * 0.1
+            self.theta = None
+            self.set_param_list(['bu', 'W'])
+        else:
+            assert Wc.ndim == 2, 'Currently only support Wc is a 2d tensor'
+            self.Wc = Wc.to_sparse() if not Wc.is_sparce else Wc
+            self.nh = Wc.shape[0]
+
+            if theta is None:
+                self.theta = pt.abs(pt.randn((1,)))
+            else:
+                self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
+                assert self.theta.ndim == 0, 'theta must be a scalar'
+
+            self.W = self.Wc * self.theta
+            self.set_param_list(['bu', 'theta'])
+
+        self.gibbs_U = None  # samples from the hidden layer for negative phase
+        self.alpha = 0.01
+
+        if self.momentum:
+            self.MOMENTUM_COEF = 0.9
+            self.velocity_W = 0
+            self.velocity_bu = 0
+
+        self.epos_iter = epos_iter
+        self.eneg_iter = eneg_iter
+        self.eneg_numchains = eneg_numchains
+        self.fit_bu = True
+        self.fit_W = True
+        self.use_tempered_transition = False
+        self.pretrain = False
+        self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
+
+    def random_params(self):
+        """ Sets prior parameters to random starting values
+        """
+        self.bu = pt.randn(self.K, self.P)
+        if self.Wc is not None:
+            self.theta = pt.randn((1,))
+        else:
+            self.W = pt.randn(self.nh, self.P)
+
+    def sample_h(self, U):
+        """Sample hidden nodes given an activation state of the outer nodes
+
+        Args:
+            U (NxKxP tensor): Indicator or probability tensor of outer layer
+        Returns:
+            p_h: (N x nh tensor): probability of the hidden nodes
+            sample_h (N x nh tensor): 0/1 values of discretely sampled hidde nodes
+        """
+        wv = pt.matmul(U,self.W.t())
+        # activation = wv + self.b
+        # p_h = pt.sigmoid(activation)
+        # sample_h = pt.bernoulli(p_h)
+        p_h = pt.softmax(wv,1)
+        sample_h = sample_multinomial(p_h, kdim=1)
+        return p_h, sample_h
+
+    def sample_U(self, h, emloglik = None):
+        """ Returns a sampled U as a unpacked indicator variable
+
+        Args:
+            h tensor: Hidden states (NxKxnh)
+        Returns:
+            p_u: Probability of each node [N,K,P] array
+            sample_U: One-hot encoding of random sample [N,K,P] array
+        """
+        N = h.shape[0]
+        act = pt.matmul(h, self.W) + self.bu
+        if emloglik is not None and not self.pretrain:
+            act += emloglik
+        p_u = pt.softmax(act ,1)
+        sample = sample_multinomial(p_u,kdim=1)
+        return p_u, sample
+
+    def marginal_prob(self):
+        """ Returns marginal probabilty for every node under the model
+
+        Returns:
+            pi (pt.tensor): marginal probability under the model
+        """
+        if self.gibbs_U is None:
+            return pt.softmax(self.bu,0)
+        else:
+            pi  = pt.mean(self.gibbs_U,dim=0)
+        return pi
+
+    def free_energy(self, emloglik):
+        """ Calculate the free energy of the current model states
+        TODO: finish the free energy function
+
+        Args:
+            emloglik (tensor): log likelihood of the emission model
+
+        Returns:
+            free_energy (tensor): free energy of the current model states
+        """
+        if self.epos_Uhat is None:
+            Uhat = pt.softmax(emloglik + self.bu, dim=1)
+        else:
+            Uhat = self.epos_Uhat
+
+        v_sample = sample_multinomial(Uhat, kdim=1)
+        wv = pt.matmul(v_sample, self.W.t())
+        vWh = pt.matmul(self.gibbs_U, self.W.t())
+        vWh = vWh + self.bu
+
+    def unnormalized_prob(self, U, H):
+        """ Calculate the unnormalized probability of the model given U and H
+
+        Args:
+            U (pt.Tensor): The indicator tensor of the outer layer
+            H (pt.Tensor): The indicator tensor of the hidden layer
+
+        Returns:
+            unnormalized_prob (pt.Tensor): The unnormalized probability
+                of the model
+        """
+        bias = (U * self.bu).sum((1, 2))
+        connection = (H @ self.W * U).sum((1, 2))
+        return pt.exp(bias + connection).mean()
+
+    def tempered_transition(self, U, betas, emission_model):
+        """ Sample from the model using tempered transitions.
+
+        Args:
+            U (pt.Tensor): The initial value of U
+            betas (list[float]): The temperature coefficient for
+                each intermediate distribution, where betas[-1] = 1
+            emission_model (EmissionModel): The emission model to
+                use for sampling
+
+        Returns:
+            U (pt.Tensor): The sampled value of U
+            H (pt.Tensor): The sampled value of H
+
+        References:
+            https://www.cs.cmu.edu/~rsalakhu/papers/trans.pdf
+        """
+        # save the current parameters
+        true_W = self.W.detach().clone()
+        true_bu = self.bu.detach().clone()
+        accept = 0.0
+        _, H = self.sample_U(U)
+        U_p = U
+        while (accept < np.random.uniform(0.0, 1.0)):
+            accept = 1.0
+            for beta in reversed(betas):
+                accept /= self.unnormalized_prob(U, H)
+                self.W = true_W * beta
+                self.bu = true_bu * beta
+                accept *= self.unnormalized_prob(U, H)
+
+                Y = emission_model.sample(compress_mn(U_p))
+                emloglik = emission_model.Estep(Y)
+                _, H = self.sample_h(U_p)
+                U_p, U = self.sample_U(H, emloglik)
+
+            # inverse transition T tilde (Gibbs sample in reverse)
+            for beta in betas[1:]:
+                Y = emission_model.sample(compress_mn(U_p))
+                emloglik = emission_model.Estep(Y)
+                U_p, U = self.sample_U(H, emloglik)
+                _, H = self.sample_h(U_p)
+
+                accept /= self.unnormalized_prob(U, H)
+                self.W = true_W * beta
+                self.bu = true_bu * beta
+                accept *= self.unnormalized_prob(U, H)
+            accept = min(1, accept)
+        # reload the true parameters
+        self.W = true_W
+        self.bu = true_bu
+        return U, H
+
+    def Estep(self, emloglik, gather_ss=True, iter=None):
+        """ Positive Estep for the multinomial boltzman model using
+            mean field approximation to posterior to U and hidden parameters.
+
+        Args:
+            emloglik (pt.tensor):
+                emission log likelihood log p(Y|u,theta_E) a numsubj x K x P matrix
+            gather_ss (bool):
+                Gather Sufficient statistics for M-step (default = True)
+            iter (int): the number of iterations to run the mean field
+
+        Returns:
+            Uhat (pt.tensor):
+                posterior p(U|Y) a numsubj x K x P matrix
+            ll_A (pt.tensor):
+                Nan - returned for consistency
+        """
+        if type(emloglik) is np.ndarray:
+            emloglik=pt.tensor(emloglik,dtype=pt.get_default_dtype())
+        if iter is None:
+            iter = self.epos_iter
+        N=emloglik.shape[0]
+        Uhat = pt.softmax(emloglik + self.bu,dim=1) # Start with hidden = 0
+        if self.pretrain:
+            # single pass for just the top RBM
+            wv = pt.matmul(Uhat, self.W.t())
+            Hhat = pt.softmax(wv, 1)
+        else:
+            # mean field approximation for the entire network
+            for i in range(iter):
+                wv = pt.matmul(Uhat, self.W.t())
+                Hhat = pt.softmax(wv, 1)
+                wh = pt.matmul(Hhat, self.W)
+                Uhat = pt.softmax(wh + self.bu + emloglik, 1)
+
         if gather_ss:
             self.epos_Uhat = Uhat
             self.epos_Hhat = Hhat
         return Uhat, pt.nan
 
     def Eneg(self, iter=None, use_chains=None, emission_model=None):
+        """ Negative Estep for the multinomial boltzman model using
+
+        Args:
+            iter (int): the number of iterations to run the mean field
+            use_chains (list[int]): the chains to use for the negative step
+            emission_model (EmissionModel): the emission model to use for
+
+        Returns:
+            eneg_U (pt.tensor): the sampled U values
+            eneg_H (pt.tensor): the sampled H values
+        """
         # If no iterations specified - use standard
         if iter is None:
             iter = self.eneg_iter
         # If no markov chain are initialized, start them off
-        if (self.gibbs_U is None):
-            p = pt.softmax(self.bu, 0)
+        if self.gibbs_U is None:
+            p = pt.softmax(self.bu,0)
             self.gibbs_U = sample_multinomial(p,
                                               shape=(self.eneg_numchains,
                                                      self.K, self.P),
@@ -976,58 +1448,127 @@ class cmpRBM(mpRBM):
 
         U = self.gibbs_U[use_chains]
         U0 = U.detach().clone()
-        for i in range(iter):
-            Y = emission_model.sample(compress_mn(U))
-            emloglik = emission_model.Estep(Y)
-            _, H = self.sample_h(U)
-            _, U = self.sample_U(H, emloglik)
-        self.eneg_H = H
-        self.eneg_U = U
+
+        if self.pretrain:
+            # gibbs sample for only the top RBM
+            for i in range(iter):
+                _, H = self.sample_h(U)
+                _, U = self.sample_U(H)
+        else:
+            # sampling using tempered transitions
+            if self.use_tempered_transition:
+                U, H = self.tempered_transition(U0, np.linspace(0.9, 1.0, iter),
+                                                emission_model)
+            else:
+                # standard gibbs sampling
+                for i in range(iter):
+                    Y = emission_model.sample(compress_mn(U))
+                    emloglik = emission_model.Estep(Y)
+                    ph, H = self.sample_h(U)
+                    pu, U = self.sample_U(H, emloglik)
+
+        self.eneg_H = ph
+        self.eneg_U = pu
         # Persistent: Keep the new gibbs samples around
         self.gibbs_U[use_chains] = U
         return self.eneg_U, self.eneg_H
 
     def Mstep(self):
-        """Performs gradient step on the parameters
-
-        Args:
-            alpha (float, optional): [description]. Defaults to 0.8.
+        """ Performs gradient step on the parameters
+            given the learning rate self.alpha
         """
         N = self.epos_Hhat.shape[0]
         M = self.eneg_H.shape[0]
         # Update the connectivity
         if self.fit_W:
-            gradW = pt.matmul(pt.transpose(self.epos_Hhat, 1, 2),
-                              self.epos_Uhat).sum(dim=0) / N
-            gradW -= pt.matmul(pt.transpose(self.eneg_H, 1, 2),
-                               self.eneg_U).sum(dim=0) / M
+            gradW = pt.matmul(pt.transpose(self.epos_Hhat,1,2),
+                              self.epos_Uhat).sum(dim=0)/N
+            gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2),
+                               self.eneg_U).sum(dim=0)/M
             # If we are dealing with component Wc:
             if self.Wc is not None:
-                gradW = gradW.view(gradW.shape[0], gradW.shape[1], 1)
-                weights = pt.sum(self.Wc, dim=(0, 1))
-                gradT = pt.sum(gradW * self.Wc, dim=(0, 1)) / weights
-                self.theta += self.alpha * gradT
-                self.W = (self.Wc * self.theta).sum(dim=2)
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    gradW = self.velocity_W
+
+                weights = pt.sparse.sum(self.Wc)
+                gradT   = pt.sparse.sum(gradW * self.Wc) / weights
+                if self.momentum:
+                    self.theta += gradT
+                else:
+                    self.theta += self.alpha * gradT
+
+                self.W = self.Wc * self.theta
             else:
-                self.W += self.alpha * gradW
+                if self.momentum:
+                    self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
+                                      + self.alpha * gradW
+                    self.W += self.velocity_W
+                else:
+                    self.W += self.alpha * gradW
 
         # Update the bias term
         if self.fit_bu:
-            gradBU = 1 / N * pt.sum(self.epos_Uhat, 0)
-            gradBU -= 1 / M * pt.sum(self.eneg_U, 0)
-            self.bu += self.alpha * gradBU
+            gradBU =   1 / N * pt.sum(self.epos_Uhat,0)
+            gradBU -=  1 / M * pt.sum(self.eneg_U,0)
+
+            if self.momentum:
+                self.velocity_bu = self.MOMENTUM_COEF * self.velocity_bu \
+                                 + self.alpha * gradBU
+                self.bu += self.velocity_bu
+            else:
+                self.bu += self.alpha * gradBU
 
 
-def sample_multinomial(p, shape=None, kdim=0, compress=False):
-    """Samples from a multinomial distribution
-    Fast smpling from matrix probability without looping
+####################################################################
+## Belows are the helper functions for spatial arrangement models ##
+####################################################################
+def sample_multinomial_pt(p, num_subj=1, kdim=0, compress=False):
+    """ Samples from a multinomial distribution using pytorch built in
+        multinomial distribution sampler
 
     Args:
-        p (tensor): Tensor of probilities, which sums to 1 on the dimension kdim
-        shape (tuple): Shape of the output data (in uncompressed form): Smaller p will be broadcasted to target shape
-        kdim (int): Number of dimension of p that indicates the different categories (default 0)
-        compress: Return as int (True) or indicator (false)
-    Returns: Samples either in indicator coding (compress = False)
+        p (pt.tensor): Tensor of probabilities
+        num_subj (int): Number of subjects to sample
+        kdim (int): Dimension of K
+        compress (bool): Whether to compress the output or not
+
+    Returns:
+        samples (pt.tensor): Samples from the multinomial distribution
+    """
+    K = p.shape[kdim]
+    if p.dim() == 2:
+        # p is K x P matrix
+        sample = pt.multinomial(p.t(), num_subj, replacement=True).t()
+    elif p.dim() == 3:
+        # p is num_subjects x K x P matrix
+        sample = pt.stack([pt.multinomial(this_p.t(), 1, replacement=True).reshape(-1)
+                           for this_p in p])
+    else:
+        raise ValueError("p must be 2 or 3 dimensional")
+
+    if compress:
+        return sample
+    else:
+        # No compress, return indicator coding
+        return expand_mn(sample, K)
+
+def sample_multinomial(p,shape=None,kdim=0,compress=False):
+    """ Samples from a multinomial distribution
+        Fast smpling from matrix probability without looping
+
+    Args:
+        p (tensor): Tensor of probilities, which sums to 1
+            on the dimension kdim
+        shape (tuple): Shape of the output data (in uncompressed form)
+            Smaller p will be broadcasted to target shape
+        kdim (int): Number of dimension of p that indicates the different
+            categories (default 0)
+        compress (bool): Return as int (True) or indicator (false)
+
+    Returns:
+        samples (tensor): Samples either in indicator coding (compress = False)
             or as ints (compress = False)
     """
     if shape is None:
@@ -1048,14 +1589,17 @@ def sample_multinomial(p, shape=None, kdim=0, compress=False):
         return sample
 
 
-def expand_mn(u, K):
-    """Expands a N x P multinomial vector
-    to an N x K x P tensor of indictor variables
+def expand_mn(u,K):
+    """ Expands a N x P multinomial vector
+        to an N x K x P tensor of indictor variables
+
     Args:
         u (2d-tensor): N x nv matrix of samples from [int]
         K (int): Number of categories
-    Returns
-        U (3d-tensor): N x K x nv matrix of indicator variables [default float]
+
+    Returns:
+        U (3d-tensor): N x K x nv matrix of indicator variables
+            [default float]
     """
     N = u.shape[0]
     P = u.shape[1]
@@ -1065,23 +1609,29 @@ def expand_mn(u, K):
 
 
 def expand_mn_1d(u, K):
-    """Expands a P long multinomial vector
-    to an K x P tensor of indictor variables
+    """ Expands a P long multinomial vector
+        to an K x P tensor of indictor variables
+
     Args:
         u (1d-tensor): P vector of samples from [int]
         K (int): Number of categories
-    Returns
-        U (2d-tensor): K x P matrix of indicator variables [default float]
+
+    Returns:
+        U (2d-tensor): K x P matrix of indicator variables
+         [default float]
     """
     P = u.shape[0]
     U = pt.zeros(K, P)
-    U[u, np.arange(P)] = 1
+
+    U[u, pt.arange(P)] = 1
+
     return U
 
 
 def compress_mn(U):
-    """Compresses a N x K x P tensor of indictor variables
-    to a N x P multinomial tensor
+    """ Compresses a N x K x P tensor of indictor variables
+        to a N x P multinomial tensor
+
     Args:
         U (3d-tensor): N x K x P matrix of indicator variables
     Returns

@@ -69,6 +69,31 @@ def BIC(loglik, N, d):
     bic = -2 * loglik + pt.log(N) * d
     return bic
 
+def cross_entropy(p, q):
+    """Computes the cross-entropy between two multinomial
+       distributions p and q. p and q are assumed to be have
+       the same shape (nsub, K, P), or multiply broadcastable
+       shapes. For example, (nsub, K, P) and (K, P) are valid shapes.
+
+    Args:
+        p (ndarray or tensor): the true probability distribution.
+            typically it has a shape of (sub, K, P), where the dimension K
+            reprensents the multinomial distribution, which must sum to 1
+        q (ndarray or tensor): the predicted probability distribution.
+            typically it has a shape of (sub, K, P), where the dimension K
+            reprensents the multinomial distribution, which must sum to 1
+
+    Returns:
+        ce (float): The cross-entropy between p and q.
+    """
+    if type(p) is np.ndarray:
+        p = pt.tensor(p, dtype=pt.get_default_dtype())
+    if type(q) is np.ndarray:
+        q = pt.tensor(q, dtype=pt.get_default_dtype())
+
+    ce = -pt.sum(p * pt.nan_to_num(pt.log(q), neginf=0))
+    return ce
+
 def u_abserr(U,uhat):
     """Absolute error on U
     Args:

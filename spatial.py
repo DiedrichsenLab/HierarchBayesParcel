@@ -43,9 +43,9 @@ class SpatialLayout():
         if centroids is None:
             centroids = np.random.choice(self.P,(K,))
         d2 = self.Dist[centroids,:]**2
-        pi = pt.exp(-d2/theta_mu)
+        pi = pt.exp(-d2/(2*theta_mu))
         pi = pi / pi.sum(dim=0)
-        logpi = np.log(pi)
+        logpi = pt.log(pi)
         return logpi
 
 class SpatialChain(SpatialLayout):
