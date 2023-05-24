@@ -16,11 +16,11 @@ import matplotlib.pyplot as plt
 from scipy.linalg import block_diag
 
 # for testing and evaluating models
-from generativeMRF.full_model import FullModel, FullMultiModel
-import generativeMRF.arrangements as ar
-import generativeMRF.emissions as em
-import generativeMRF.spatial as sp
-import generativeMRF.evaluation as ev
+from HierarchBayesParcel.full_model import FullModel, FullMultiModel
+import HierarchBayesParcel.arrangements as ar
+import HierarchBayesParcel.emissions as em
+import HierarchBayesParcel.spatial as sp
+import HierarchBayesParcel.evaluation as ev
 from sklearn.metrics.pairwise import cosine_similarity
 from ProbabilisticParcellation.util import *
 from ProbabilisticParcellation.evaluate import calc_test_dcbc
