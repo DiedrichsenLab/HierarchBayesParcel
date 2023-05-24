@@ -10,9 +10,9 @@ import numpy as np
 import torch as pt
 from scipy import stats, special
 from torch import log, exp, sqrt
-from generativeMRF.model import Model
-from generativeMRF.depreciated.AIS_test import rejection_sampling
-import generativeMRF.arrangements as ar
+from HierarchBayesParcel.model import Model
+from HierarchBayesParcel.depreciated.AIS_test import rejection_sampling
+import HierarchBayesParcel.arrangements as ar
 
 class EmissionModel(Model):
     """ Abstract class for emission models
@@ -775,7 +775,7 @@ class MixGaussianExp(EmissionModel):
 
 
 class MixVMF(EmissionModel):
-    """ Mixture of Gaussians with isotropic noise
+    """ Mixture of von Mises-Fisher distribution emission model
     """
     def __init__(self, K=4, N=10, P=20, data=None, 
                 X=None, part_vec=None, params=None,

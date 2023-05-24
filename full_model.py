@@ -9,9 +9,8 @@ Author: dzhi, jdiedrichsen
 import numpy as np
 import torch as pt
 from torch.utils.data import DataLoader, TensorDataset
-import generativeMRF.emissions as emi
-import generativeMRF.arrangements as arr
-import generativeMRF.evaluation as ev
+import HierarchBayesParcel.emissions as emi
+import HierarchBayesParcel.arrangements as arr
 import warnings
 from copy import copy,deepcopy
 import time
