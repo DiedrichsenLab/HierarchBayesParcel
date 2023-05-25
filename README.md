@@ -55,7 +55,7 @@ Class descriptions
 [comment]: <> (![ScreenShot]&#40;doc/fusion_model.png&#41;)
 
 <p align="center">
-<img src="doc/fusion_model.png" alt="ScreenShot" width=60%>
+<img src="doc/figures/0_fusion_model.png" alt="ScreenShot" width=60%>
 </p>
 
 One important barrier in the development of complex models of human brain organization is the lack 
