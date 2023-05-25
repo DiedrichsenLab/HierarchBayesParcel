@@ -4,19 +4,19 @@ Diedrichsen Lab, Western University
 
 This repository hosts the computation models and implementatoin of a hierarchical Bayesian framework
 for learning brain organization across a number of different fMRI data that described in this 
-[paper](https://www.diedrichsenlab.org/). The framework is partitioned into a spatial *arrangement 
-model*, $p(\mathbf{U}|\theta_A)$, the probability of how likely a parcel assignment is within the 
-studied population, and a collection of dataset-specific *emission models*, $p(\mathbf{Y}^{s,n}| 
-\boldsymbol{\theta}_{En})$, the probability of each observed dataset given the individual brain 
-parcellation. This distributed structure allows the parameters of the model to be estimated using a
-message-passing algorithm between the different model components. For more details, please checkout 
-the preprint.
+[paper](https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1). The framework is partitioned
+into a spatial *arrangement model*, $p(\mathbf{U}|\theta_A)$, the probability of how likely a parcel
+assignment is within the studied population, and a collection of dataset-specific *emission models*, 
+$p(\mathbf{Y}^{s,n}| \theta_{En})$, the probability of each observed dataset given the 
+individual brain parcellation. This distributed structure allows the parameters of the model to be 
+estimated using a message-passing algorithm between the different model components. For more 
+details, please checkout the preprint.
 
 Reference
 ------
 * Zhi, D., Shahshahani, L., Nettekovena, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). 
 "A hierarchical Bayesian brain parcellation framework for fusion of functional imaging datasets". 
-BioRxiv. [[link]](https://www.diedrichsenlab.org/)
+BioRxiv. [[link]](https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1)
 
 Dependencies
 ------
@@ -43,6 +43,10 @@ import the functionality. Add these lines to your .bash_profile, .bash_rc .zsh_p
 PYTHONPATH=<your_repo_absolute_path>:${PYTHONPATH}
 export PYTHONPATH
 ```
+Mathematical inference
+------
+Please checkout the [README.pdf](doc/README.pdf) in `doc` folder for more mathematical inference 
+details of the framework.
 
 Class descriptions
 ------
