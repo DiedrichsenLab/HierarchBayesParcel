@@ -7,7 +7,7 @@ for learning brain organization across a number of different fMRI data that desc
 [paper](https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1). The framework is partitioned
 into a spatial *arrangement model*, $p(\mathbf{U}|\theta_A)$, the probability of how likely a parcel
 assignment is within the studied population, and a collection of dataset-specific *emission models*, 
-$p(\mathbf{Y}^{s,n}| \theta_{En})$, the probability of each observed dataset given the 
+$p(\mathbf{Y}^{s,n}| \mathbf{U}^s;\theta_{En})$, the probability of each observed dataset given the 
 individual brain parcellation. This distributed structure allows the parameters of the model to be 
 estimated using a message-passing algorithm between the different model components. For more 
 details, please checkout the preprint.

@@ -8,14 +8,17 @@ Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import torch as pt
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 import HierarchBayesParcel.emissions as emi
 import HierarchBayesParcel.arrangements as arr
+import HierarchBayesParcel.evaluation as ev
 import warnings
 from copy import copy,deepcopy
 import time
 
 def report_cuda_memory():
+    """Reports the current memory usage of the GPU
+    """
     if pt.cuda.is_available():
         ma = pt.cuda.memory_allocated()/1024/1024
         mma = pt.cuda.max_memory_allocated()/1024/1024
@@ -23,9 +26,44 @@ def report_cuda_memory():
         print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
 
 def find_maximum_divisor(N):
+    """Finds the maximum divisor of a number
+    Args:
+        N: a integer number
+
+    Returns:
+        i: the maximum divisor of N
+    """
     for i in range(N-1, 0, -1):
         if N % i == 0:
             return i
+
+class fMRI_Dataset(Dataset):
+    """Helper class to create mini-batches from a large tensor
+    """
+    def __init__(self, data):
+        """Constructor for the dataset
+        Args:
+            data: tensor of data
+        """
+        self.data = data
+
+    def __len__(self):
+        """Returns the length of the dataset
+        """
+        return len(self.data)
+
+    def __getitem__(self, index):
+        """Returns the data at the given index
+        Args:
+            index: index of the data
+
+        Returns:
+            data: data at the given index
+            index: index of the data
+        """
+        data = self.data[index]
+        return data, index
+
 
 class FullMultiModel:
     """The full generative model contains arrangement model and multiple
@@ -469,22 +507,26 @@ class FullMultiModel:
             if batch_size is None:
                 batch_size = find_maximum_divisor(emloglik_comb.shape[0])
 
+            # Create a random permutation of indices for sampling
+            sampled_indices = pt.randperm(len(emloglik_comb))
+            sampler = pt.utils.data.SubsetRandomSampler(sampled_indices)
+
             # Create a DataLoader object for training data
-            train_loader = DataLoader(TensorDataset(emloglik_comb),
-                                      batch_size=batch_size, shuffle=True,
-                                      generator=pt.Generator(device='cuda'
-                                      if pt.cuda.is_available() else 'cpu'),
+            train_loader = DataLoader(fMRI_Dataset(emloglik_comb),
+                                      batch_size=batch_size,
+                                      sampler=sampler,
                                       num_workers=0)
             del emloglik_comb
             pt.cuda.empty_cache()
 
             # Update the arrangment model in batches
-            for j, bat_emlog_train in enumerate(train_loader):
+            for j, (bat_emlog_train, bat_indx) in enumerate(train_loader):
                 print(f'------Batch {j+1}: training batch size '
-                      f'{bat_emlog_train[0].shape} ------')
+                      f'{bat_emlog_train.shape}, batch subject '
+                      f'indices {bat_indx} ------')
                 # 1. arrangement E-step: positive phase
                 tic = time.perf_counter()
-                self.arrange.Estep(bat_emlog_train[0])
+                self.arrange.Estep(bat_emlog_train)
                 toc = time.perf_counter()
                 print(f'positive phase {self.arrange.epos_iter} '
                       f'iters used {toc - tic:0.4f} seconds!')
@@ -494,10 +536,9 @@ class FullMultiModel:
                 # 2. arrangement E-step: negative phase
                 tic = time.perf_counter()
                 if hasattr(self.arrange, 'Eneg'):
-                    self.arrange.eneg_numchains = bat_emlog_train[0].shape[0]
                     # TODO: if there are multiple emission models,
                     # which emission should be used for sampling?
-                    self.arrange.Eneg(use_chains=None,
+                    self.arrange.Eneg(use_chains=bat_indx,
                                       emission_model=deepcopy(self.emissions[0]))
                 toc = time.perf_counter()
                 print(f'negative phase {self.arrange.eneg_iter} '
@@ -522,13 +563,13 @@ class FullMultiModel:
             Uhat = []
             for b in range(0, self.nsubj - batch_size + 1, batch_size):
                 ind = range(b, b + batch_size)
-                Uhat.append(self.arrange.Estep(train_loader.dataset.tensors[0][ind,:,:],
+                Uhat.append(self.arrange.Estep(train_loader.dataset.data[ind,:,:],
                                              gather_ss=False)[0])
             Uhat = pt.vstack(Uhat)
             pt.cuda.empty_cache()
 
             # Compute the expected emission logliklihood
-            ll_E = pt.sum(Uhat * train_loader.dataset.tensors[0], dim=(1, 2))
+            ll_E = pt.sum(Uhat * train_loader.dataset.data, dim=(1, 2))
             ll[i, 0] = -pt.sum(CE) # negative entropy as a penalty term
             ll[i, 1] = pt.sum(ll_E)
             if pt.isnan(ll[i,:].sum()):

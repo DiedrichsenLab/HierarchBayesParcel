@@ -15,7 +15,7 @@ import seaborn as sb
 import copy
 
 from FusionModel.evaluate import calc_test_dcbc
-from generativeMRF.depreciated.full_model_symmetric import FullModel
+from HierarchBayesParcel.depreciated.full_model_symmetric import FullModel
 
 # pytorch cuda global flag
 # pt.cuda.is_available = lambda : False
@@ -238,6 +238,16 @@ def make_train_model(model_name='cmpRBM', K=3, P=5, num_subj=20, eneg_iter=10,
         M = ar.cmpRBM(K, P, Wc=Wc, theta=theta, eneg_iter=eneg_iter,
                       epos_iter=epos_iter, eneg_numchains=num_subj)
         M.name = 'cRBM_Wc'
+        M.fit_W = fit_W
+        M.fit_bu = fit_bu
+        M.alpha = lr
+    elif model_name == 'cRBM_Wc2':
+        if Wc is None:
+            raise ValueError('Wc must be provided to create wcmDBM arrangement model')
+
+        M = ar.wcmDBM(K, P, Wc=Wc, theta=theta, eneg_iter=eneg_iter,
+                             epos_iter=epos_iter, eneg_numchains=num_subj)
+        M.name = 'cRBM_Wc2'
         M.fit_W = fit_W
         M.fit_bu = fit_bu
         M.alpha = lr
@@ -691,7 +701,7 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
         for nam in fitting_names:
             Models.append(make_train_model(model_name=nam, K=K, P=P,
                                            num_subj=num_subj, eneg_iter=eneg_iter,
-                                           epos_iter=epos_iter, Wc=rbm.Wc, theta=None,
+                                           epos_iter=epos_iter, Wc=rbm.Wc.squeeze(2), theta=None,
                                            fit_W=True, fit_bu=False, lr=0.1))
 
         # Train different arrangement model
@@ -699,7 +709,7 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
         T = pd.DataFrame()
         for i, m in enumerate(Models):
             # Give the model the true bias/W for rbms
-            if m.name.startswith('cRBM'):
+            if m.name.startswith('cRBM') or m.name.startswith('wcmDBM'):
                 # m.W = rbm.W.detach().clone()
                 m.bu = rbm.bu.detach().clone()
 
