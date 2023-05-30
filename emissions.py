@@ -954,6 +954,12 @@ class MixVMF(EmissionModel):
         r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
         self.V = YU / r_norm
 
+        # TODO: This is a hack to avoid the case where V is inf
+        epsilon = 1e+8
+        while pt.any(pt.isinf(self.V)):
+            epsilon = epsilon * 1e+8
+            self.V = (YU * epsilon) / pt.sqrt(pt.sum((YU*epsilon) ** 2, dim=0))
+
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if self.uniform_kappa:
@@ -963,8 +969,8 @@ class MixVMF(EmissionModel):
             r_bar = pt.mean(r_bar)
         else:
             r_bar = r_norm / pt.sum(UU, dim=1)
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
+            r_bar[r_bar > 0.95] = 0.95
+            r_bar[r_bar < 0.05] = 0.05
 
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 

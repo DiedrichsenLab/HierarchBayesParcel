@@ -1592,6 +1592,27 @@ class wcmDBM(mpRBM):
             else:
                 self.bu += self.alpha * gradBU
 
+    def sample(self, num_subj, Wc, iter=10):
+        """ Samples from the model
+
+        Args:
+            num_subj (int): Number of subjects to sample
+            iter (int): Number of iterations to run the sampler
+
+        Returns:
+            samples (dict): Dictionary of samples
+        """
+        Uhat = pt.randn((num_subj, self.K, self.P))
+        Uhat = pt.softmax(Uhat, dim=1)
+        W = Wc * self.theta
+
+        for i in range(iter):
+            wv = pt.matmul(Uhat, W.t())
+            Hhat = pt.softmax(wv, 1)
+            wh = pt.matmul(Hhat, W)
+            Uhat = pt.softmax(wh + self.bu, 1)
+
+        return Uhat
 
 ####################################################################
 ## Belows are the helper functions for spatial arrangement models ##
