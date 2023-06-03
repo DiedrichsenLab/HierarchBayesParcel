@@ -266,7 +266,9 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         Returns:
             pi (pt.tensor): marginal probability under the model
         """
-        return self.map_to_full(pt.softmax(self.logpi, dim=0))
+        P = self.map_to_full(pt.softmax(self.logpi, dim=0))
+        P = P/P.sum(dim=0)
+        return P
 
 
 class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
