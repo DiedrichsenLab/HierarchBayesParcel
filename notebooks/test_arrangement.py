@@ -334,18 +334,20 @@ def train_sml(arM,emM,Ytrain,Ytest,part,crit='Ecos_err',
 
     return arM, T, theta_hist, CE
 
-def eval_dcbc(models, emM, Ytrain, Ytest, grid, Utrue_group, Utrue_indiv,
+def eval_dcbc(models, emM, Ytrain, Ytest, grid, Utrue_group, Utrue_indiv, SD,
               max_dist=10, bin_width=1):
-    D= pd.DataFrame()
-    emloglik_train = emM.Estep(Ytrain)
+    D = pd.DataFrame()
     group_par, indiv_par = [], []
 
     for m in models:
         smooth = 0
-        if m=='data':
+        if isinstance(m, str) and m.startswith('data'):
+            ind = int(m.split('_')[1])
+            emloglik_train = emM.Estep(Ytrain[ind])
             this_Ugroup = pt.softmax(emloglik_train.sum(dim=0), dim=0).argmax(dim=0)
             this_Uindiv = pt.softmax(emloglik_train,1).argmax(dim=1)
             name = m
+            smooth = SD[ind]
             model_type = 'data'
         elif m=='Utrue':
             this_Ugroup = Utrue_group
@@ -385,15 +387,17 @@ def eval_dcbc(models, emM, Ytrain, Ytest, grid, Utrue_group, Utrue_indiv,
 
     return D, group_par, indiv_par
 
-def eval_arrange(models,emM,Ytrain,Ytest,Utrue):
+def eval_arrange(models,emM,Ytrain,Ytest,SD,Utrue):
     D= pd.DataFrame()
     Utrue_mn = ar.expand_mn(Utrue,emM.K)
-    emloglik_train = emM.Estep(Ytrain)
     
     for m in models:
         smooth = 0
-        if m=='data':
+        if isinstance(m, str) and m.startswith('data'):
+            ind = int(m.split('_')[1])
+            emloglik_train = emM.Estep(Ytrain[ind])
             EU = pt.softmax(emloglik_train,1)
+            smooth = SD[ind]
             name = m
             model_type = 'data'
         elif m=='Utrue':
@@ -527,6 +531,7 @@ def plot_individual_Uhat(models,Utrue, emloglik,grid,style='prob'):
                     grid=(2,n_models),
                     offset = n_models+1)
 
+    plt.savefig('Uhat_indiv.pdf', format='pdf')
     plt.show()
 
 def plot_evaluation(D, criteria=['uerr','cos_err','Ecos_err','dcbc_group','dcbc_indiv'],
@@ -545,8 +550,10 @@ def plot_evaluation(D, criteria=['uerr','cos_err','Ecos_err','dcbc_group','dcbc_
                         err_style="bars", markers=False)
 
             emlog = D[(D.type == types[j]) & (D.arrangement == 'data')]
-            plt.axhline(emlog[criteria[i]].mean().item(), color='k', ls=':',
-                        label='data')
+            # plt.axhline(emlog[criteria[i]].mean().item(), color='k', ls=':',
+            #             label='data')
+            sb.lineplot(data=emlog, x='smooth', y=criteria[i],
+                        err_style="bars", markers=False)
 
             rbm_wc = D[(D.type == types[j]) & (D.model == 'cRBM_Wc')]
             plt.axhline(rbm_wc[criteria[i]].mean().item(), color='r', ls=':',
@@ -560,8 +567,20 @@ def plot_evaluation(D, criteria=['uerr','cos_err','Ecos_err','dcbc_group','dcbc_
             plt.legend()
             # plt.xticks(rotation=45)
 
+            # Ylim
+            # if criteria[i] == 'uerr':
+            #     plt.ylim([-0.005, 0.03])
+            # elif criteria[i] == 'cos_err':
+            #     plt.ylim([0.42, 0.46])
+            # elif criteria[i] == 'Ecos_err':
+            #     plt.ylim([0.42, 0.46])
+            # elif criteria[i] == 'dcbc_indiv':
+            #     plt.ylim([0.32, 0.42])
+
     plt.suptitle(f'final errors')
     plt.tight_layout()
+
+    plt.savefig('test_errs.pdf', format='pdf')
     plt.show()
 
 def plot_evaluation2(): 
@@ -642,7 +661,7 @@ def simulation_1():
     plot_Uhat_maps([None,indepAr,rbm,Mpotts],emloglik_test[0:1],grid)
     pass
 
-def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1.2,
+def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=200, theta=1.2,
                  theta_mu=180, emission='gmm', epos_iter=20, eneg_iter=20, num_sim=10):
     P = width * width
     if emission == 'gmm': # MixGaussian
@@ -659,6 +678,8 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
     TT=pd.DataFrame()
     DD=pd.DataFrame()
     HH = pt.zeros((num_sim,n_epoch))
+    BU_all = pt.zeros((num_sim,n_epoch))
+    BU_all_1 = pt.zeros((num_sim,n_epoch))
     CE_rbm1 = pt.zeros((num_sim, n_epoch))
     CE_rbm2 = pt.zeros((num_sim, n_epoch))
     GM, IM = [], []
@@ -666,6 +687,7 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
     # REcorded bias parameter
     SD = np.concatenate((np.linspace(0.1,1,10), np.linspace(1.5,3,4)))
     SD = np.round(SD, decimals=2)
+    # SD = [0.5]
     Rec = pt.zeros((len(SD)+4, num_sim, K, P)) # unsmooth + 2 rbms + 1 emloglik
 
     # Generate partitions for region-completion testing
@@ -696,13 +718,14 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
 
         # Make list of fitting models
         Models, fitted_M = [], []
-        fitting_names = ['idenp_0'] + [f'idenp_{s}' for s in SD] + ['cRBM_Wc','cRBM_W']
+        fitting_names = ['idenp_0'] + [f'idenp_{s}' for s in SD] + ['cRBM_Wc']
         Y_fit = [Ytrain] + Ytrain_smooth + [Ytrain, Ytrain]
         for nam in fitting_names:
             Models.append(make_train_model(model_name=nam, K=K, P=P,
                                            num_subj=num_subj, eneg_iter=eneg_iter,
-                                           epos_iter=epos_iter, Wc=rbm.Wc.squeeze(2), theta=None,
-                                           fit_W=True, fit_bu=False, lr=0.1))
+                                           epos_iter=epos_iter, Wc=rbm.Wc.squeeze(2),
+                                           theta=rbm.theta,
+                                           fit_W=False, fit_bu=True, lr=0.1))
 
         # Train different arrangement model
         TH, CE = [], []
@@ -711,7 +734,8 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
             # Give the model the true bias/W for rbms
             if m.name.startswith('cRBM') or m.name.startswith('wcmDBM'):
                 # m.W = rbm.W.detach().clone()
-                m.bu = rbm.bu.detach().clone()
+                # m.bu = rbm.bu.detach().clone()
+                pass
 
             m, T1, theta_hist, ce = train_sml(m, Mtrue.emission, Y_fit[i],
                                               Ytest, part, batch_size=batch_size,
@@ -723,15 +747,19 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
 
         # Evaluate overall
         # 1. u_absolute error, cos_err, and expected cos_err
-        D = eval_arrange(['data'] + fitted_M + ['Utrue'],
-                         Mtrue.emission, Ytrain, Ytest, Utrue=Utrue)
+        D = eval_arrange([f'data_{t}' for t in range(len(Y_fit)-2)] + fitted_M + ['Utrue'],
+                         Mtrue.emission, [Ytrain] + Ytrain_smooth, Ytest, np.insert(SD, 0, 0),
+                         Utrue=Utrue)
 
         # 2. DCBC
         binWidth = 5
         max_dist = binWidth * pt.ceil(grid.Dist.max() / binWidth)
-        D1, group_map, indiv_map = eval_dcbc(['data'] + fitted_M + ['Utrue'], Mtrue.emission,
-                                             Ytrain, Ytest, grid,
-                                             pt.softmax(rbm.bu, dim=0).argmax(dim=0), Utrue,
+        D1, group_map, indiv_map = eval_dcbc([f'data_{t}' for t in range(len(Y_fit)-2)]
+                                             + fitted_M + ['Utrue'],
+                                             Mtrue.emission,
+                                             [Ytrain] + Ytrain_smooth, Ytest, grid,
+                                             pt.softmax(rbm.bu, dim=0).argmax(dim=0),
+                                             Utrue, np.insert(SD, 0, 0),
                                              max_dist=max_dist, bin_width=binWidth)
 
         GM.append(group_map)
@@ -744,7 +772,13 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
         TT = pd.concat([TT, T],ignore_index=True)
 
         # Record the theta for rbm_Wc model only
-        HH[s,:]= TH[-2][fitted_M[-2].get_param_indices('theta'),:]
+        HH[s,:]= TH[-1][fitted_M[-1].get_param_indices('theta'),:]
+        # Record the distance measure of |bias - true bu|
+        fit_bu = TH[-1][fitted_M[-1].get_param_indices('bu'), :]
+        fit_bu = pt.softmax(fit_bu.T.view(-1, rbm.bu.shape[0], rbm.bu.shape[1]), dim=1)
+        for counter in range(fit_bu.shape[0]):
+            BU_all[s,counter]= ev.cross_entropy(fit_bu[counter,:,:], pt.softmax(rbm.bu, dim=0))
+            BU_all_1[s,counter]= ev.cross_entropy(fit_bu[counter,:,:], fitted_M[0].marginal_prob())
 
         # Record cross entropy for rbms
         CE_rbm1[s, :] = CE[-2]
@@ -762,25 +796,30 @@ def simulation_2(K=5, width=50, num_subj=20, batch_size=20, n_epoch=120, theta=1
         # Rec[-1,s,:,:] = ar.expand_mn(Utrue, K).mean(dim=0)
 
     # Plot learning curves by epoch
-    fig = plt.figure(figsize=(10,10))
-    plt.subplot(2, 2, 1)
+    fig = plt.figure(figsize=(10,15))
+    plt.subplot(3, 2, 1)
     plt.plot(CE_rbm1.T.cpu().numpy(), linestyle='-', label='rbm_Wc')
     plt.plot(CE_rbm2.T.cpu().numpy(), linestyle=':', label='rbm_W')
     plt.ylabel('Cross Entropy')
     plt.legend(['rbm_Wc (solid)','rbm_W (dotted)'])
-    plt.subplot(2, 2, 2)
+    plt.subplot(3, 2, 2)
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='test')], y='crit',
                 x='iter', hue='model')
     plt.ylabel('Test coserr')
-    plt.subplot(2, 2, 3)
+    plt.subplot(3, 2, 3)
     sb.lineplot(data=TT[(TT.iter>0) & (TT.type=='compl')]
             ,y='crit',x='iter',hue='model')
     plt.ylabel('Compl coserr')
-    plt.subplot(2, 2, 4)
+    plt.subplot(3, 2, 4)
     plt.plot(HH.T.cpu().numpy())
     plt.axhline(y=HH[:,-1].cpu().numpy().mean(), color='r', linestyle='-')
     plt.axhline(y=theta, color='k', linestyle='-')
     plt.ylabel('Theta')
+    plt.subplot(3, 2, 5)
+    plt.plot(BU_all.T.cpu().numpy())
+    plt.ylabel('fit bu - true bu')
+
+    plt.savefig("learning_curves_2.pdf", format='pdf')
     plt.show()
 
     # records = [RecEmLog, RecLp1, RecLp2, RecLp3, RecLp4, RecLp5, RecBu1, RecBu2]
@@ -974,6 +1013,8 @@ if __name__ == '__main__':
                                                                                  num_sim=10)
 
     # Get the final error and the true pott models
+    # DD.to_csv(f'eval_cpmRBM_1.tsv', index=False, sep='\t')
+    DD = pd.read_csv('eval_cpmRBM_1.tsv', delimiter='\t')
     plot_evaluation(DD, types=['test'])
 
     # OPtional: Plot the last maps of prior estimates
