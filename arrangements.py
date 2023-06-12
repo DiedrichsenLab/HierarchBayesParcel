@@ -932,7 +932,7 @@ class cmpRBM(mpRBM):
     """
     def __init__(self, K, P, nh=None, Wc=None, theta=None,
                  eneg_iter=10, epos_iter=10, eneg_numchains=77,
-                 momentum=True):
+                 momentum=False, wd=0):
         """ Constructor for the cmpRBM class
 
         Args:
@@ -949,6 +949,7 @@ class cmpRBM(mpRBM):
         self.Wc  = Wc
         self.bu = pt.randn(K,P)
         self.momentum = momentum
+        self.wd = wd
         if Wc is None:
             if nh is None:
                 raise NameError('Provide Connectivty kernel (Wc)'
@@ -974,13 +975,14 @@ class cmpRBM(mpRBM):
         self.alpha = 0.01
 
         if self.momentum:
-            self.MOMENTUM_COEF = 0.9
+            self.MOMENTUM_COEF = 0.5
             self.velocity_W = 0
             self.velocity_bu = 0
 
         self.epos_iter = epos_iter
         self.eneg_iter = eneg_iter
         self.eneg_numchains = eneg_numchains
+        self.use_tempered_transition = False
         self.fit_bu = True
         self.fit_W = True
         self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
@@ -1030,6 +1032,74 @@ class cmpRBM(mpRBM):
         else:
             pi = pt.mean(self.gibbs_U, dim=0)
         return pi
+
+    def unnormalized_prob(self, U, H):
+        """ Calculate the unnormalized probability of the model given U and H
+
+        Args:
+            U (pt.Tensor): The indicator tensor of the outer layer
+            H (pt.Tensor): The indicator tensor of the hidden layer
+
+        Returns:
+            unnormalized_prob (pt.Tensor): The unnormalized probability
+                of the model
+        """
+        bias = (U * self.bu).sum((1, 2))
+        connection = (H @ self.W * U).sum((1, 2))
+        return pt.exp(bias + connection).mean()
+
+    def tempered_transition(self, U, betas, emission_model):
+        """ Sample from the model using tempered transitions.
+
+        Args:
+            U (pt.Tensor): The initial value of U
+            betas (list[float]): The temperature coefficient for
+                each intermediate distribution, where betas[-1] = 1
+            emission_model (EmissionModel): The emission model to
+                use for sampling
+
+        Returns:
+            U (pt.Tensor): The sampled value of U
+            H (pt.Tensor): The sampled value of H
+
+        References:
+            https://www.cs.cmu.edu/~rsalakhu/papers/trans.pdf
+        """
+        # save the current parameters
+        true_W = self.W.detach().clone()
+        true_bu = self.bu.detach().clone()
+        accept = 0.0
+        _, H = self.sample_U(U)
+        U_p = U
+        while (accept < np.random.uniform(0.0, 1.0)):
+            accept = 1.0
+            for beta in reversed(betas):
+                accept /= self.unnormalized_prob(U, H)
+                self.W = true_W * beta
+                self.bu = true_bu * beta
+                accept *= self.unnormalized_prob(U, H)
+
+                Y = emission_model.sample(compress_mn(U_p))
+                emloglik = emission_model.Estep(Y)
+                _, H = self.sample_h(U_p)
+                U_p, U = self.sample_U(H, emloglik)
+
+            # inverse transition T tilde (Gibbs sample in reverse)
+            for beta in betas[1:]:
+                Y = emission_model.sample(compress_mn(U_p))
+                emloglik = emission_model.Estep(Y)
+                U_p, U = self.sample_U(H, emloglik)
+                _, H = self.sample_h(U_p)
+
+                accept /= self.unnormalized_prob(U, H)
+                self.W = true_W * beta
+                self.bu = true_bu * beta
+                accept *= self.unnormalized_prob(U, H)
+            accept = min(1, accept)
+        # reload the true parameters
+        self.W = true_W
+        self.bu = true_bu
+        return U, H
 
     def Estep(self, emloglik,gather_ss=True,iter=None):
         """ Positive Estep for the multinomial boltzman model
@@ -1101,13 +1171,18 @@ class cmpRBM(mpRBM):
             use_chains = pt.arange(self.eneg_numchains)
 
         U = self.gibbs_U[use_chains]
-        U0 = U.detach().clone()
-        # standard gibbs sampling
-        for i in range(iter):
-            Y = emission_model.sample(compress_mn(U))
-            emloglik = emission_model.Estep(Y)
-            ph, H = self.sample_h(U)
-            pu, U = self.sample_U(H, emloglik)
+        # sampling using tempered transitions
+        if self.use_tempered_transition:
+            U0 = U.detach().clone()
+            U, H = self.tempered_transition(U0, np.linspace(0.9, 1.0, iter),
+                                            emission_model)
+        else:
+            # standard gibbs sampling
+            for i in range(iter):
+                Y = emission_model.sample(compress_mn(U))
+                emloglik = emission_model.Estep(Y)
+                ph, H = self.sample_h(U)
+                pu, U = self.sample_U(H, emloglik)
 
         # TODO: For the last update of the hidden units, it is common
         #  to use the probability instead of sampling a multinomial value
@@ -1144,18 +1219,18 @@ class cmpRBM(mpRBM):
                 weights = pt.sum(self.Wc,dim=(0,1))
                 gradT   = pt.sum(gradW*self.Wc,dim=(0,1))/weights
                 if self.momentum:
-                    self.theta += gradT
+                    self.theta += gradT - self.alpha * self.wd * self.theta
                 else:
-                    self.theta += self.alpha * gradT
+                    self.theta += self.alpha * gradT - self.alpha * self.wd * self.theta
 
                 self.W = (self.Wc * self.theta).sum(dim=2)
             else:
                 if self.momentum:
                     self.velocity_W = self.MOMENTUM_COEF * self.velocity_W \
                                       + self.alpha * gradW
-                    self.W += self.velocity_W
+                    self.W += self.velocity_W - self.alpha * self.wd * self.velocity_W
                 else:
-                    self.W += self.alpha * gradW
+                    self.W += self.alpha * gradW - self.alpha * self.wd * gradW
 
         # Update the bias term
         if self.fit_bu:
@@ -1165,9 +1240,11 @@ class cmpRBM(mpRBM):
             if self.momentum:
                 self.velocity_bu = self.MOMENTUM_COEF * self.velocity_bu \
                                  + self.alpha * gradBU
+                # self.velocity_bu = self.velocity_bu - self.alpha * self.wd * self.bu
                 self.bu += self.velocity_bu
             else:
                 self.bu += self.alpha * gradBU
+                # self.bu += self.alpha * gradBU - self.alpha * self.wd * self.bu
 
 
 class wcmDBM(mpRBM):
@@ -1528,20 +1605,20 @@ class wcmDBM(mpRBM):
                 print('No enough cuda memory for calculating the gradW,'
                       ' we have to back to cpu computation.')
 
-                # gradW = pt.matmul(pt.transpose(self.epos_Hhat, 1, 2).to('cpu'),
-                #                   self.epos_Uhat.to('cpu')).sum(dim=0) / N
-                # gradW -= pt.matmul(pt.transpose(self.eneg_H, 1, 2).to('cpu'),
-                #                    self.eneg_U.to('cpu')).sum(dim=0) / M
+                gradW = pt.matmul(pt.transpose(self.epos_Hhat, 1, 2).to('cpu'),
+                                  self.epos_Uhat.to('cpu')).sum(dim=0) / N
+                gradW -= pt.matmul(pt.transpose(self.eneg_H, 1, 2).to('cpu'),
+                                   self.eneg_U.to('cpu')).sum(dim=0) / M
 
-                gradW = pt.zeros(self.W.shape, device='cpu')
-                for i in range(N):
-                    gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
-                                      self.epos_Uhat[i].to('cpu'))
-                gradW = gradW / N
-
-                for j in range(M):
-                    gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
-                                   self.eneg_U[j].to('cpu'))/M
+                # gradW = pt.zeros(self.W.shape, device='cpu')
+                # for i in range(N):
+                #     gradW += pt.matmul(pt.transpose(self.epos_Hhat, 1, 2)[i].to('cpu'),
+                #                       self.epos_Uhat[i].to('cpu'))
+                # gradW = gradW / N
+                #
+                # for j in range(M):
+                #     gradW -= pt.matmul(pt.transpose(self.eneg_H,1,2)[j].to('cpu'),
+                #                    self.eneg_U[j].to('cpu'))/M
             else:
                 pass
             # Convert gradW to sparse COO on cuda
