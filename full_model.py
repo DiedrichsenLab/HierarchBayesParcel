@@ -152,6 +152,7 @@ class FullMultiModel:
         Returns:
             Uhat (ndarray): tensor of estimated arrangements
         """
+        warnings.DeprecationWarning('remap evidence is deprecated. Use arrangement model instead')
         return Uhat
 
     def collect_evidence(self,emloglik):
@@ -193,7 +194,7 @@ class FullMultiModel:
         Returns:
             Prob (pt.tensor): KxP marginal probabilities
         """
-        return self.remap_evidence(self.arrange.marginal_prob())
+        return self.arrange.marginal_prob()
 
     def set_num_subj(self,num_subj=None):
         """Sets the number of subjects for simulations
