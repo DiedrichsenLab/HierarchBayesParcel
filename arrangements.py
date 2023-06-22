@@ -242,6 +242,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         emloglik = self.map_to_arrange(emloglik)
         Uhat, ll_A = super().Estep(emloglik, gather_ss)
         Uhat = self.map_to_full(Uhat)
+        Uhat = Uhat / Uhat.sum(dim=1, keepdim=True)
         return Uhat, ll_A
 
     def sample(self, num_subj=10):
