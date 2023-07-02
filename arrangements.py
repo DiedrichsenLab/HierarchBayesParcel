@@ -964,7 +964,8 @@ class cmpRBM(mpRBM):
             self.nh = Wc.shape[0]
 
             if theta is None:
-                self.theta = pt.abs(pt.randn((self.Wc.shape[2],)))
+                # self.theta = pt.abs(pt.randn((self.Wc.shape[2],)))
+                self.theta = pt.distributions.uniform.Uniform(0, 3).sample((self.Wc.shape[2],))
             else:
                 self.theta = pt.tensor(theta, dtype=pt.get_default_dtype())
                 if self.theta.ndim ==0:
@@ -975,7 +976,7 @@ class cmpRBM(mpRBM):
         self.alpha = 0.01
 
         if self.momentum:
-            self.MOMENTUM_COEF = 0.5
+            self.MOMENTUM_COEF = 0.6
             self.velocity_W = 0
             self.velocity_bu = 0
 
