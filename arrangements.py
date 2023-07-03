@@ -22,7 +22,28 @@ class ArrangementModel(Model):
         self.K = K  # Number of states
         self.P = P  # Number of nodes
         self.tmp_list = []
+    
+    def map_to_full(self,Uhat):
+        """ Placeholder
+        Args:
+            Uhat (ndarray): tensor of estimated arrangement
 
+        Returns:
+            Uhat (ndarray): tensor of estimated arrangements
+        """
+        return Uhat
+
+    def map_to_arrange(self, emloglik):
+        """ Maps emission log likelihoods to the internal size of the
+            representation: Empty
+
+        Args:
+            emloglik (list): List of emission logliklihoods
+
+        Returns:
+            emloglik_comb (ndarray): ndarray of emission logliklihoods
+        """
+        return emloglik
 
 class ArrangeIndependent(ArrangementModel):
     """ Independent arrangement model
