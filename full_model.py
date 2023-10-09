@@ -262,9 +262,11 @@ class FullMultiModel:
         Uhat, ll_a = self.arrange.Estep(emloglik_comb)
         ll_e = (Uhat * emloglik_comb).sum()
         if separate_ll:
-            return Uhat, [ll_e, ll_a.sum()]
+            return Uhat, [ll_e, pt.nan] \
+                if self.arrange.name.startswith('cRBM') else [ll_e, ll_a.sum()]
         else:
-            return Uhat, ll_a.sum()+ll_e
+            return Uhat, pt.nan \
+            if self.arrange.name.startswith('cRBM') else ll_a.sum()+ll_e
 
     def fit_em(self,iter=30, tol=0.01, seperate_ll=False, fit_emission=True,
                fit_arrangement=True, first_evidence=True):
