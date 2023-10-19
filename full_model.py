@@ -657,3 +657,120 @@ class FullMultiModel:
                 for obj_in_list in value:
                     obj_in_list.move_to(device=device)
 
+
+####################################################################
+## Belows are the helper functions for full models                ##
+####################################################################
+def indicator(index_vector, positive=False):
+    """Indicator matrix with one
+    column per unique element in vector
+
+    Args:
+        index_vector (numpy.ndarray): n_row vector to
+            code - discrete values (one dimensional)
+        positive (bool): should the function ignore zero
+            negative entries in the index_vector?
+            Default: false
+
+    Returns:
+        indicator_matrix (numpy.ndarray): nrow x nconditions
+            indicator matrix
+
+    """
+    c_unique = np.unique(index_vector)
+    n_unique = c_unique.size
+    rows = np.size(index_vector)
+    if positive:
+        c_unique = c_unique[c_unique > 0]
+        n_unique = c_unique.size
+    indicator_matrix = np.zeros((rows, n_unique))
+    for i in np.arange(n_unique):
+        indicator_matrix[index_vector == c_unique[i], i] = 1
+    return indicator_matrix
+
+def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
+                           subj_ind, sym_type='asym', uniform_kappa=True,
+                           n_iter=200, fit_arrangement=False, fit_emission=True,
+                           return_soft_parcel=False, device=None):
+    """ Calculates the individual parcellations using the given individual
+        training data and the given arrangement model with the pre-defined
+        group prior.
+
+    Args:
+        ar_model (arrangement model object): the arrangement model object
+            with pre-defined group prior U.
+        train_data (np.ndarray or pt.Tensor): individual localizing data
+        atlas (object): the atlas object for the arrangement model
+        cond_vec (list): the condition vectors for each emission model
+        part_vec (list): the partition vectors for each emission model
+        subj_ind (list): the subject indices for each emission model
+        sym_type (str): the symmetry type of the arrangement model
+        uniform_kappa (boolean): If True, the kappa parameter of the emission
+            models are uniformed, otherwise, they are individualized.
+        n_iter (int): the number of iterations for the EM algorithm
+        fit_arrangement (boolean): If True, the arrangement model will
+            be fitted using the given individual training data. However,
+            in this case, the arrangement model should be freezed during
+            the learning process.
+        fit_emission (boolean): If True, the emission models will be
+            fitted. The emission model parameters are freely learned.
+        return_soft_parcel (boolean): If True, the individual probabilistic
+            parcellation will be returned. Otherwise, the outputs are the
+            hard parcellations.
+        device (str): the device name to load trained model
+
+    Returns:
+        U_indiv (pt.Tensor): the individual parcellations
+        ll (list): the log-likelihood of the individual parcellations
+    """
+    # convert tdata to tensor
+    if type(train_data) is np.ndarray:
+        train_data = pt.tensor(train_data, dtype=pt.get_default_dtype())
+    # Check if the lists have equal length using assert
+    assert len(train_data) == len(cond_vec) == len(part_vec),\
+        "training data, condition vector, and partition vector " \
+        "must have equal length."
+
+    # Check if the input arrangement model is valid
+    if not isinstance(ar_model, (arr.ArrangeIndependent,
+                                 arr.ArrangeIndependentSymmetric,
+                                 arr.ArrangeIndependentSymmetric,
+                                 arr.wcmDBM, arr.cmpRBM)):
+        raise ValueError("The input model must be a valid arrangement"
+                         " model object")
+
+    # Initialize emission models
+    em_models = []
+    for j, this_cv in enumerate(cond_vec):
+        em_model = emi.build_emission_model(ar_model.K, atlas, 'VMF',
+                                        indicator(this_cv),
+                                        part_vec[j], sym_type=sym_type,
+                                        uniform_kappa=uniform_kappa)
+        em_models.append(em_model)
+
+    M = FullMultiModel(ar_model, em_models)
+    M.initialize(train_data, subj_ind=subj_ind)
+    # ------------------------------------------
+    # Real training starts here, swith learning process
+    # depends on arrangement model type
+    if M.arrange.name.startswith('indp'):
+        M, ll, _, U_indiv, _ = M.fit_em_ninits(iter=n_iter, tol=0.01,
+                                         fit_arrangement=fit_arrangement,
+                                         fit_emission=fit_emission,
+                                         init_arrangement=False,
+                                         init_emission=True,
+                                         n_inits=50, first_iter=30,
+                                         verbose=False)
+    elif M.arrange.name.startswith('cRBM'):
+        M.random_params(init_arrangement=True, init_emission=True)
+        M, ll, theta, U_indiv = m.fit_sml(iter=n_iter, batch_size=8,
+                                    stepsize=0.1, seperate_ll=False,
+                                    fit_arrangement=fit_arrangement,
+                                    fit_emission=fit_emission)
+    else:
+        raise NameError("The arrangement model is not supported yet.")
+
+    if return_soft_parcel:
+        return U_indiv, ll
+    else:
+        return pt.argmax(U_indiv, dim=1), ll

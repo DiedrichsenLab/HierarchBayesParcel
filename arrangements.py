@@ -12,6 +12,8 @@ import numpy as np
 import torch as pt
 from torch import exp,log,sqrt
 from HierarchBayesParcel.model import Model
+import pandas as pd
+import pickle
 
 
 class ArrangementModel(Model):
@@ -1834,3 +1836,134 @@ def compress_mn(U):
     """
     u = U.argmax(1)
     return u
+
+def load_batch_fit(fname, device=None):
+    """ Loads a batch of fits and extracts marginal probability maps
+    and mean vectors
+    Args:
+        fname (str): File name
+    Returns:
+        info: Data Frame with information
+        models: List of models
+    """
+    wdir = model_dir + '/Models/'
+    info = pd.read_csv(wdir + fname + '.tsv', sep='\t')
+    with open(wdir + fname + '.pickle', 'rb') as file:
+        models = pickle.load(file)
+
+    if device is not None:
+        for m in models:
+            m.move_to(device)
+
+    return info, models
+
+
+def load_group_parcellation(fname, index=None, marginal=False,
+                            device=None):
+    """ Loads a group parcellation prior from a list of
+        pre-trained model
+
+    Args:
+        fname (str): File name of pre-trained model
+        index (int): Index of the model to load. If None,
+            loads the model with the highest log-likelihood
+            by default.
+        marginal (bool): If True, return marginal probability.
+            Else, return the logpi.
+        device (str): Device to load the model to. Current
+            support 'cuda' and 'cpu'.
+
+    Returns:
+        select_model: Selected model
+        info_reduced: Data Frame with information
+    """
+    info = pd.read_csv(fname + '.tsv', sep='\t')
+    with open(fname + '.pickle', 'rb') as file:
+        models = pickle.load(file)
+
+    if index is None:
+        index = info.loglik.argmax()
+
+    select_model = models[index]
+    if device is not None:
+        select_model.move_to(device)
+
+    info_reduced = info.iloc[index]
+    U = select_model.marginal_prob() if marginal \
+        else select_model.arrange.logpi
+
+    return U, info_reduced
+
+def build_arrangement_model(U, K, atlas, arrange='independent',
+                            sym_type='asym',epos_iter=5, eneg_iter=5,
+                            num_chain=20, Wc=None, theta=None):
+    """ Builds an arrangment model based on the specification
+
+    Args:
+        U (tensor or ndarray): A K x P matrix of group prior in log
+                               space. This is not the marginal
+                               probability of the arrangement model
+        K (int): number of voxels
+        atlas (object): the atlas object for the arrangement model
+        arrange (str): the arrangement model type
+        sym_type (str): the symmetry type of the arrangement model
+        epos_iter (int): RBM arrangement model only. the number of
+                         positive phase iteration
+        eneg_iter (int): RBM arrangement model only. the number of
+                         negative phase iteration
+        num_chain (int): RBM arrangement model only. the number of
+                         negative chains.
+        Wc (tensor or ndarray): RBM arrangement model only. the
+                                neighbourhood matrix
+        theta (int): RBM arrangement model only. the theta parameter
+
+    Returns:
+        ar_model (object): the arrangement model object
+    """
+    # convert tdata to tensor
+    if type(U) is np.ndarray:
+        U = pt.tensor(U, dtype=pt.get_default_dtype())
+
+    if arrange == 'independent':
+        if sym_type == 'sym':
+            ar_model = ArrangeIndependentSymmetric(K,
+                                                   atlas.indx_full,
+                                                   atlas.indx_reduced,
+                                                   same_parcels=False,
+                                                   spatial_specific=True,
+                                                   remove_redundancy=False)
+            ar_model.name = 'indp_sym'
+        elif sym_type == 'asym':
+            ar_model = ArrangeIndependent(K, atlas.P,
+                                          spatial_specific=True,
+                                          remove_redundancy=False)
+            ar_model.name = 'indp_asym'
+
+        # Set the prior
+        ar_model.logpi = U
+
+    elif arrange == 'cRBM_W':
+        # Boltzmann with a arbitrary fully connected model - P hiden nodes
+        n_hidden = atlas.P
+        ar_model = cmpRBM(K, atlas.P, nh=n_hidden, eneg_iter=eneg_iter,
+                          epos_iter=epos_iter, eneg_numchains=num_chain)
+        ar_model.name=f'cRBM_{n_hidden}'
+
+        # Set the prior
+        ar_model.bu = U
+    elif arrange == 'cRBM_Wc':
+        # Covolutional Boltzman machine with the true neighbourhood matrix
+        # theta_w in this case is not fit.
+        if Wc is None:
+            raise ValueError('Wc must be provided')
+
+        ar_model = wcmDBM(K, atlas.P, Wc=Wc, theta=theta, eneg_iter=eneg_iter,
+                          epos_iter=epos_iter, eneg_numchains=num_chain)
+        ar_model.name = 'cRBM_Wc'
+
+        # Set the prior
+        ar_model.bu = U
+    else:
+        raise NameError(f'Unknown arrangement model:{arrange}')
+
+    return ar_model

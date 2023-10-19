@@ -1548,3 +1548,44 @@ def _random_VMF_cos(d: int, kappa: float, n: int):
         found += len(out[-1])
 
     return np.concatenate(out)[:n]
+
+def build_emission_model(K, atlas, emission, x_matrix, part_vec,
+                         sym_type='asym', uniform_kappa=True):
+    """ Builds an arrangment model based on the specification
+
+    Args:
+        U (tensor or ndarray): A K x P matrix of group prior in log
+                               space. This is not the marginal
+                               probability of the arrangement model
+        K (int): number of voxels
+        atlas (object): the atlas object for the arrangement model
+        sym_type (str): the symmetry type of the arrangement model
+        epos_iter (int): RBM arrangement model only. the number of
+                         positive phase iteration
+        eneg_iter (int): RBM arrangement model only. the number of
+                         negative phase iteration
+        num_chain (int): RBM arrangement model only. the number of
+                         negative chains.
+        Wc (tensor or ndarray): RBM arrangement model only. the
+                                neighbourhood matrix
+        theta (int): RBM arrangement model only. the theta parameter
+
+    Returns:
+        ar_model (object): the arrangement model object
+    """
+    if emission == 'VMF':
+        em_model = MixVMF(K=K, P=atlas.P, X=x_matrix,
+                          part_vec=part_vec,
+                          uniform_kappa=uniform_kappa)
+    elif emission == 'GMM':
+        em_model = MixGaussian(K=K, P=atlas.P, X=x_matrix,
+                               std_V=False)
+    elif emission == 'wVMF':
+        em_model = wMixVMF(K=K, P=atlas.P, X=x_matrix,
+                           part_vec=part_vec,
+                           uniform_kappa=uniform_kappa,
+                           weighting='length')
+    else:
+        raise ((NameError(f'unknown emission model:{emission}')))
+
+    return em_model
