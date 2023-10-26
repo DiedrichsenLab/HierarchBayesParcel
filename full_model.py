@@ -749,7 +749,7 @@ def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
 def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
                            subj_ind, sym_type='asym', uniform_kappa=True,
                            n_iter=200, fit_arrangement=False, fit_emission=True,
-                           return_soft_parcel=False, device=None):
+                           return_soft_parcel=True, device=None):
     """ Calculates the individual parcellations using the given individual
         training data and the given arrangement model with the pre-defined
         group prior.
