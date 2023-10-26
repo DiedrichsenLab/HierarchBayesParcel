@@ -1874,7 +1874,7 @@ def load_group_parcellation(fname, index=None, marginal=False,
             support 'cuda' and 'cpu'.
 
     Returns:
-        select_model: Selected model
+        U: the logpi of arrangement model
         info_reduced: Data Frame with information
     """
     info = pd.read_csv(fname + '.tsv', sep='\t')
@@ -1894,7 +1894,7 @@ def load_group_parcellation(fname, index=None, marginal=False,
 
     return U, info_reduced
 
-def build_arrangement_model(U, K, atlas, arrange='independent',
+def build_arrangement_model(U, atlas, arrange='independent',
                             sym_type='asym',epos_iter=5, eneg_iter=5,
                             num_chain=20, Wc=None, theta=None):
     """ Builds an arrangment model based on the specification
@@ -1923,7 +1923,8 @@ def build_arrangement_model(U, K, atlas, arrange='independent',
     # convert tdata to tensor
     if type(U) is np.ndarray:
         U = pt.tensor(U, dtype=pt.get_default_dtype())
-
+    
+    K = U.shape[0]
     if arrange == 'independent':
         if sym_type == 'sym':
             ar_model = ArrangeIndependentSymmetric(K,

@@ -688,6 +688,64 @@ def indicator(index_vector, positive=False):
         indicator_matrix[index_vector == c_unique[i], i] = 1
     return indicator_matrix
 
+def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
+                  part_ind='half', join_sess=False, join_sess_part=False):
+    """ Builds dataset, cond_vec, part_vec, subj_ind from the given
+        dataset in Functional fusion project
+
+    Args:
+        dat (numpy.ndarray or pytorch.Tensor): the input data tensor, must
+            be in shape of n_subj x n_cond x n_voxels.
+        info (pandas.DataFrame): the info table for the input dataset
+        type (str): The type to split the datqset. Defaults to 'CondHalf'.
+        cond_ind (str): The name of the column in info table to split the
+            dataset. Defaults to 'cond_num_uni'.
+        part_ind (str): The name of the column in info table to split the
+            dataset. Defaults to 'half'.
+        join_sess (boolean): Model the sessions with a single model.
+            Defaults to True which corresponds to model 01, 02, 05. If set
+            to False, the model will model the sessions separately, such as
+            the model 03 and 04.
+        join_sess_part (boolean): If join_sess is True, this parameter will
+
+    Returns:
+        data (list): A list of the data tensor
+        cond_vec (list): A list of the condition vector
+        part_vec (list): A list of the partition vector
+        subj_ind (list): A list of the subject index
+
+    Notes:
+        The returned data, cond_vec, part_vec, subj_ind will have the same
+        length. The elements in the lists are indexly matched to model an
+        emission model.
+    """
+    sub = 0
+    data, cond_vec, part_vec, subj_ind = [], [], [], []
+    n_subj = dat.shape[0]
+
+    # Make different sessions either the same or different
+    if join_sess:
+        data.append(dat)
+        cond_vec.append(info[cond_ind].values.reshape(-1, ))
+
+        # Check if we want to set no partition after join sessions
+        if join_sess_part: # Model 05
+            part_vec.append(np.ones(info[part_ind].shape))
+        else:
+            part_vec.append(info[part_ind].values.reshape(-1, ))
+        subj_ind.append(np.arange(sub, sub + n_subj))
+    else:
+        sessions = np.unique(info.sess)
+        # Now build and split across the correct sessions:
+        for s in sessions:
+            indx = info.sess == s
+            data.append(dat[:, indx, :])
+            cond_vec.append(info[cond_ind].values[indx].reshape(-1, ))
+            part_vec.append(info[part_ind].values[indx].reshape(-1, ))
+            subj_ind.append(np.arange(sub, sub + n_subj))
+
+    return data, cond_vec, part_vec, subj_ind
+
 def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
                            subj_ind, sym_type='asym', uniform_kappa=True,
                            n_iter=200, fit_arrangement=False, fit_emission=True,
