@@ -696,7 +696,9 @@ def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
     Args:
         dat (numpy.ndarray or pytorch.Tensor): the input data tensor, must
             be in shape of n_subj x n_cond x n_voxels.
+        # JD: Better to pass info and then field names, or pass the vectors directly? I think the latter
         info (pandas.DataFrame): the info table for the input dataset
+        # JD: type is not used 
         type (str): The type to split the datqset. Defaults to 'CondHalf'.
         cond_ind (str): The name of the column in info table to split the
             dataset. Defaults to 'cond_num_uni'.
@@ -706,6 +708,7 @@ def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
             Defaults to True which corresponds to model 01, 02, 05. If set
             to False, the model will model the sessions separately, such as
             the model 03 and 04.
+        # JD: NOT Fully explained - and why would you want to do this?
         join_sess_part (boolean): If join_sess is True, this parameter will
 
     Returns:
@@ -790,6 +793,7 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
         "must have equal length."
 
     # Check if the input arrangement model is valid
+    # JD: are you just checking if this is any arrangement model? You can check superclass.... 
     if not isinstance(ar_model, (arr.ArrangeIndependent,
                                  arr.ArrangeIndependentSymmetric,
                                  arr.ArrangeIndependentSymmetric,
@@ -811,6 +815,7 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
     # ------------------------------------------
     # Real training starts here, swith learning process
     # depends on arrangement model type
+    # JD: With a frozen arrangement model - you should be able to just call EM here? 
     if M.arrange.name.startswith('indp'):
         M, ll, _, U_indiv, _ = M.fit_em_ninits(iter=n_iter, tol=0.01,
                                          fit_arrangement=fit_arrangement,
@@ -819,6 +824,7 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
                                          init_emission=True,
                                          n_inits=50, first_iter=30,
                                          verbose=False)
+    # JD: Since we have not published on cRBM, it matbe better to remove this for now? It doesn;t hurt much, bur without extensive testing, it shouldn't be in the Master Brnach. 
     elif M.arrange.name.startswith('cRBM'):
         M.random_params(init_arrangement=True, init_emission=True)
         M, ll, theta, U_indiv = m.fit_sml(iter=n_iter, batch_size=8,
@@ -828,6 +834,7 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
     else:
         raise NameError("The arrangement model is not supported yet.")
 
+    # JD: I would remove this Step - it doesn't hurt, but it's a confusing extra feature - can be done more cleanly in the calling function
     if return_soft_parcel:
         return U_indiv, ll
     else:
