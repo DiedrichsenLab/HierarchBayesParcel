@@ -1894,28 +1894,19 @@ def load_group_parcellation(fname, index=None, marginal=False,
 
     return U, info_reduced
 
-def build_arrangement_model(U, atlas, arrange='independent',
-                            sym_type='asym',epos_iter=5, eneg_iter=5,
-                            num_chain=20, Wc=None, theta=None):
-    """ Builds an arrangment model based on the specification
+def build_arrangement_model(U, atlas=None, sym_type='asym',
+                            model_type='independent'):
+    """ Builds an arrangment model based on a set of probability 
 
     Args:
-        U (tensor or ndarray): A K x P matrix of group prior in log
-                               space. This is not the marginal
-                               probability of the arrangement model
-        K (int): number of voxels
-        atlas (object): the atlas object for the arrangement model
-        arrange (str): the arrangement model type
-        sym_type (str): the symmetry type of the arrangement model
-        epos_iter (int): RBM arrangement model only. the number of
-                         positive phase iteration
-        eneg_iter (int): RBM arrangement model only. the number of
-                         negative phase iteration
-        num_chain (int): RBM arrangement model only. the number of
-                         negative chains.
-        Wc (tensor or ndarray): RBM arrangement model only. the
-                                neighbourhood matrix
-        theta (int): RBM arrangement model only. the theta parameter
+        U (tensor or ndarray): 
+            A K x P matrix of group probability 
+        atlas (object): 
+            the atlas object for the arrangement model for symmetric models
+        model_type (str): 
+            the arrangement model type (default: 'independent')
+        sym_type (str): 
+            the symmetry type of the arrangement model (default: 'asym')
 
     Returns:
         ar_model (object): the arrangement model object
@@ -1924,8 +1915,8 @@ def build_arrangement_model(U, atlas, arrange='independent',
     if type(U) is np.ndarray:
         U = pt.tensor(U, dtype=pt.get_default_dtype())
     
-    K = U.shape[0]
-    if arrange == 'independent':
+    K,P = U.shape
+    if model_type == 'independent':
         if sym_type == 'sym':
             ar_model = ArrangeIndependentSymmetric(K,
                                                    atlas.indx_full,
@@ -1935,36 +1926,15 @@ def build_arrangement_model(U, atlas, arrange='independent',
                                                    remove_redundancy=False)
             ar_model.name = 'indp_sym'
         elif sym_type == 'asym':
-            ar_model = ArrangeIndependent(K, atlas.P,
+            ar_model = ArrangeIndependent(K, P,
                                           spatial_specific=True,
                                           remove_redundancy=False)
             ar_model.name = 'indp_asym'
 
         # Set the prior
-        ar_model.logpi = U
+        ar_model.logpi = pt.log(U)
 
-    elif arrange == 'cRBM_W':
-        # Boltzmann with a arbitrary fully connected model - P hiden nodes
-        n_hidden = atlas.P
-        ar_model = cmpRBM(K, atlas.P, nh=n_hidden, eneg_iter=eneg_iter,
-                          epos_iter=epos_iter, eneg_numchains=num_chain)
-        ar_model.name=f'cRBM_{n_hidden}'
-
-        # Set the prior
-        ar_model.bu = U
-    elif arrange == 'cRBM_Wc':
-        # Covolutional Boltzman machine with the true neighbourhood matrix
-        # theta_w in this case is not fit.
-        if Wc is None:
-            raise ValueError('Wc must be provided')
-
-        ar_model = wcmDBM(K, atlas.P, Wc=Wc, theta=theta, eneg_iter=eneg_iter,
-                          epos_iter=epos_iter, eneg_numchains=num_chain)
-        ar_model.name = 'cRBM_Wc'
-
-        # Set the prior
-        ar_model.bu = U
     else:
-        raise NameError(f'Unknown arrangement model:{arrange}')
+        raise NameError(f'Unknown arrangement model:{model_type}')
 
     return ar_model
