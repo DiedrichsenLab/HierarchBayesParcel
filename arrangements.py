@@ -14,6 +14,7 @@ from torch import exp,log,sqrt
 from HierarchBayesParcel.model import Model
 import pandas as pd
 import pickle
+import warnings
 
 
 class ArrangementModel(Model):
@@ -1805,24 +1806,26 @@ def expand_mn(u,K):
     return U
 
 
-def expand_mn_1d(u, K):
+def expand_mn_1d(U, K):
     """ Expands a P long multinomial vector
         to an K x P tensor of indictor variables
 
     Args:
-        u (1d-tensor): P vector of samples from [int]
+        U (1d-tensor): P vector of samples from [int]
         K (int): Number of categories
 
     Returns:
         U (2d-tensor): K x P matrix of indicator variables
          [default float]
     """
-    P = u.shape[0]
-    U = pt.zeros(K, P)
+    if type(U) is np.ndarray:
+        U = pt.tensor(U, dtype=pt.int)
+        
+    P = U.shape[0]
+    U_return = pt.zeros(K, P)
+    U_return[U, pt.arange(P)] = 1
 
-    U[u, pt.arange(P)] = 1
-
-    return U
+    return U_return
 
 
 def compress_mn(U):
@@ -1894,19 +1897,24 @@ def load_group_parcellation(fname, index=None, marginal=False,
 
     return U, info_reduced
 
-def build_arrangement_model(U, atlas=None, sym_type='asym',
+def build_arrangement_model(U, prior_type='prob', atlas=None, sym_type='asym',
                             model_type='independent'):
     """ Builds an arrangment model based on a set of probability 
 
     Args:
         U (tensor or ndarray): 
-            A K x P matrix of group probability 
+            A K x P matrix of group probability
+        prior_type (str):
+            the type of prior, either 'prob' or 'logpi' (default: 'prob')
+            if 'prob', the input is the marginal probability K x P matrix,
+            which the columns sum to 1. If 'logpi', the input is the group
+            prior in log-space
         atlas (object): 
             the atlas object for the arrangement model for symmetric models
-        model_type (str): 
-            the arrangement model type (default: 'independent')
         sym_type (str): 
             the symmetry type of the arrangement model (default: 'asym')
+        model_type (str):
+            the arrangement model type (default: 'independent')
 
     Returns:
         ar_model (object): the arrangement model object
@@ -1914,8 +1922,33 @@ def build_arrangement_model(U, atlas=None, sym_type='asym',
     # convert tdata to tensor
     if type(U) is np.ndarray:
         U = pt.tensor(U, dtype=pt.get_default_dtype())
-    
     K,P = U.shape
+
+    # Check if the marginal has nan or zero values
+    if prior_type == 'prob':
+        # if it has nan values - give flat distribution
+        if pt.isnan(U).any().item():
+            nan_voxl = pt.sum(pt.any(pt.isnan(U), dim=0)).item()
+            warnings.warn(f'The marginal probability has {nan_voxl} voxels '
+                          f'NaN value - replacing with flat distribution')
+            U = U.nan_to_num(1/K)
+        # if it has zero values - add small value to avoid -inf
+        if pt.eq(U, 0).any().item():
+            epsilon = 1e-8
+            zero_voxl = pt.sum(pt.any(U == 0, dim=0)).item()
+            warnings.warn(f'The marginal probability has {zero_voxl} voxels'
+                          f' zero values - adding small value to avoid -inf')
+            while pt.any(pt.isinf(U.log())).item():
+                U += epsilon
+        # Convert to log space for building arrangement model
+        U = pt.log(U)
+    elif prior_type == 'logpi':
+        pass
+    else:
+        raise ValueError(f'Unknown prior_type: {prior_type}, it must be '
+                         f'either prob or logpi!')
+
+    # Build arrangement model by given model and symmetry type
     if model_type == 'independent':
         if sym_type == 'sym':
             ar_model = ArrangeIndependentSymmetric(K,
@@ -1931,10 +1964,10 @@ def build_arrangement_model(U, atlas=None, sym_type='asym',
                                           remove_redundancy=False)
             ar_model.name = 'indp_asym'
 
-        # Set the prior
-        ar_model.logpi = pt.log(U)
-
+        # Attach the logpi to the model
+        ar_model.logpi = U
     else:
-        raise NameError(f'Unknown arrangement model:{model_type}')
+        raise NameError(f'Unknown model_type:{model_type} - Currently only '
+                        f'support independent arrangement model.')
 
     return ar_model

@@ -688,28 +688,39 @@ def indicator(index_vector, positive=False):
         indicator_matrix[index_vector == c_unique[i], i] = 1
     return indicator_matrix
 
-def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
-                  part_ind='half', join_sess=False, join_sess_part=False):
+def prep_datasets(dat, info, cond_ind='cond_num_uni', part_ind='half',
+                  join_sess=False, join_sess_part=False):
     """ Builds dataset, cond_vec, part_vec, subj_ind from the given
         dataset in Functional fusion project
 
     Args:
-        dat (numpy.ndarray or pytorch.Tensor): the input data tensor, must
-            be in shape of n_subj x n_cond x n_voxels.
-        # JD: Better to pass info and then field names, or pass the vectors directly? I think the latter
-        info (pandas.DataFrame): the info table for the input dataset
-        # JD: type is not used 
-        type (str): The type to split the datqset. Defaults to 'CondHalf'.
-        cond_ind (str): The name of the column in info table to split the
-            dataset. Defaults to 'cond_num_uni'.
-        part_ind (str): The name of the column in info table to split the
-            dataset. Defaults to 'half'.
-        join_sess (boolean): Model the sessions with a single model.
-            Defaults to True which corresponds to model 01, 02, 05. If set
-            to False, the model will model the sessions separately, such as
-            the model 03 and 04.
-        # JD: NOT Fully explained - and why would you want to do this?
-        join_sess_part (boolean): If join_sess is True, this parameter will
+        dat (numpy.ndarray or pytorch.Tensor):
+            Input data tensor, must be in shape of n_subj x n_cond x n_voxels.
+        info (pandas.DataFrame):
+            The info table for the input dataset
+        cond_ind (str):
+            The name of the column in info table to split the dataset. This is
+            used to make the design matrix for indicating the unique conditions
+            associated to an emission model. Default to 'cond_num_uni'.
+            'cond_num_uni' - will split the dataset by unique condition
+                             numbers
+            'task_num_uni' - will split the dataset by unique task numbers
+            'reg_id' - will split the dataset by unique regressor numbers
+        part_ind (str):
+            The name of the column in info table to split the dataset. Default
+            to 'half'.
+            'half' - will partition the dataset by each half
+            'run' - will partition the dataset by each imaging run
+            'study' - will partition the dataset by each session
+        join_sess (boolean):
+            The multiple sessions will be modeled using a single emission model.
+            Defaults to True which corresponds to model 01, 02, 05. If set to
+            False, the emission model will model the sessions separately, such
+            as the model 03 and 04.
+        join_sess_part (boolean):
+            If set to True, the partition vector will be set to 1 for all the
+            data points, which means no partitions in the data and all repeats
+            of task measures are concatenated as a long vector. Defaults to False.
 
     Returns:
         data (list): A list of the data tensor
@@ -721,6 +732,13 @@ def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
         The returned data, cond_vec, part_vec, subj_ind will have the same
         length. The elements in the lists are indexly matched to model an
         emission model.
+        # JD: Better to pass info and then field names, or pass the vectors
+        directly? I think the latter
+        # DZ: I think the former is better, since 1) it includes extra work
+        for making the vectors before calling this function. 2) the info
+        dataframe is fixed, but the field names can be different for preparing
+        the data for different models. So, user can just pass the column names
+        `cond_ind` and `part_ind` to get different data.
     """
     sub = 0
     data, cond_vec, part_vec, subj_ind = [], [], [], []
@@ -750,39 +768,47 @@ def prep_datasets(dat, info, type='CondHalf', cond_ind='cond_num_uni',
     return data, cond_vec, part_vec, subj_ind
 
 def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
-                           subj_ind, sym_type='asym', uniform_kappa=True,
-                           n_iter=200, fit_arrangement=False, fit_emission=True,
-                           return_soft_parcel=True, device=None):
+                           subj_ind, sym_type='asym', uniform_kappa=True, n_iter=200,
+                           fit_arrangement=False, fit_emission=True, device=None):
     """ Calculates the individual parcellations using the given individual
         training data and the given arrangement model with the pre-defined
         group prior.
 
     Args:
-        ar_model (arrangement model object): the arrangement model object
-            with pre-defined group prior U.
-        train_data (np.ndarray or pt.Tensor): individual localizing data
-        atlas (object): the atlas object for the arrangement model
-        cond_vec (list): the condition vectors for each emission model
-        part_vec (list): the partition vectors for each emission model
-        subj_ind (list): the subject indices for each emission model
-        sym_type (str): the symmetry type of the arrangement model
-        uniform_kappa (boolean): If True, the kappa parameter of the emission
-            models are uniformed, otherwise, they are individualized.
-        n_iter (int): the number of iterations for the EM algorithm
-        fit_arrangement (boolean): If True, the arrangement model will
-            be fitted using the given individual training data. However,
-            in this case, the arrangement model should be freezed during
-            the learning process.
-        fit_emission (boolean): If True, the emission models will be
-            fitted. The emission model parameters are freely learned.
-        return_soft_parcel (boolean): If True, the individual probabilistic
-            parcellation will be returned. Otherwise, the outputs are the
-            hard parcellations.
-        device (str): the device name to load trained model
+        ar_model (arrangement model object):
+            The arrangement model object with pre-defined group prior U.
+        train_data (np.ndarray or pt.Tensor):
+            Individual localizing data
+        atlas (object):
+            The atlas object for the arrangement model
+        cond_vec (list):
+            The condition vectors for each emission model
+        part_vec (list):
+            The partition vectors for each emission model
+        subj_ind (list):
+            The subject indices for each emission model
+        sym_type (str):
+            The symmetry type of the arrangement model
+        uniform_kappa (boolean):
+            If True, the kappa parameter of the emission models are uniformed,
+            otherwise, they are individualized.
+        n_iter (int):
+            The number of iterations for the EM algorithm
+        fit_arrangement (boolean):
+            If True, the arrangement model will be fitted using the given
+            individual training data. However, in this case, the arrangement
+            model should be freezed during the learning process.
+        fit_emission (boolean):
+            If True, the emission models will be fitted. The emission model
+            parameters are freely learned.
+        device (str):
+            The device name to load trained model
 
     Returns:
-        U_indiv (pt.Tensor): the individual parcellations
-        ll (list): the log-likelihood of the individual parcellations
+        U_indiv (pt.Tensor):
+            The individual probabilistic parcellations
+        ll (list):
+            The log-likelihood of the individual parcellations
     """
     # convert tdata to tensor
     if type(train_data) is np.ndarray:
@@ -793,11 +819,7 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
         "must have equal length."
 
     # Check if the input arrangement model is valid
-    # JD: are you just checking if this is any arrangement model? You can check superclass.... 
-    if not isinstance(ar_model, (arr.ArrangeIndependent,
-                                 arr.ArrangeIndependentSymmetric,
-                                 arr.ArrangeIndependentSymmetric,
-                                 arr.wcmDBM, arr.cmpRBM)):
+    if not isinstance(ar_model, arr.ArrangementModel):
         raise ValueError("The input model must be a valid arrangement"
                          " model object")
 
@@ -812,30 +834,17 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
 
     M = FullMultiModel(ar_model, em_models)
     M.initialize(train_data, subj_ind=subj_ind)
-    # ------------------------------------------
-    # Real training starts here, swith learning process
-    # depends on arrangement model type
-    # JD: With a frozen arrangement model - you should be able to just call EM here? 
+
+    # ---------------------------------------------------------
+    # Real training starts here with a frozen arrangement model
+    # ---------------------------------------------------------
     if M.arrange.name.startswith('indp'):
-        M, ll, _, U_indiv, _ = M.fit_em_ninits(iter=n_iter, tol=0.01,
-                                         fit_arrangement=fit_arrangement,
-                                         fit_emission=fit_emission,
-                                         init_arrangement=False,
-                                         init_emission=True,
-                                         n_inits=50, first_iter=30,
-                                         verbose=False)
-    # JD: Since we have not published on cRBM, it matbe better to remove this for now? It doesn;t hurt much, bur without extensive testing, it shouldn't be in the Master Brnach. 
-    elif M.arrange.name.startswith('cRBM'):
-        M.random_params(init_arrangement=True, init_emission=True)
-        M, ll, theta, U_indiv = m.fit_sml(iter=n_iter, batch_size=8,
-                                    stepsize=0.1, seperate_ll=False,
-                                    fit_arrangement=fit_arrangement,
-                                    fit_emission=fit_emission)
+        M, ll, _, U_indiv = M.fit_em(iter=n_iter, tol=0.01,
+                                     fit_arrangement=fit_arrangement,
+                                     fit_emission=fit_emission,
+                                     first_evidence=False)
     else:
         raise NameError("The arrangement model is not supported yet.")
 
-    # JD: I would remove this Step - it doesn't hurt, but it's a confusing extra feature - can be done more cleanly in the calling function
-    if return_soft_parcel:
-        return U_indiv, ll
-    else:
-        return pt.argmax(U_indiv, dim=1), ll
+    # Return the individual PROBABILISTIC parcellations
+    return U_indiv, ll
