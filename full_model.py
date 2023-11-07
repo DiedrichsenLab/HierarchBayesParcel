@@ -15,6 +15,7 @@ import HierarchBayesParcel.evaluation as ev
 import warnings
 from copy import copy,deepcopy
 import time
+import pandas as pd
 
 def report_cuda_memory():
     """Reports the current memory usage of the GPU
@@ -688,30 +689,23 @@ def indicator(index_vector, positive=False):
         indicator_matrix[index_vector == c_unique[i], i] = 1
     return indicator_matrix
 
-def prep_datasets(dat, info, cond_ind='cond_num_uni', part_ind='half',
-                  join_sess=False, join_sess_part=False):
-    """ Builds dataset, cond_vec, part_vec, subj_ind from the given
-        dataset in Functional fusion project
+def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
+                  join_sess_part=False):
+    """ Builds dataset, cond_vec, part_vec, subj_ind from the given dataset
+        in Functional fusion project.
 
     Args:
         dat (numpy.ndarray or pytorch.Tensor):
             Input data tensor, must be in shape of n_subj x n_cond x n_voxels.
-        info (pandas.DataFrame):
-            The info table for the input dataset
-        cond_ind (str):
-            The name of the column in info table to split the dataset. This is
-            used to make the design matrix for indicating the unique conditions
-            associated to an emission model. Default to 'cond_num_uni'.
-            'cond_num_uni' - will split the dataset by unique condition
-                             numbers
-            'task_num_uni' - will split the dataset by unique task numbers
-            'reg_id' - will split the dataset by unique regressor numbers
-        part_ind (str):
-            The name of the column in info table to split the dataset. Default
-            to 'half'.
-            'half' - will partition the dataset by each half
-            'run' - will partition the dataset by each imaging run
-            'study' - will partition the dataset by each session
+        info (numpy.ndarray or pandas.DataFrame):
+            An information pandas.Series or numpy.ndarray to indicate how to
+            split the data into different parts based on the unique values in
+            the info vector.
+        cond_ind (1d numpy.ndarray):
+            The condition vector used to make the design matrix for indicating
+            the unique conditions associated to an emission model.
+        part_ind (1d numpy.ndarray):
+            The partition vector tells a task measure is from which session.
         join_sess (boolean):
             The multiple sessions will be modeled using a single emission model.
             Defaults to True which corresponds to model 01, 02, 05. If set to
@@ -732,14 +726,11 @@ def prep_datasets(dat, info, cond_ind='cond_num_uni', part_ind='half',
         The returned data, cond_vec, part_vec, subj_ind will have the same
         length. The elements in the lists are indexly matched to model an
         emission model.
-        # JD: Better to pass info and then field names, or pass the vectors
-        directly? I think the latter
-        # DZ: I think the former is better, since 1) it includes extra work
-        for making the vectors before calling this function. 2) the info
-        dataframe is fixed, but the field names can be different for preparing
-        the data for different models. So, user can just pass the column names
-        `cond_ind` and `part_ind` to get different data.
     """
+    # Check and convert info pandas Series to NumPy arrays
+    if isinstance(info, pd.Series):
+        info = info.values
+
     sub = 0
     data, cond_vec, part_vec, subj_ind = [], [], [], []
     n_subj = dat.shape[0]
@@ -747,22 +738,22 @@ def prep_datasets(dat, info, cond_ind='cond_num_uni', part_ind='half',
     # Make different sessions either the same or different
     if join_sess:
         data.append(dat)
-        cond_vec.append(info[cond_ind].values.reshape(-1, ))
+        cond_vec.append(cond_vector.reshape(-1, ))
 
         # Check if we want to set no partition after join sessions
         if join_sess_part: # Model 05
-            part_vec.append(np.ones(info[part_ind].shape))
+            part_vec.append(np.ones(part_vector.shape))
         else:
-            part_vec.append(info[part_ind].values.reshape(-1, ))
+            part_vec.append(part_vector.reshape(-1, ))
         subj_ind.append(np.arange(sub, sub + n_subj))
     else:
-        sessions = np.unique(info.sess)
+        sessions = np.unique(info)
         # Now build and split across the correct sessions:
         for s in sessions:
-            indx = info.sess == s
+            indx = info == s
             data.append(dat[:, indx, :])
-            cond_vec.append(info[cond_ind].values[indx].reshape(-1, ))
-            part_vec.append(info[part_ind].values[indx].reshape(-1, ))
+            cond_vec.append(cond_vector[indx].reshape(-1, ))
+            part_vec.append(part_vector[indx].reshape(-1, ))
             subj_ind.append(np.arange(sub, sub + n_subj))
 
     return data, cond_vec, part_vec, subj_ind
@@ -847,4 +838,4 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
         raise NameError("The arrangement model is not supported yet.")
 
     # Return the individual PROBABILISTIC parcellations
-    return U_indiv, ll
+    return U_indiv, ll, M
