@@ -759,8 +759,9 @@ def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
     return data, cond_vec, part_vec, subj_ind
 
 def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
-                           subj_ind, sym_type='asym', uniform_kappa=True, n_iter=200,
-                           fit_arrangement=False, fit_emission=True, device=None):
+                           subj_ind, Vs=None, sym_type='asym', n_iter=200,
+                           uniform_kappa=True, fit_arrangement=False,
+                           fit_emission=True, device=None):
     """ Calculates the individual parcellations using the given individual
         training data and the given arrangement model with the pre-defined
         group prior.
@@ -780,11 +781,11 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
             The subject indices for each emission model
         sym_type (str):
             The symmetry type of the arrangement model
+        n_iter (int):
+            The number of iterations for the EM algorithm
         uniform_kappa (boolean):
             If True, the kappa parameter of the emission models are uniformed,
             otherwise, they are individualized.
-        n_iter (int):
-            The number of iterations for the EM algorithm
         fit_arrangement (boolean):
             If True, the arrangement model will be fitted using the given
             individual training data. However, in this case, the arrangement
@@ -800,12 +801,17 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
             The individual probabilistic parcellations
         ll (list):
             The log-likelihood of the individual parcellations
+        M (object):
+            The trained arrangement model
     """
     # convert tdata to tensor
     if type(train_data) is np.ndarray:
         train_data = pt.tensor(train_data, dtype=pt.get_default_dtype())
+    if Vs is None:
+        Vs = [None] * len(train_data)
+
     # Check if the lists have equal length using assert
-    assert len(train_data) == len(cond_vec) == len(part_vec),\
+    assert len(train_data) == len(cond_vec) == len(part_vec) == len(Vs),\
         "training data, condition vector, and partition vector " \
         "must have equal length."
 
@@ -818,9 +824,9 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
     em_models = []
     for j, this_cv in enumerate(cond_vec):
         em_model = emi.build_emission_model(ar_model.K, atlas, 'VMF',
-                                        indicator(this_cv),
-                                        part_vec[j], sym_type=sym_type,
-                                        uniform_kappa=uniform_kappa)
+                                            indicator(this_cv), part_vec[j],
+                                            V=Vs[j], sym_type=sym_type,
+                                            uniform_kappa=uniform_kappa)
         em_models.append(em_model)
 
     M = FullMultiModel(ar_model, em_models)

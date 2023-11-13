@@ -8,6 +8,8 @@ Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import torch as pt
+import pandas as pd
+import pickle
 from scipy import stats, special
 from torch import log, exp, sqrt
 from HierarchBayesParcel.model import Model
@@ -256,16 +258,18 @@ class MixGaussian(EmissionModel):
         # 1. Here we update the v_k, which is sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k))
         this_U_hat = pt.clone(U_hat)
         this_U_hat[nan_voxIdx] = 0
-        self.V = pt.matmul(regressX, pt.sum(YU, dim=0)/this_U_hat.sum(dim=(0, 2)))
-        if self.std_V:
-            self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
+
+        if 'V' in self.param_list:
+            self.V = pt.matmul(regressX, pt.sum(YU, dim=0)/this_U_hat.sum(dim=(0, 2)))
+            if self.std_V:
+                self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
 
         # 2. Updating sigma2 (rss is calculated using updated V)
-        YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
-        # JD: Again, you should be able to avoid looping over subjects here entirely.
-        ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + \
-               pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
-        self.sigma2 = pt.nansum(this_U_hat * ERSS) / (self.N * self.P * self.num_subj)
+        if 'sigma2' in self.param_list:
+            YV = pt.matmul(pt.matmul(self.X, self.V).T, self.Y)
+            ERSS = pt.sum(self.YY, dim=1, keepdim=True) - 2 * YV + \
+                   pt.sum(pt.matmul(self.X, self.V)**2, dim=0).view((self.K, 1))
+            self.sigma2 = pt.nansum(this_U_hat * ERSS) / (self.N * self.P * self.num_subj)
 
     def sample(self, U, signal=None):
         """ Generate random data given this emission model
@@ -949,30 +953,31 @@ class MixVMF(EmissionModel):
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
         UU = pt.sum(JU_hat, dim=0)
+        r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
 
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
-        r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
-        self.V = YU / r_norm
-
-        # TODO: This is a hack to avoid the case where V is inf
-        epsilon = 1e+8
-        while pt.any(pt.isinf(self.V)):
-            epsilon = epsilon * 1e+8
-            self.V = (YU * epsilon) / pt.sqrt(pt.sum((YU*epsilon) ** 2, dim=0))
+        if 'V' in self.param_list:
+            self.V = YU / r_norm
+            # TODO: This is a hack to avoid the case where V is inf
+            epsilon = 1e+8
+            while pt.any(pt.isinf(self.V)):
+                epsilon = epsilon * 1e+8
+                self.V = (YU * epsilon) / pt.sqrt(pt.sum((YU*epsilon) ** 2, dim=0))
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
-        if self.uniform_kappa:
-            r_bar = r_norm.sum() / self.num_part.sum()
-            # r_bar[r_bar > 0.95] = 0.95
-            # r_bar[r_bar < 0.05] = 0.05
-            r_bar = pt.mean(r_bar)
-        else:
-            r_bar = r_norm / pt.sum(UU, dim=1)
-            r_bar[r_bar > 0.95] = 0.95
-            r_bar[r_bar < 0.05] = 0.05
-
-        self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
+        if 'kappa' in self.param_list:
+            if self.uniform_kappa:
+                r_bar = r_norm.sum() / self.num_part.sum()
+                # r_bar[r_bar > 0.95] = 0.95
+                # r_bar[r_bar < 0.05] = 0.05
+                r_bar = pt.mean(r_bar)
+            else:
+                r_bar = r_norm / pt.sum(UU, dim=1)
+                r_bar[r_bar > 0.95] = 0.95
+                r_bar[r_bar < 0.05] = 0.05
+    
+            self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U, signal=None):
         """ Draw data sample from this model and given parameters
@@ -1549,29 +1554,73 @@ def _random_VMF_cos(d: int, kappa: float, n: int):
 
     return np.concatenate(out)[:n]
 
-def build_emission_model(K, atlas, emission, x_matrix, part_vec,
+def load_emission_params(fname, param_name, index=None, 
+                         device=None):
+    """ Loads parameters from a list of emission models 
+        of a pre-trained model.
+
+    Args:
+        fname (str): File name of pre-trained model
+        param_name (str): Name of the parameter to load
+        index (int): Index of the model to load. If None,
+            loads the model with the highest log-likelihood
+            by default.
+        device (str): Device to load the model to. Current
+            support 'cuda' and 'cpu'.
+
+    Returns:
+        params (list): a list of emission parameters from
+            the emission models
+        info_reduced (pandas.Dataframe): Data Frame with
+            necessary information
+    """
+    info = pd.read_csv(fname + '.tsv', sep='\t')
+    with open(fname + '.pickle', 'rb') as file:
+        models = pickle.load(file)
+
+    if index is None:
+        index = info.loglik.argmax()
+
+    select_model = models[index]
+    if device is not None:
+        select_model.move_to(device)
+
+    info_reduced = info.iloc[index]
+    params = []
+    for em_model in select_model.emissions:
+        assert param_name in em_model.param_list, \
+            f'{param_name} is not in the param_list.'
+        params.append(vars(em_model)[param_name])
+
+    return params, info_reduced
+
+def build_emission_model(K, atlas, emission, x_matrix, part_vec, V=None,
                          sym_type='asym', uniform_kappa=True):
     """ Builds an arrangment model based on the specification
 
     Args:
-        U (tensor or ndarray): A K x P matrix of group prior in log
-                               space. This is not the marginal
-                               probability of the arrangement model
         K (int): number of voxels
         atlas (object): the atlas object for the arrangement model
+        emission (str): the emission model type
+        x_matrix (ndarray): the design matrix associated with an
+            emission model
+        part_vec (ndarray): A partition vector of the data
+        V (torch.tensor or numpy.ndarray): the mean direction
+            parameter for VMF emission model or the mean response
+            parameter for GMM emission model. If None, the parameter
+            for current building emission model will be randomly
+            initialized. If V is given, the parameter 'V' is fixed
+            throughout the modeling learning.
         sym_type (str): the symmetry type of the arrangement model
-        epos_iter (int): RBM arrangement model only. the number of
-                         positive phase iteration
-        eneg_iter (int): RBM arrangement model only. the number of
-                         negative phase iteration
-        num_chain (int): RBM arrangement model only. the number of
-                         negative chains.
-        Wc (tensor or ndarray): RBM arrangement model only. the
-                                neighbourhood matrix
-        theta (int): RBM arrangement model only. the theta parameter
+        uniform_kappa (boolean): If True, the current building
+            emission model will have a common concentration parameter
+            kappa for all functional regions (Model Type 2).
+            Otherwise, the emission model will have different kappas
+            per functional region (Model Type 3).
+
 
     Returns:
-        ar_model (object): the arrangement model object
+        em_model (object): the emission model object
     """
     if emission == 'VMF':
         em_model = MixVMF(K=K, P=atlas.P, X=x_matrix,
@@ -1587,5 +1636,13 @@ def build_emission_model(K, atlas, emission, x_matrix, part_vec,
                            weighting='length')
     else:
         raise ((NameError(f'unknown emission model:{emission}')))
-
+    
+    # If V is given, then remove it from parameter list and only 
+    # update the kappa
+    if V is not None:
+        em_model.V = V
+        new_param_list = em_model.param_list.copy()
+        new_param_list.remove('V')
+        em_model.set_param_list(new_param_list)
+        
     return em_model
