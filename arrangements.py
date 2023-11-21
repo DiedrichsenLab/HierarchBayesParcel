@@ -61,6 +61,7 @@ class ArrangeIndependent(ArrangementModel):
                 probabilities parameters?
         """
         super().__init__(K, P)
+        self.name = 'indp_asym'
         self.spatial_specific = spatial_specific
         if spatial_specific:
             pi = pt.ones(K, P) / K
@@ -201,6 +202,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
             self.K = int(K / 2)
         self.same_parcels = same_parcels
         super().__init__(self.K, self.P, spatial_specific, remove_redundancy)
+        self.name = 'indp_sym'
 
     def map_to_full(self,Uhat):
         """ Remapping evidence from an arrangement space to a
@@ -329,7 +331,10 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
 
         self.K = int(K / 2)
         super().__init__(K, indx_full=indx_hem,
-                         indx_reduced=indx_hem.T, spatial_specific=spatial_specific, remove_redundancy=remove_redundancy)
+                         indx_reduced=indx_hem.T,
+                         spatial_specific=spatial_specific,
+                         remove_redundancy=remove_redundancy)
+        self.name = 'indp_separate_hem'
 
     def map_to_full(self, Uhat):
         """ remapping evidence from an
@@ -413,6 +418,7 @@ class PottsModel(ArrangementModel):
         self.update_order = None
         self.nparams = 10
         self.set_param_list(['logpi', 'theta_w'])
+        self.name = 'potts'
 
     def random_smooth_pi(self, Dist, theta_mu=1,centroids=None):
         """ Defines pi (prior over parcels) using a Ising model with K centroids
@@ -749,6 +755,7 @@ class mpRBM(ArrangementModel):
         self.epos_iter = 5
         self.set_param_list(['W', 'bh', 'bu'])
         self.tmp_list = ['epos_U', 'epos_Eh', 'eneg_U', 'eneg_Eh']
+        self.name = 'mpRBM'
 
     def sample_h(self, U):
         """ Sample hidden nodes given an activation state
@@ -892,6 +899,7 @@ class mpRBM_pCD(mpRBM):
         super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
         self.eneg_numchains = eneg_numchains
+        self.name = 'mpRBM_pCD'
 
     def Eneg(self, U=None):
         """ Negative phase of the persistent contrastive divergence algorithm
@@ -930,6 +938,7 @@ class mpRBM_CDk(mpRBM):
         """
         super().__init__(K, P,nh)
         self.eneg_iter = eneg_iter
+        self.name = 'mpRBM_CDk'
 
     def Eneg(self,U):
         """ Negative phase of the persistent contrastive divergence algorithm
@@ -1011,6 +1020,7 @@ class cmpRBM(mpRBM):
         self.fit_bu = True
         self.fit_W = True
         self.tmp_list = ['epos_Uhat', 'epos_Hhat', 'eneg_U', 'eneg_H']
+        self.name = f'cRBM_{self.nh}'
 
     def sample_h(self, U):
         """ Sample hidden nodes given an activation state of the outer nodes
@@ -1342,6 +1352,7 @@ class wcmDBM(mpRBM):
         self.fit_W = True
         self.use_tempered_transition = False
         self.pretrain = False
+        self.name = 'cRBM_Wc'
 
         # Assembly dump list
         # TODO: keep the gibbs chain in the model for pCD?
