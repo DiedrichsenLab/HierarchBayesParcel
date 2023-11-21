@@ -272,8 +272,13 @@ def inhomogeneity_task(Y, U_hat, soft_assign=False, z_transfer=False,
     Returns:
         the global inhomogeneity task functional measure
     """
-    # Y = Y - pt.nanmean(Y, dim=1, keepdim=True)  # mean centering
-    num_sub = Y.shape[0]
+    Y = Y - pt.nanmean(Y, dim=0, keepdim=True)  # mean centering
+    P = Y.shape[1]
+
+    cov = pt.matmul(Y.T, Y) / (P - 1)
+    sd = pt.sqrt(pt.sum(Y ** 2, dim=0, keepdim=True) / (P - 1))
+    var = pt.matmul(sd.T, sd)
+    r = cov / var
 
     if z_transfer:
         r = 0.5 * (pt.log(1 + r) - pt.log(1 - r))
@@ -288,7 +293,7 @@ def inhomogeneity_task(Y, U_hat, soft_assign=False, z_transfer=False,
         parcellation = pt.argmax(U_hat, dim=0)
         for parcel in pt.unique(parcellation):
             in_vertex = pt.where(parcellation == parcel)[0]
-            this_r = Y[:,:,in_vertex]
+            this_r = Y[:,in_vertex]
             # remove vertex with no data in the parcel
             n_k = in_vertex.shape[0] - Y[:, 0, in_vertex].isnan().sum(dim=1)
 
