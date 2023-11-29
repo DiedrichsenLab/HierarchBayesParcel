@@ -261,12 +261,14 @@ class FullMultiModel:
         emloglik_comb = self.collect_evidence(emloglik)  # combine the log-liklihoods
         Uhat, ll_a = self.arrange.Estep(emloglik_comb)
         ll_e = (Uhat * emloglik_comb).sum()
+
+        ar_name = type(self.arrange).__name__
         if separate_ll:
-            return Uhat, [ll_e, pt.nan] \
-                if self.arrange.name.startswith('cRBM') else [ll_e, ll_a.sum()]
+            return Uhat, [ll_e, ll_a.sum()] \
+                if ar_name.startswith('ArrangeIndependent') else [ll_e, pt.nan]
         else:
-            return Uhat, pt.nan \
-            if self.arrange.name.startswith('cRBM') else ll_a.sum()+ll_e
+            return Uhat, ll_a.sum()+ll_e \
+            if ar_name.startswith('ArrangeIndependent') else pt.nan
 
     def fit_em(self,iter=30, tol=0.01, seperate_ll=False, fit_emission=True,
                fit_arrangement=True, first_evidence=True):
