@@ -332,7 +332,9 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
 
         self.K = int(K / 2)
         super().__init__(K, indx_full=indx_hem,
-                         indx_reduced=indx_hem.T, spatial_specific=spatial_specific, remove_redundancy=remove_redundancy)
+                         indx_reduced=indx_hem.T,
+                         spatial_specific=spatial_specific,
+                         remove_redundancy=remove_redundancy)
 
     def map_to_full(self, Uhat):
         """ remapping evidence from an
