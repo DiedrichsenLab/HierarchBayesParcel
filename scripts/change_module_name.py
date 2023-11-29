@@ -8,7 +8,16 @@ Author: dzhi
 """
 import pickle
 import importlib
+from pathlib import Path
 
+# Find model directory to save model fitting results
+model_dir = 'Y:/data/Cerebellum/ProbabilisticParcellationModel'
+if not Path(model_dir).exists():
+    model_dir = '/srv/diedrichsen/data/Cerebellum/ProbabilisticParcellationModel'
+if not Path(model_dir).exists():
+    model_dir = '/Volumes/diedrichsen_data$/data/Cerebellum/ProbabilisticParcellationModel'
+if not Path(model_dir).exists():
+    raise (NameError('Could not find model_dir'))
 
 def update_module_name(old_object, old_package_name, new_package_name):
     """ Change the module name of a pre-existing object to a new name.
@@ -91,14 +100,13 @@ def make_new_pickles(file_name, new_module_name='HierarchBayesParcel',
 
 
 if __name__ == '__main__':
-    # Find file name of the model to be changed
-    model_dir = 'Y:/data/Cerebellum/ProbabilisticParcellationModel'
+    # Find the example pickle file of the models to be changed
     wdir = model_dir + f'/Models/Models_06/archive'
     fname = wdir + '/asym_Ib_space-MNISymC3_K-17_ses-archi'
     make_new_pickles(fname, new_module_name='HierarchBayesParcel',
                      out_file=fname + '_new')
 
-    # Test the new pickle file
+    # Test the models in new pickle file if successfully changed
     with open(fname + '_new.pickle', 'rb') as file:
         object_list = pickle.load(file)
 
