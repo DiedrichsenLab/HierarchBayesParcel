@@ -218,6 +218,50 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
         return pt.nanmean(cos_distance, dim=1)
 
 
+def coserr_2(Y, V, U, adjusted=False, soft_assign=True):
+    """Compute the cosine error between the true to the predicted data
+
+    Args:
+        Y: (num_sub, N, P) or (N, P) the test data, with a shape
+        V: (N, K) the predicted mean directions
+        U: (K, P) the predicted U's from the trained emission model
+            (in multinomial notation)
+        adjusted: If True, adjust the cosine error by the length of
+            the data magnitude. Otherwise, return the raw cosine error
+        soft_assign: If True, compute the expected mean cosine error.
+            Otherwise, return the hard assignment error.
+
+    Returns:
+        The averaged adjusted expected cosine error. The result value
+        indicates how well the predicted data matches the true data.
+        A lower value indicates a better match.
+    """
+    # standardise V and data to unit length
+    V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+    assert U.dim() == 2, "U must be 2-dimensional of shape (K, P)"
+
+    if soft_assign:  # Calculate the expected mean response
+        V = pt.matmul(V, U)
+    else: # Calculate the hard mean response (the V with max prob)
+        idx = pt.argmax(U, dim=0, keepdim=True)
+        V = pt.matmul(V, pt.zeros_like(U).scatter_(0, idx, 1.))
+    V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+        
+    # If U and Y are 2-dimensional (1 subject), add the first dimension
+    Y = Y.unsqueeze(0) if Y.dim() == 2 else Y
+    Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
+    Ynorm = pt.sqrt(Ynorm2)
+
+    if adjusted: 
+        # ||Y_i||-(V_k)T(Y_i)||Y_i||
+        cos_distance = Ynorm2 - pt.sum(V * (Y*Ynorm), dim=1)
+        return pt.nansum(cos_distance) / Ynorm2[:, 0, :].nansum(dim=1)
+    else:
+        # 1 - (V_k)T ((Y_i) / ||Y_i||)
+        cos_distance = 1 - pt.sum(V * (Y/Ynorm), dim=1)
+        return pt.nanmean(cos_distance, dim=1)
+    
+    
 def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
                 single_return=True):
     """ Compute the global homogeneity measure for a given parcellation.
