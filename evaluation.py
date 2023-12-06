@@ -238,6 +238,7 @@ def coserr_2(Y, V, U, adjusted=False, soft_assign=True):
     """
     # standardise V and data to unit length
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+    U = U.squeeze(dim=0) if U.dim() == 3 else U
     assert U.dim() == 2, "U must be 2-dimensional of shape (K, P)"
 
     if soft_assign:  # Calculate the expected mean response
