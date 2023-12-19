@@ -760,7 +760,7 @@ def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
 
     return data, cond_vec, part_vec, subj_ind
 
-def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
+def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                            subj_ind, Vs=None, sym_type='asym', n_iter=200,
                            uniform_kappa=True, fit_arrangement=False,
                            fit_emission=True, device=None):
@@ -771,16 +771,21 @@ def get_indiv_parcellation(ar_model, train_data, atlas, cond_vec, part_vec,
     Args:
         ar_model (arrangement model object):
             The arrangement model object with pre-defined group prior U.
-        train_data (np.ndarray or pt.Tensor):
-            Individual localizing data
         atlas (object):
             The atlas object for the arrangement model
+        train_data (np.ndarray or pt.Tensor):
+            Individual localizing data
         cond_vec (list):
             The condition vectors for each emission model
         part_vec (list):
             The partition vectors for each emission model
         subj_ind (list):
             The subject indices for each emission model
+        Vs (list):
+            The mean response vectors for each emission model, if None, the
+            mean response vectors will be calculated from random inits.
+            If not None, the Vs should be a list of the V vectors for each
+            emission model, and V will be fixed during the learning.
         sym_type (str):
             The symmetry type of the arrangement model
         n_iter (int):
