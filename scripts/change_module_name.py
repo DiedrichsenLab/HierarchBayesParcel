@@ -79,7 +79,7 @@ def make_new_pickles(file_name, new_module_name='HierarchBayesParcel',
         The updated object
     """
     # Load the pickled object
-    with open(file_name + '.pickle', 'rb') as file:
+    with open(file_name, 'rb') as file:
         object_list = pickle.load(file)
 
     for i, old_object in enumerate(object_list):
@@ -95,21 +95,32 @@ def make_new_pickles(file_name, new_module_name='HierarchBayesParcel',
     if out_file is None:
         out_file = file_name
 
-    with open(out_file + '.pickle', 'wb') as file:
+    with open(out_file, 'wb') as file:
         pickle.dump(object_list, file)
 
 
 if __name__ == '__main__':
     # Find the example pickle file of the models to be changed
-    wdir = model_dir + f'/Models/Models_06/archive'
-    fname = wdir + '/asym_Ib_space-MNISymC3_K-17_ses-archi'
-    make_new_pickles(fname, new_module_name='HierarchBayesParcel',
-                     out_file=fname + '_new')
+    folder_path = Path(model_dir + f'/Models/Models_04')
+    pickle_files = folder_path.glob('*.pickle')
+    for fname in pickle_files:
+        try:
+            with open(str(fname), 'rb') as f:
+                this_obj = pickle.load(f)
+
+            if this_obj[0].__class__.__module__.split('.')[0] == 'generativeMRF':
+                print('Converting -- ' + str(fname))
+                make_new_pickles(str(fname), new_module_name='HierarchBayesParcel')
+                print('Done')
+
+        except:
+            print('error in: ' + str(fname))
+            continue
 
     # Test the models in new pickle file if successfully changed
-    with open(fname + '_new.pickle', 'rb') as file:
-        object_list = pickle.load(file)
-
-    full_model = object_list[0]
-    Prob = full_model.marginal_prob()
-    print(Prob)
+    # with open(fname + '_new.pickle', 'rb') as file:
+    #     object_list = pickle.load(file)
+    #
+    # full_model = object_list[0]
+    # Prob = full_model.marginal_prob()
+    # print(Prob)
