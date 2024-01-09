@@ -1959,7 +1959,18 @@ def build_arrangement_model(U, prior_type='prob', atlas=None, sym_type='asym',
                                                    same_parcels=False,
                                                    spatial_specific=True,
                                                    remove_redundancy=False)
-            ar_model.name = 'indp_sym'
+            # Warn if the input is not symmetric
+            if not pt.allclose(U[:ar_model.K, ar_model.indx_full[0]], U[ar_model.K:, ar_model.indx_full[1]]):
+                warnings.warn('The input probability is not symmetric, '
+                              'but the model is symmetric! Check you are importing the correct probabilities')
+            U = U.unsqueeze(0)
+            U = ar_model.map_to_arrange(U)
+            U = U.squeeze(0)
+            non_vermal = ar_model.indx_full[0] != ar_model.indx_full[1]
+            # U.sum(dim=0)[non_vermal]
+            U[:,non_vermal] = U[:,non_vermal] / 2
+            # assert(pt.allclose(U.sum(dim=0), pt.ones(U.shape[1])))
+            ar_model.name = 'indp_ym'
         elif sym_type == 'asym':
             ar_model = ArrangeIndependent(K, P,
                                           spatial_specific=True,
