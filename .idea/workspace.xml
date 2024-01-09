@@ -3,10 +3,16 @@
   <component name="ChangeListManager">
     <list default="true" id="4c91fd15-1f6e-447e-8bbd-57040dc8fd4a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/test_arrangement.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_arrangement.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/test_arrangement.py" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/test_arrangement.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/sample_vmf.py" beforeDir="false" afterPath="$PROJECT_DIR$/sample_vmf.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/README.pdf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/0_fusion_model.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/1_indiv_vs_group.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/2_simulation1.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/3_simulation2.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/4_IBC_twoSess.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/5_all_datasets_fusion.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/6_task_vs_rest.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/doc/figures/emissions.png" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -139,10 +145,14 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/generativeMRF$test_arrangement.coverage" NAME="test_arrangement Coverage Results" MODIFIED="1684864055397" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/HierarchBayesParcel$test_dataloader.coverage" NAME="test_dataloader Coverage Results" MODIFIED="1698775218130" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts" />
     <SUITE FILE_PATH="coverage/generativeMRF$test_dataloader.coverage" NAME="test_dataloader Coverage Results" MODIFIED="1678983116081" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts" />
     <SUITE FILE_PATH="coverage/generativeMRF$test_wVMF.coverage" NAME="test_wVMF Coverage Results" MODIFIED="1684345037066" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/HierarchBayesParcel$change_module_name.coverage" NAME="change_module_name Coverage Results" MODIFIED="1704214037719" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts" />
     <SUITE FILE_PATH="coverage/generativeMRF$sample_vmf.coverage" NAME="sample_vmf Coverage Results" MODIFIED="1684436195316" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/HierarchBayesParcel$speedtest_pt_M1.coverage" NAME="speedtest_pt_M1 Coverage Results" MODIFIED="1704741496905" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
     <SUITE FILE_PATH="coverage/generativeMRF$test_VMFs.coverage" NAME="test_VMFs Coverage Results" MODIFIED="1677686645477" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/notebooks" />
+    <SUITE FILE_PATH="coverage/HierarchBayesParcel$individual_parcellation.coverage" NAME="individual_parcellation Coverage Results" MODIFIED="1698773931549" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts" />
     <SUITE FILE_PATH="coverage/generativeMRF$arrangements.coverage" NAME="arrangements Coverage Results" MODIFIED="1680206818143" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>
