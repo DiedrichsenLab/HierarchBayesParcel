@@ -830,7 +830,9 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
     # Initialize emission models
     em_models = []
     for j, this_cv in enumerate(cond_vec):
-        em_model = emi.build_emission_model(ar_model.K_full, atlas, 'VMF',
+        em_model = emi.build_emission_model(ar_model.K if sym_type=='asym'
+                                            else ar_model.K_full,
+                                            atlas, 'VMF',
                                             indicator(this_cv), part_vec[j],
                                             V=Vs[j], sym_type=sym_type,
                                             uniform_kappa=uniform_kappa)

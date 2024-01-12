@@ -1894,8 +1894,11 @@ def load_group_parcellation(fname, index=None, marginal=False,
         select_model.move_to(device)
 
     info_reduced = info.iloc[index]
-    U = select_model.marginal_prob() if marginal \
-        else select_model.arrange.logpi
+    if marginal:
+        U = select_model.marginal_prob()
+    else:
+        U = select_model.arrange.logpi
+        U = select_model.arrange.map_to_full(U)
 
     return U, info_reduced
 
