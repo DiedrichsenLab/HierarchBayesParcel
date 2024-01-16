@@ -45,8 +45,8 @@ export PYTHONPATH
 ```
 Mathematical inference
 ------
-Please checkout the [README.pdf](doc/README.pdf) in `doc` folder for more mathematical inference 
-details of the framework.
+Please checkout the [README.pdf](documents/README.pdf) in `doc` folder for more mathematical 
+inference details of the framework.
 
 Class descriptions
 ------
@@ -55,7 +55,7 @@ Class descriptions
 [comment]: <> (![ScreenShot]&#40;doc/fusion_model.png&#41;)
 
 <p align="center">
-<img src="doc/figures/0_fusion_model.png" alt="ScreenShot" width=60%>
+<img src="documents/figures/0_fusion_model.png" alt="ScreenShot" width=60%>
 </p>
 
 One important barrier in the development of complex models of human brain organization is the lack 

@@ -25,10 +25,12 @@ Diedrichsen Lab, Western University
    :caption: Contents:
 
    install.rst
+   overview.rst
    math.rst
    training.rst
    indiv_parcel.rst
    references.rst
+   literature.rst
 
 
 Indices and tables

@@ -1041,6 +1041,7 @@ class wMixVMF(MixVMF):
     def __init__(self, K=4, N=10, P=20, data=None, X=None, part_vec=None,
                  params=None, uniform_kappa=True, weighting='lsquare'):
         """ Constructor for the wMixVMF class
+
         Args:
             K (int): the number of clusters
             N (int): the number of observations
@@ -1081,8 +1082,8 @@ class wMixVMF(MixVMF):
             None. Store the data in emission model itself.
 
         Class attributes:
-            self.num_part: the number of partitions (usually runs)
-                           shape (n_subj, 1, P)
+            self.num_part: the number of partitions (usually runs),
+            shape (n_subj, 1, P)
             self.W: the weights associated to each data points
         """
         super(MixVMF, self).initialize(data)

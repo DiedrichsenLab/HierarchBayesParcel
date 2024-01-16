@@ -208,6 +208,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
     def map_to_full(self,Uhat):
         """ Remapping evidence from an arrangement space to a
             emission space (here it doesn't do anything)
+
         Args:
             Uhat (ndarray): tensor of estimated arrangement
 
@@ -299,18 +300,15 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
 class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
     """Independent arrangement model without symmetry constraint, 
     but like a symmetric model, it keeps the parcels (and emission models)
-    for the left and right hemishere separate. 
-    P is the same to the full data : 
-    K (parcels for arrangement model)
-    K_full (parcels for data)
-    Parameters:
+    for the left and right hemishere separate. P is the same to the full data,
+    K (parcels for arrangement model) K_full (parcels for data)
+
+    Args:
         K (int):
             Number of different parcels
         indx_hem (ndarray/tensor): 
             1 x P array of indices for the hemisphere
-            -1: Left
-            0: Midline 
-            1: Right
+            -1 - Left; 0 - Midline; 1 - Right
         spatially_specific (bool):  
             Use a spatially specific model (default True)
         remove_redundancy (bool): 
@@ -718,20 +716,21 @@ class mpRBM(ArrangementModel):
         for learning of brain parcellations for probabilistic input
         Uses Contrastive-Divergence k for learning
 
-    Outer nodes (U):
-        The outer (most peripheral nodes) are
-        categorical with K possible categories.
-        There are three different representations:
-        a) N x nv: integers between 0 and K-1 (u)
-        b) N x K x nv : indicator variables or probabilities (U)
-        c) N x (K * nv):  Vectorized version of b- with all nodes
+    Notes:
+        Outer nodes (U):
+            The outer (most peripheral nodes) are
+            categorical with K possible categories.
+            There are three different representations:
+            a) N x nv: integers between 0 and K-1 (u)
+            b) N x K x nv : indicator variables or probabilities (U)
+            c) N x (K * nv):  Vectorized version of b- with all nodes
             of category 1 first, etc,
-        If not otherwise noted, we will use presentation b)
+            If not otherwise noted, we will use presentation b).
 
-    Hidden nodes (h):
-        In this version we will use binary hidden nodes -
-        so to get the same capacity as a mmRBM, one would need to
-        set the number of hidden nodes to nh
+        Hidden nodes (h):
+            In this version we will use binary hidden nodes -
+            so to get the same capacity as a mmRBM, one would need to
+            set the number of hidden nodes to nh
     """
 
     def __init__(self, K, P, nh):

@@ -3,16 +3,10 @@
   <component name="ChangeListManager">
     <list default="true" id="4c91fd15-1f6e-447e-8bbd-57040dc8fd4a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/README.pdf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/0_fusion_model.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/1_indiv_vs_group.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/2_simulation1.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/3_simulation2.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/4_IBC_twoSess.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/5_all_datasets_fusion.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/6_task_vs_rest.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figures/emissions.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/arrangements.py" beforeDir="false" afterPath="$PROJECT_DIR$/arrangements.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/source/index.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/source/index.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/emissions.py" beforeDir="false" afterPath="$PROJECT_DIR$/emissions.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -137,7 +131,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/arrangements.py</url>
-          <line>1091</line>
+          <line>1090</line>
           <option name="timeStamp" value="5" />
         </line-breakpoint>
       </breakpoints>
