@@ -762,7 +762,8 @@ def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
 
 def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                            subj_ind, Vs=None, sym_type='asym', n_iter=200,
-                           uniform_kappa=True, fit_arrangement=False,
+                           em_params={}, 
+                           fit_arrangement=False,
                            fit_emission=True, device=None):
     """ Calculates the individual parcellations using the given individual
         training data and the given arrangement model with the pre-defined
@@ -790,9 +791,8 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
             The symmetry type of the arrangement model
         n_iter (int):
             The number of iterations for the EM algorithm
-        uniform_kappa (boolean):
-            If True, the kappa parameter of the emission models are uniformed,
-            otherwise, they are individualized.
+        em_params (dictionary):
+            Dictionary setting optina parameters for the emission model
         fit_arrangement (boolean):
             If True, the arrangement model will be fitted using the given
             individual training data. However, in this case, the arrangement
@@ -830,12 +830,17 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
     # Initialize emission models
     em_models = []
     for j, this_cv in enumerate(cond_vec):
-        em_model = emi.build_emission_model(ar_model.K if sym_type=='asym'
-                                            else ar_model.K_full,
-                                            atlas, 'VMF',
-                                            indicator(this_cv), part_vec[j],
-                                            V=Vs[j], sym_type=sym_type,
-                                            uniform_kappa=uniform_kappa)
+        if sym_type=='sym':
+            K=ar_model.K_full
+        else:
+            K=ar_model.K
+        em_model = emi.build_emission_model(K,
+                                            atlas, 
+                                            'VMF',
+                                            indicator(this_cv), 
+                                            part_vec[j],
+                                            V=Vs[j], 
+                                            em_params=em_params)
         em_models.append(em_model)
 
     M = FullMultiModel(ar_model, em_models)
