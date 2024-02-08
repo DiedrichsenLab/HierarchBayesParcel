@@ -487,42 +487,45 @@ class MixVMF(EmissionModel):
 
         # Multiply the expectation by the number of observations
         JU = self.num_part * U_hat
-
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
         YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
-        r_norm2 = pt.sum(YU ** 2, dim=1, keepdim=True)
 
         # If the subejcts are weighted differently - just sum voxels per regions across subjects 
-        if self.subjects_equal_weight==False:  
-            JU = pt.sum(JU, dim=0)
-            YU = pt.sum(YU, dim=0)
-            r_norm2 = pt.sum(r_norm2, dim=0)
+        r_norm2 = pt.sum(YU ** 2, dim=1, keepdim=True)
         r_norm2[r_norm2 == 0] = pt.nan # Avoid division by zero
-
+        
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
         if 'V' in self.param_list:
-            self.V = YU / pt.sqrt(r_norm2)
             if self.subjects_equal_weight:
-                self.V=pt.nanmean(self.V,dim=0)
+                self.V = YU / pt.sqrt(r_norm2)
+                self.V = pt.nanmean(self.V,dim=0)
                 self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
+            else:
+                YU_tot = pt.sum(YU, dim=0)
+                r_norm2_tot = pt.sum(YU_tot**2, dim=0)
+                r_norm2_tot[r_norm2_tot == 0] = pt.nan # Avoid division by zero
+                self.V = YU_tot / pt.sqrt(r_norm2_tot)
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if 'kappa' in self.param_list:
-            if self.region_specific_kappa and not self.subject_specific_kappa:
-                r_bar = pt.sqrt(r_norm2) / pt.sum(JU, dim=1)
-                r_bar[r_bar > 0.95] = 0.95
-                r_bar[r_bar < 0.05] = 0.05
-            elif self.subject_specific_kappa and not self.region_specific_kappa:
-                r_bar = pt.sqrt(r_norm2) / pt.sum(JU, dim=1)
-                r_bar[r_bar > 0.95] = 0.95
-                r_bar[r_bar < 0.05] = 0.05
-            elif not self.subject_specific_kappa and not self.region_specific_kappa:
-                r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
-                r_bar = pt.mean(r_bar)
-            else:
-                raise ValueError('Subject & Regions specific kappa is not implemented yet')    
-            self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
+            if self.subjects_equal_weight:
+                pass
+            else: 
+                if self.region_specific_kappa and not self.subject_specific_kappa:
+                    r_bar = pt.sqrt(r_norm2_tot) / pt.sum(JU, dim=[0,2])
+                    r_bar[r_bar > 0.95] = 0.95
+                    r_bar[r_bar < 0.05] = 0.05
+                elif self.subject_specific_kappa and not self.region_specific_kappa:
+                    r_bar = pt.sqrt(r_norm2) / pt.sum(JU, dim=1)
+                elif not self.subject_specific_kappa and not self.region_specific_kappa:
+                    r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
+                    r_bar = pt.mean(r_bar)
+                else:
+                    raise ValueError('Subject & Regions specific kappa is not implemented yet')    
+        r_bar[r_bar > 0.95] = 0.95
+        r_bar[r_bar < 0.05] = 0.05
+        self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U, signal=None):
         """ Draw data sample from this model and given parameters
