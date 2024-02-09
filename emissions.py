@@ -512,19 +512,17 @@ class MixVMF(EmissionModel):
             if self.subjects_equal_weight:
                 pass
             else: 
-                if self.region_specific_kappa and not self.subject_specific_kappa:
+                if self.parcel_specific_kappa and not self.subject_specific_kappa:
                     r_bar = pt.sqrt(r_norm2_tot) / pt.sum(JU, dim=[0,2])
                     r_bar[r_bar > 0.95] = 0.95
                     r_bar[r_bar < 0.05] = 0.05
-                elif self.subject_specific_kappa and not self.region_specific_kappa:
+                elif self.subject_specific_kappa and not self.parcel_specific_kappa:
                     r_bar = pt.sqrt(r_norm2) / pt.sum(JU, dim=1)
-                elif not self.subject_specific_kappa and not self.region_specific_kappa:
+                elif not self.subject_specific_kappa and not self.parcel_specific_kappa:
                     r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
                     r_bar = pt.mean(r_bar)
                 else:
                     raise ValueError('Subject & Regions specific kappa is not implemented yet')    
-        r_bar[r_bar > 0.95] = 0.95
-        r_bar[r_bar < 0.05] = 0.05
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U, signal=None):

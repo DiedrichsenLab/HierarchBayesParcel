@@ -419,163 +419,8 @@ where :math:`P` is the total number of voxels :math:`i`.
 
 The updated parameters :math:`\theta_{k}^{(t)}` from current :math:`\mathbf{M}`-step will be passed to the next :math:`\mathbf{E}`-step :math:`(t+1)`  until convergence.
 
-Emission model 3a: Mixture of Gaussians with Exponential signal strength
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The emission model should depend on the type of data that is measured. A common application is that the data measured at location :math:`i` are the task activation in :math:`N` tasks, arranged in the :math:`N\times1` data vector :math:`\mathbf{y}_i`. The averaged expected response for each of the parcels is :math:`\mathbf{v}_k`. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as :math:`s_i \sim exponential(\beta_s)`. Therefore the probability model for gamma is defined as:
-
-.. math::
-	p(s_i|\theta) = \beta e^{-\beta s_i}
-
-Overall, the expected signal at each brain location is then 
-
-.. math::
-	\rm{E}(\mathbf{y}_i)=\mathbf{u}_i^T \mathbf{V}s_i
-
-Finally, relative to the signal, we assume that the noise is distributed i.i.d Gaussian with: 
-
-.. math::
-	\boldsymbol{\epsilon}_i \sim Normal(0,\mathbf{I}_K\theta_{\sigma s})
-
-Here, the proposal distribution :math:`q(u_{i}^{(k)},s_{i}|\mathbf{y}_{i})` is now a multivariate distribution across :math:`u_i` and :math:`s_i`. Thus, the *expected emission log likelihood* :math:`\mathcal{L}_E(q, \theta)` is defined as:
-
-.. math::
-	\begin{align*}
-	\mathcal{L}_E &= \langle\sum_i\log p(\mathbf{y}_i, s_i|u_i; \theta_E)\rangle_{q}\\
-	&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)]\rangle_{q}  \\ &+\sum_{i}\sum_{k}\langle u_{i}^{(k)}[ \log \beta-\beta s_i] \rangle_q\\
-	&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)\rangle_{q} \\ &+ P\log\beta-\sum_{i}\sum_k\beta\langle u_{i}^{(k)} s_i\rangle_q\\
-	&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i} \mathbf{y}_i^T\mathbf{y}_i-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) \\ &+\log\beta-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q
-	\end{align*}
-
-Now, we can update the parameters :math:`\theta` of the Gaussians/Exponential mixture in the M-step. The parameters of the gaussian mixture model are :math:`\theta_{E} = \{\mathbf{v}_{1},...,\sigma^{2},\beta\}` . 
-
-1. We start with updating the :math:`\mathbf{v}_k` (Note: the updates only consider a single subject). We take the derivative of *expected emission log likelihood* :math:`\mathcal{L}_E` with respect to :math:`\mathbf{v}_{k}` and make it equals to 0 as following:
-
-.. math::
-	\frac{\partial \mathcal{L}_E}{\partial \mathbf{v}_{k}} =-\frac{1}{\sigma^{2}}\sum_{i}-\mathbf{y}_{i}^{T}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\langle u_{i}^{(k)}s_{i}^{2}\rangle_{q} = 0
-
-Thus, we get the updated :math:`\mathbf{v}_{k}` in current M-step as, 
-
-.. math::
-	\mathbf{v}_{k}^{(t)} = \frac{\sum_{i}\langle u_{i}^{(k)}s_{i}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}s_{i}^{2}\rangle_{q}^{(t)}}
-
-2. Updating :math:`\sigma^{2}` , we take derivative of with respect to :math:`\sigma^{2}` and set it equals to 0 as following:
-
-.. math::
-	\frac{\partial \mathcal{L}_E}{\partial \sigma^{2}} =-\frac{NP}{2\sigma^2}+\frac{1}{2\sigma^{4}}\sum_{i}\mathbf{y}_{i}^T\mathbf{y}_{i}+\frac{1}{2\sigma^{4}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) = 0
-
-Thus, we get the updated :math:`\sigma^{2}` for parcel :math:`k` in the current M-step as,
-
-.. math::
-	{\sigma^2}^{(t)} = \frac{1}{NP}(\sum_{i}\mathbf{y}_i^T\mathbf{y}_i+
-	\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q})
-
-3. Updating :math:`\beta`, we take derivative of  :math:`\mathcal{L}_E(q, \theta)` with respect to :math:`\beta` and set it equal to 0 as following:
-
-.. math::
-	\begin{align*}
-	\frac{\partial \mathcal{L}_E}{\partial \beta} &=\frac{\partial [P\log\beta-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q]}{\partial \beta} \\
-	&= \frac{P\alpha}{\beta}-\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q = 0
-	\end{align*}
-
-Thus, we get the updated :math:`\beta_{k}` in current M-step as, 
-
-.. math::
-	\beta_{k}^{(t)} =  	\frac{P}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}
-
-
-Emission model 3b: Mixture of Gaussians with Gamma signal strength
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The emission model should depend on the type of data that is measured. A common application is that the data measured at location :math:`i` are the task activation in :math:`N` tasks, arranged in the :math:`N\times1` data vector :math:`\mathbf{y}_i`. The averaged expected response for each of the parcels is :math:`\mathbf{v}_k`. One issue of the functional activation is that the signal-to-noise ratio (SNR) can be quite different across different participants, and voxels, with many voxels having relatively low SNR. We model this signal to noise for each brain location (and subject) as :math:`s_i \sim Gamma(\theta_\alpha,\theta_{\beta s})`. Therefore the probability model for gamma is defined as:
-
-.. math::
-	p(s_i|\theta) = \frac{\beta^{\alpha}}{\Gamma(\alpha)}s_i^{\alpha-1}e^{-\beta s_i}
-
-Overall, the expected signal at each brain location is then 
-
-.. math::
-	\rm{E}(\mathbf{y}_i)=\mathbf{u}_i^T \mathbf{V}s_i
-
-
-Finally, relative to the signal, we assume that the noise is distributed i.i.d Gaussian with: 
-
-.. math::
-	\boldsymbol{\epsilon}_i \sim Normal(0,\mathbf{I}_K\theta_{\sigma s})
-
-Here, the proposal distribution :math:`q(u_{i}^{(k)},s_{i}|\mathbf{y}_{i})` is now a multivariate distribution across :math:`u_i` and :math:`s_i`. Thus, the *expected emission log likelihood* :math:`\mathcal{L}_E(q, \theta)` is defined as:
-
-.. math::
-	\begin{align*}
-	\mathcal{L}_E &= \langle\sum_i\log p(\mathbf{y}_i, s_i|u_i; \theta_E)\rangle_{q}\\
-	&=\sum_{i}\sum_{k}\langle u_{i}^{(k)}[-\frac{N}{2}\log(2\pi)-\frac{N}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)]\rangle_{q}  \\ &+\sum_{i}\sum_{k}\langle u_{i}^{(k)}[\alpha \log \beta-\log\Gamma(\alpha)+(\alpha-1)\log s_i-\beta s_i] \rangle_q\\
-	&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}\langle u_{i}^{(k)}(\mathbf{y}_{i}-\mathbf{v_k}s_i)^T(\mathbf{y}_{i}-\mathbf{v_k}s_i)\rangle_{q} \\ &+ P\alpha\log\beta-P\log\Gamma(\alpha)+\sum_{i}\sum_k\langle u_{i}^{(k)}(\alpha-1)\log s_i-u_{i}^{(k)}\beta s_i\rangle_q\\
-	&=-\frac{NP}{2}\log(2\pi)-\frac{NP}{2}\log(\sigma^{2})-\frac{1}{2\sigma^{2}}\sum_{i} \mathbf{y}_i^T\mathbf{y}_i-\frac{1}{2\sigma^{2}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) \\ &+P\alpha\log\beta-P\log\Gamma(\alpha)+(\alpha-1)\sum_{i}\sum_k \langle u_{i}^{(k)}\log s_i\rangle_q-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q
-	\end{align*}
-
-Now, we can update the parameters :math:`\theta` of the Gaussians/Gamma mixture in the M-step. The parameters of the gaussian mixture model are :math:`\theta_{E} = \{\mathbf{v}_{1},...,\sigma^{2},\alpha,\beta\}` . 
-
-1. We start with updating the :math:`\mathbf{v}_k` (Note: the updates only consider a single subject). We take the derivative of *expected emission log likelihood* :math:`\mathcal{L}_E` with respect to :math:`\mathbf{v}_{k}` and make it equals to 0 as following:
-
-.. math::
-	\frac{\partial \mathcal{L}_E}{\partial \mathbf{v}_{k}} =-\frac{1}{\sigma^{2}}\sum_{i}-\mathbf{y}_{i}^{T}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\langle u_{i}^{(k)}s_{i}^{2}\rangle_{q} = 0
-
-Thus, we get the updated :math:`\mathbf{v}_{k}` in current M-step as, 
-
-.. math::
-	\mathbf{v}_{k}^{(t)} = \frac{\sum_{i}\langle u_{i}^{(k)}s_{i}\rangle_{q}^{(t)}\mathbf{y}_{i}}{\sum_{i}\langle u_{i}^{(k)}s_{i}^{2}\rangle_{q}^{(t)}}
-
-2. Updating :math:`\sigma^{2}` , we take derivative of with respect to :math:`\sigma^{2}` and set it equals to 0 as following:
-
-.. math::
-	\frac{\partial \mathcal{L}_E}{\partial \sigma^{2}} =-\frac{NP}{2\sigma^2}+\frac{1}{2\sigma^{4}}\sum_{i}\mathbf{y}_{i}^T\mathbf{y}_{i}+\frac{1}{2\sigma^{4}}\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q}) = 0
-
-Thus, we get the updated :math:`\sigma^{2}` for parcel :math:`k` in the current M-step as,
-
-.. math::
-	{\sigma^2}^{(t)} = \frac{1}{NP}(\sum_{i}\mathbf{y}_i^T\mathbf{y}_i+
-	\sum_{i}\sum_{k}(-2\mathbf{y}_{i}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}\rangle_{q}+\mathbf{v}_{k}^T\mathbf{v}_{k}\langle u_{i}^{(k)}s_{i}^2\rangle_{q})
-
-
-3. Updating :math:`\beta`, we take derivative of  :math:`\mathcal{L}_E(q, \theta)` with respect to :math:`\beta` and set it equal to 0 as following:
-
-.. math::
-	\begin{align*}
-	\frac{\partial \mathcal{L}_E}{\partial \beta} &=\frac{\partial [P\alpha\log\beta-\beta \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q]}{\partial \beta} \\
-	&= \frac{P\alpha}{\beta}-\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q = 0
-	\end{align*}
-
-Thus, we get the updated :math:`\beta_{k}` in current M-step as, 
-
-.. math::
-	\beta_{k}^{(t)} =  	\frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}
-
-
-4. Updating :math:`\alpha_{k}` is comparatively hard since we cannot derive closed-form, we take derivative of  :math:`\mathcal{L}_E(q, \theta)` with respect to :math:`\alpha` and make it equals to 0 as following:
-
-
-.. math::
-	\begin{align*}
-	\frac{\partial \mathcal{L}_E}{\partial \alpha} &=\frac{\partial [P\alpha\log\beta-P\log\Gamma(\alpha)+(\alpha-1)\sum_{i}\sum_k \langle u_{i}^{(k)}\log{s_i}\rangle_q]}{\partial \alpha}\\
-	&=P\log\beta-P\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}+\sum_{i}\sum_k \langle u_{i}^{(k)} \log {s_i}\rangle_q = 0
-	\end{align*}
-
-The term :math:`\frac{\Gamma'(\alpha)}{\Gamma(\alpha)}` in above equation is exactly the *digamma function* and we use :math:`\digamma(\alpha)` to represent. Also from (4), we know :math:`\beta=\frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}` Thus, we get the updated :math:`\alpha` in current M-step as, 
-
-.. math::
-	\begin{align*}
-	\digamma(\alpha)^{(t)} &= \log \frac{P\alpha_k^{(t)}}{\sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q}+\frac{1}{P}\sum_{i}\sum_k \log \langle u_{i}^{(k)}s_i\rangle_q\\
-	&=\log P\alpha^{(t)} - \log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q + \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q
-	\end{align*}
-
-By applying "generalized Newton" approximation form, the updated :math:`\alpha` is as follows: 
-
-.. math::
-	\alpha^{(t)} \approx \frac{0.5}{\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q - \frac{1}{P}\sum_{i}\sum_k\langle u_{i}^{(k)} \log{s_i}\rangle_q}
-
-Note that :math:`\log \sum_{i}\sum_k\langle u_{i}^{(k)}s_i\rangle_q \geqslant \frac{1}{P}\sum_{i}\sum_k\log\langle u_{i}^{(k)}s_i\rangle_q` is given by Jensen's inequality.
-
-Emission model 4: Mixture of Von-Mises Distributions
+Emission model 3: Mixture of Von-Mises Distributions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 For a :math:`M`-dimensional data :math:`\mathbf{y}` the probability density function of von Mises-Fisher distribution is defined as following, 
@@ -603,17 +448,25 @@ Effectively in the code, the user passes the unnormalized data, a design matrix,
 
 Now, we update the parameters :math:`\theta` of the von-Mises mixture in the M-step by maximizing :math:`\mathcal{L}_E`  in respect to the parameters in vn-Mises mixture :math:`\theta_{k}=\{\mathbf{v}_{k},\kappa\}`. (Note: the updates only consider a single subject).
 
-1. Updating mean direction :math:`\mathbf{v}_k`, we take derivative in respect to :math:`\mathbf{v}_{k}` and set it to 0. Then, we get the updated :math:`\mathbf{v}_{k}` in current M-step in two options: **(A)** learn a common :math:`\mathbf{v}_{k}` :
+1. Updating mean direction :math:`\mathbf{v}_k`, we take derivative in respect to :math:`\mathbf{v}_{k}` and set it to 0. Then, we get the updated :math:`\mathbf{v}_{k}` in current M-step:
+
+In this step, we can inetrgated the evidence in one step overall subjects and voxels. 
 
 .. math::
 	\begin{align*}
-	\mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum_{i}\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
+	\mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum{s}\sum_{i}\langle u_{i}^{(s,k)}\rangle_{q}\mathbf{y}_{s,i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
 	\end{align*}
+
+Alternatively, we can estimate the v-vectors first within subject, average across these subejcts, and finally renormalize the vector.  
+
 
 2. Updating concentration parameter :math:`\kappa` is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions"). If we have :math:`N` independent observations :math:`\mathbf{y}_i`, each with :math:`M` dimensions, then we can **(A)** learn a common :math:`\kappa` across classes: 
 
 .. math::
 	\kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}
+
+
+
 
 .. math::
 	\text{where}\;\; \bar{r}=\frac{1}{N}\sum_k^K||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||
@@ -629,10 +482,17 @@ Now, we update the parameters :math:`\theta` of the von-Mises mixture in the M-s
 
 For our specific case, we want to integrate the evidence across :math:`s={1,...,S}` subjects each with :math:`i={1,...,P}` voxels. Each subject and voxel may have :math:`J_{s,i}` observations. Under this assumption, the estimates become:
 
+for a totally common kappa: 
+
 .. math::
 	\bar{r}=\frac{\sum_k^K||\sum_{s}^S\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{s}^S\sum_{i}^PJ_{s,i}}
 
-and for class-specific :math:`\kappa` :
+for a subjects-specific kappa: 
+
+.. math::
+	\bar{r}_s=\frac{\sum_k^K||sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{i}^PJ_{s,i}}
+
+and for parcel-specific :math:`\kappa` :
 
 .. math::
 	\bar{r}_k=\frac{||\sum_{s}^S\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{s}^S\sum_{i}^PJ_{s,i}\langle u_{s,i}^{(k)} \rangle_q}
