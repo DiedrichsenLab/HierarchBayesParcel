@@ -933,7 +933,7 @@ class MixVMF(EmissionModel):
 
         return pt.nan_to_num(LL[sub])
 
-    def Mstep(self, U_hat):
+    def Mstep(self, U_hat, plot=False):
         """ Performs the M-step on a specific U-hat. In this emission model,
             the parameters need to be updated are Vs (unit norm projected on
             the N-1 sphere) and kappa (concentration value).
@@ -951,6 +951,17 @@ class MixVMF(EmissionModel):
         JU_hat = self.num_part * U_hat
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
+        if plot:
+            subject_Vs = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
+            subjects = [f'subject no {i}' for i in range(subject_Vs.shape[0])]
+            fig, axs = plt.subplots(subject_Vs.shape[0]//4, 4, figsize=(15, 15))
+            for i in range(subject_Vs.shape[0]-1):
+                # Plot each 70x30 matrix using plt.imshow()
+                axs[i//4, i%4].imshow(subject_Vs[i,:,:], cmap='viridis') 
+                axs[i//4, i%4].set_title(f'{subjects[i]}')  # Title for the plot
+            plt.subplots_adjust(wspace=0.01, hspace=0.3)  
+            plt.show()
+
         YU = pt.sum(pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)), dim=0)
         UU = pt.sum(JU_hat, dim=0)
         r_norm = pt.sqrt(pt.sum(YU ** 2, dim=0))
