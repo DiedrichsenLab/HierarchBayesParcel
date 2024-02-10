@@ -272,7 +272,7 @@ class FullMultiModel:
             if ar_name.startswith('ArrangeIndependent') else pt.nan
 
     def fit_em(self,iter=30, tol=0.01, seperate_ll=False, fit_emission=True,
-               fit_arrangement=True, first_evidence=True):
+               fit_arrangement=True, first_evidence=False):
         """ Run the EM-algorithm on a full model
             this demands that both the Emission and Arrangement model
             have a full Estep and Mstep and can calculate the likelihood,
@@ -287,12 +287,10 @@ class FullMultiModel:
                     Otherwise, freeze it
             first_evidence (bool or list of bool): Determines whether evidence
                     is passed from emission models to arrangement model on the
-                    first iteration. Usually set to True. If a list of bools,
-                    it determines this for each emission model seperately.
-                    To improve alignment between emission models from random
-                    starting values, only pass evidence from one or none of
-                    the emission models.
-
+                    first iteration. Default = False. This is improve estimation for 
+                    emission models from random starting values, as the initial guess
+                    will be determined by the intialization of the arrangement model.
+                    If a list of bools, it determines this for each emission model seperately.
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration

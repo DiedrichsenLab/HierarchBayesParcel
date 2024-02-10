@@ -20,15 +20,15 @@ import warnings as warn
 class EmissionModel(Model):
     """ Abstract class for emission models
     """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None):
+    def __init__(self, K=4, N=10, P=20, num_subj=None, X=None):
         """ Abstract constructor of emission models
         Args:
             K: the number of clusters
             N: the number of observations if given
             P: the number of brain locations
-            data: the data, shape (num_subj, N, P)
+            num_subj: Number of subjects, if important for parameters (e.g. subject specific)
             X: the design matrix of observations,
-               shape of (N, M) tensor
+               shape of (N, M) tensor (overwrits N if given)
         """
         self.K = K  # Number of states
         self.P = P
@@ -44,9 +44,8 @@ class EmissionModel(Model):
             self.N = N
             self.M = N
             self.X = pt.eye(self.N)
-
-        if data is not None:
-            self.initialize(data)
+        if num_subj is not None:    
+            self.num_subj = num_subj
         self.tmp_list=['Y']
 
     def initialize(self, data, X=None):
@@ -164,7 +163,7 @@ class MultiNomial(EmissionModel):
 class MixGaussian(EmissionModel):
     """ Mixture of Gaussians with isotropic noise
     """
-    def __init__(self, K=4, N=10, P=20, data=None, X=None,
+    def __init__(self, K=4, N=10, P=20, num_subj=None, X=None,
                  params=None, std_V=True):
         """ Constructor for the emission model
 
@@ -180,7 +179,7 @@ class MixGaussian(EmissionModel):
                 Defaults to None.
             std_V (bool, optional): Whether to standardize the Vs.
         """
-        super().__init__(K, N, P, data, X)
+        super().__init__(K, N, P, num_subj, X)
         self.std_V = std_V
         self.random_params()
         self.set_param_list(['V', 'sigma2'])
@@ -300,7 +299,8 @@ class MixGaussian(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of von Mises-Fisher distribution emission model
     """
-    def __init__(self, K=4, N=10, P=20, data=None,
+    def __init__(self, K=4, N=10, P=20, 
+                num_subj=None,
                 X=None,
                 part_vec=None,
                 params=None,
@@ -314,9 +314,9 @@ class MixVMF(EmissionModel):
             K (int): the number of clusters
             N (int): the number of observations
             P (int): the number of voxels
-            data (ndarray,pt.tensor): n_sub x N x P  training data
+            num_subj (int): number of subjects 
             X (ndarray or tensor): N x M design matrix for task conditions
-            part_vec (ndarray or tensor): N-Vector indicating the number of the
+            part_vec (ndarray or tensor): M-Vector indicating the number of the
                       data partition (repetition).
                       Expample = [1,2,3,1,2,3,...] None: no data partition
             params: if None, no parameters to pass in.
@@ -344,7 +344,7 @@ class MixVMF(EmissionModel):
         else:
             self.part_vec = None
 
-        super().__init__(K, N, P, data, X)
+        super().__init__(K, N, P, num_subj, X)
         self.random_params()
         self.set_param_list(['V', 'kappa'])
         self.name = 'VMF'
@@ -461,11 +461,14 @@ class MixVMF(EmissionModel):
         # Calculate log-likelihood
         YV = pt.matmul(self.V.T, self.Y)
         PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
+        # Normalization constant for the von Mises-Fisher distribution for current Kappa
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.parcel_specific_kappa:
             LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
+        elif self.subject_specific_kappa:
+            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1).unsqueeze(2) * YV
         else:
             LL = logCnK * self.num_part + self.kappa * YV
 
@@ -517,10 +520,9 @@ class MixVMF(EmissionModel):
                     r_bar[r_bar > 0.95] = 0.95
                     r_bar[r_bar < 0.05] = 0.05
                 elif self.subject_specific_kappa and not self.parcel_specific_kappa:
-                    r_bar = pt.sqrt(r_norm2) / pt.sum(JU, dim=1)
+                    r_bar = pt.sqrt(r_norm2).sum(dim=[1,2]) / pt.sum(JU, dim=[1,2])
                 elif not self.subject_specific_kappa and not self.parcel_specific_kappa:
                     r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
-                    r_bar = pt.mean(r_bar)
                 else:
                     raise ValueError('Subject & Regions specific kappa is not implemented yet')    
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
@@ -559,14 +561,19 @@ class MixVMF(EmissionModel):
                 voxel_ind = pt.nonzero(U[s] == this_par).view(-1)
 
                 # samples y shape (num_parts, P, M)
-                if self.uniform_kappa:
-                    y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
-                                             self.kappa.cpu().numpy(),
-                                             int(counts[i] * num_parts)),
-                                  dtype=pt.get_default_dtype())
-                else:
+                if self.parcel_specific_kappa:
                     y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
                                              self.kappa[this_par].cpu().numpy(),
+                                             int(counts[i] * num_parts)),
+                                  dtype=pt.get_default_dtype())
+                elif self.subject_specific_kappa:
+                    y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
+                                             self.kappa[s].cpu().numpy(),
+                                             int(counts[i] * num_parts)),
+                                  dtype=pt.get_default_dtype())
+                else: 
+                    y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
+                                             self.kappa.cpu().numpy(),
                                              int(counts[i] * num_parts)),
                                   dtype=pt.get_default_dtype())
 

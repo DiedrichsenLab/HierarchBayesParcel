@@ -490,7 +490,7 @@ for a totally common kappa:
 for a subjects-specific kappa: 
 
 .. math::
-	\bar{r}_s=\frac{\sum_k^K||sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{i}^PJ_{s,i}}
+	\bar{r}_s=\frac{\sum_k^K||\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{i}^PJ_{s,i}}
 
 and for parcel-specific :math:`\kappa` :
 
