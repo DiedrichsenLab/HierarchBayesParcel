@@ -512,19 +512,18 @@ class MixVMF(EmissionModel):
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if 'kappa' in self.param_list:
-            if self.subjects_equal_weight:
-                pass
-            else: 
-                if self.parcel_specific_kappa and not self.subject_specific_kappa:
-                    r_bar = pt.sqrt(r_norm2_tot) / pt.sum(JU, dim=[0,2])
-                    r_bar[r_bar > 0.95] = 0.95
-                    r_bar[r_bar < 0.05] = 0.05
-                elif self.subject_specific_kappa and not self.parcel_specific_kappa:
-                    r_bar = pt.sqrt(r_norm2).sum(dim=[1,2]) / pt.sum(JU, dim=[1,2])
-                elif not self.subject_specific_kappa and not self.parcel_specific_kappa:
-                    r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
-                else:
-                    raise ValueError('Subject & Regions specific kappa is not implemented yet')    
+            if self.parcel_specific_kappa and not self.subject_specific_kappa:
+                if self.subjects_equal_weight:
+                    raise(ValueError('Parcel specific kappa is not implemented for subjects_equal_weight'))
+                r_bar = pt.sqrt(r_norm2_tot) / pt.sum(JU, dim=[0,2])
+                r_bar[r_bar > 0.95] = 0.95
+                r_bar[r_bar < 0.05] = 0.05
+            elif self.subject_specific_kappa and not self.parcel_specific_kappa:
+                r_bar = pt.sqrt(r_norm2).sum(dim=[1,2]) / pt.sum(JU, dim=[1,2])
+            elif not self.subject_specific_kappa and not self.parcel_specific_kappa:
+                r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
+            else:
+                raise ValueError('Subject & Regions specific kappa is not implemented yet')    
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U, signal=None):
