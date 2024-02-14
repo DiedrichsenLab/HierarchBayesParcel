@@ -272,7 +272,7 @@ class FullMultiModel:
             if ar_name.startswith('ArrangeIndependent') else pt.nan
 
     def fit_em(self,iter=30, tol=0.01, seperate_ll=False, fit_emission=True,
-               fit_arrangement=True, first_evidence=False):
+               fit_arrangement=True, first_evidence=False, return_Uhat_all=False):
         """ Run the EM-algorithm on a full model
             this demands that both the Emission and Arrangement model
             have a full Estep and Mstep and can calculate the likelihood,
@@ -311,6 +311,8 @@ class FullMultiModel:
         theta = pt.zeros((iter, self.nparams))
 
         # Run number of iterations
+        if return_Uhat_all:
+            Uhat_all = pt.zeros((iter, self.nsubj, self.K, self.P))
         for i in range(iter):
             # Track the parameters
             theta[i, :] = self.get_params()
@@ -331,6 +333,8 @@ class FullMultiModel:
             pt.cuda.empty_cache()
 
             Uhat, ll_A = self.arrange.Estep(emloglik_comb)
+            if return_Uhat_all:
+                Uhat_all[i] = Uhat
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             del emloglik_comb
@@ -368,6 +372,8 @@ class FullMultiModel:
         self.arrange.clear()
         pt.cuda.empty_cache()
 
+        if return_Uhat_all:
+            Uhat = Uhat_all
         # Return parameters and Uhat
         if seperate_ll:
             return self, ll[0:i+1], theta[0:i+1, :], Uhat
