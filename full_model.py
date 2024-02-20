@@ -291,7 +291,6 @@ class FullMultiModel:
                     emission models from random starting values, as the initial guess
                     will be determined by the intialization of the arrangement model.
                     If a list of bools, it determines this for each emission model seperately.
-            return_Uhat_all (bool): If True, return Uhat for all iterations
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
@@ -300,8 +299,7 @@ class FullMultiModel:
             Uhat (pt.tensor): (n_subj,K,P) matrix of estimates - note that
                 this is in the space of arrangement model - call
                 distribute_evidence(Uhat) to get this in the space of
-                emission model. If return_Uhats_all is True, returns a
-                (iter,n_subj,K,P) matrix of estimates.
+                emission model
         """
         if not hasattr(fit_emission, "__len__"):
             fit_emission = [fit_emission]*len(self.emissions)
@@ -314,8 +312,7 @@ class FullMultiModel:
 
         # Run number of iterations
         if return_Uhat_all:
-            # Initialize empty tensor to store Uhat for all iterations with no entries (since we don't know the number of iterations)
-            Uhat_all = pt.tensor([])
+            Uhat_all = pt.zeros((iter, self.nsubj, self.K, self.P))
         for i in range(iter):
             # Track the parameters
             theta[i, :] = self.get_params()
@@ -337,8 +334,7 @@ class FullMultiModel:
 
             Uhat, ll_A = self.arrange.Estep(emloglik_comb)
             if return_Uhat_all:
-                # Attach Uhat to Uhat_all
-                Uhat_all = pt.cat([Uhat_all, Uhat.unsqueeze(0)], dim=0) if i>0 else Uhat.unsqueeze(0)
+                Uhat_all[i] = Uhat
             # Compute the expected complete logliklihood
             ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
             del emloglik_comb
