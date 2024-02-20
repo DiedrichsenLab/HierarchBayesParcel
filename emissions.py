@@ -325,16 +325,23 @@ class MixVMF(EmissionModel):
             parcel_specific_kappa (bool): Defaults to False,
             subject_specific_kappa (bool): Defaults to False,
             subjects_equal_weight (bool): if False, mstep is average across all voxels in region
-                if True, first averages within subejct across voxels - then across subjects (equal weight for each subejct)
+                if True, first averages within subejct across voxels -
+                then across subjects (equal weight for each subejct)
         """
-        # Set flags for M-step 
-        self.parcel_specific_kappa = parcel_specific_kappa
-        self.subject_specific_kappa = subject_specific_kappa
+        # Set flags for M-step / dealing with legacy kappa settings
         self.subjects_equal_weight = subjects_equal_weight
         if uniform_kappa is not None:
-            warn.warn('setting uniform_kappa is depreciated - set parcel_specific_kappa / subject-specific kappa instead',warn.DeprecationWarning)
+            warn.warn('setting uniform_kappa is depreciated - '
+                      'set parcel_specific_kappa / subject-specific '
+                      'kappa instead', DeprecationWarning)
+            # If uniform_kappa is given (which means old code), then
+            # subj specific kappa should be set to False by default
+            subject_specific_kappa = False
             if uniform_kappa == False:
-                self.parcel_specific_kappa = True
+                parcel_specific_kappa = True
+
+        self.parcel_specific_kappa = parcel_specific_kappa
+        self.subject_specific_kappa = subject_specific_kappa
 
         if part_vec is not None:
             if isinstance(part_vec,(np.ndarray,pt.Tensor)):
