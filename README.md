@@ -130,7 +130,7 @@ example of the framework and to reproduce the results in the paper.
 
 Documentation
 ------
-For detalied documentation see: [https://hierarchbayesparcel.readthedocs.io/] (https://hierarchbayesparcel.readthedocs.io/)
+For detalied documentation see: [https://hierarchbayesparcel.readthedocs.io/](https://hierarchbayesparcel.readthedocs.io/)
 
 License
 ------
