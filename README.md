@@ -128,6 +128,9 @@ reporitory to import the preprocessed data as the input to the framework.
 Please find this [project](https://github.com/DiedrichsenLab/FusionModel) to find minimum usage
 example of the framework and to reproduce the results in the paper.
 
+Documentation
+------
+For detalied documentation see: [https://hierarchbayesparcel.readthedocs.io/] (https://hierarchbayesparcel.readthedocs.io/)
 
 License
 ------
