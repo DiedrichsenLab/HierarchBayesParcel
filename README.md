@@ -14,7 +14,7 @@ details, please checkout the preprint.
 
 Reference
 ------
-* Zhi, D., Shahshahani, L., Nettekovena, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). 
+* Zhi, D., Shahshahani, L., Nettekoven, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). 
 "A hierarchical Bayesian brain parcellation framework for fusion of functional imaging datasets". 
 BioRxiv. [[link]](https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1)
 
