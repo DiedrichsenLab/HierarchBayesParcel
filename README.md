@@ -14,7 +14,7 @@ details, please checkout the preprint.
 
 Reference
 ------
-* Zhi, D., Shahshahani, L., Nettekovena, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). 
+* Zhi, D., Shahshahani, L., Nettekoven, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). 
 "A hierarchical Bayesian brain parcellation framework for fusion of functional imaging datasets". 
 BioRxiv. [[link]](https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1)
 
@@ -128,6 +128,9 @@ reporitory to import the preprocessed data as the input to the framework.
 Please find this [project](https://github.com/DiedrichsenLab/FusionModel) to find minimum usage
 example of the framework and to reproduce the results in the paper.
 
+Documentation
+------
+For detalied documentation see: [https://hierarchbayesparcel.readthedocs.io/](https://hierarchbayesparcel.readthedocs.io/)
 
 License
 ------
