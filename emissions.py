@@ -495,13 +495,14 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # Multiply the expectation by the number of observations
-        JU = self.num_part * U_hat
-        # Calculate YU = \sum_i\sum_k<u_i^k>y_i and UU = \sum_i\sum_k<u_i^k>
-        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
+        # JU is the number of observations (voxels x num_part) in each subject 
+        JU = pt.sum(self.num_part * U_hat,dim=2)   # (num_sub, K)
+        
+        # Calculate YU = \sum_i\sum_k<u_i^k>y_i # (num_sub, N, K)
+        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)) 
 
-        # If the subejcts are weighted differently - just sum voxels per regions across subjects 
-        r_norm2 = pt.sum(YU ** 2, dim=1, keepdim=True)
+        # If the subjects are weighted differently
+        r_norm2 = pt.sum(YU ** 2, dim=1, keepdim=True) # (num_sub, 1, K)
         r_norm2[r_norm2 == 0] = pt.nan # Avoid division by zero
         
         # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||

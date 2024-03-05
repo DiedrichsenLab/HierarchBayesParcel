@@ -448,54 +448,62 @@ Effectively in the code, the user passes the unnormalized data, a design matrix,
 
 Now, we update the parameters :math:`\theta` of the von-Mises mixture in the M-step by maximizing :math:`\mathcal{L}_E`  in respect to the parameters in vn-Mises mixture :math:`\theta_{k}=\{\mathbf{v}_{k},\kappa\}`. (Note: the updates only consider a single subject).
 
-1. Updating mean direction :math:`\mathbf{v}_k`, we take derivative in respect to :math:`\mathbf{v}_{k}` and set it to 0. Then, we get the updated :math:`\mathbf{v}_{k}` in current M-step:
-
-In this step, we can inetrgated the evidence in one step overall subjects and voxels. 
+1. First, we calculated the weighted sum of the data vectors (:math:`\tilde{\mathbf{y}}`) in each subject and parcel, and the number of observations (:math:`\tilde{u}`) underlying that weighted sum.  
 
 .. math::
 	\begin{align*}
-	\mathbf{v}_{k}^{(t)} &=\frac{\tilde{\mathbf{v}}_k}{r_k}, \;\;\;\;\;\;\text{where}\;\; \tilde{\mathbf{v}}_{k} = \sum{s}\sum_{i}\langle u_{i}^{(s,k)}\rangle_{q}\mathbf{y}_{s,i}; \;\; r_k=||\tilde{\mathbf{v}}_{k}||
+	\tilde{\mathbf{y}}_{s,k} &= \sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i} \\
+	\tilde{u}_{s,k} &= \sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q} J_{s,i}
 	\end{align*}
 
-Alternatively, we can estimate the v-vectors first within subject, average across these subejcts, and finally renormalize the vector.  
-
-
-2. Updating concentration parameter :math:`\kappa` is difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions"). If we have :math:`N` independent observations :math:`\mathbf{y}_i`, each with :math:`M` dimensions, then we can **(A)** learn a common :math:`\kappa` across classes: 
+2. In general, given these two estimates, we can updated the v parameter for the van-Mises Fisher distribution as follows:
 
 .. math::
-	\kappa^{(t)} \approx \frac{\overline{r}M-\overline{r}^3}{1-\overline{r}^2}
+	\begin{align*}
+	\tilde{\mathbf{v}} &= \frac{\tilde{\mathbf{y}}}{\tilde{u}} \\
+	\mathbf{v}^{(t)} &= \frac{\tilde{\mathbf{v}}}{||\tilde{\mathbf{v}}||}\\
+	\end{align*}
 
-
-
-
-.. math::
-	\text{where}\;\; \bar{r}=\frac{1}{N}\sum_k^K||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||
-
-**Alternatively**, we can **(B)** learn :math:`K`-class specific kappa :math:`\kappa_k`:
+For the concentration parameter :math:`\kappa` updating is more difficult in particularly for high dimensional problems since it involves inverting ratio of two Bessel functions. Here we use approximate solutions suggested in (Banerjee et al., 2005) and (Hornik et al., 2014 "movMF: An R Package for Fitting Mixtures of von Mises-Fisher Distributions"). 
 
 .. math::
-	\kappa_k^{(t)} \approx \frac{\overline{r}_kM-\overline{r}_k^3}{1-\overline{r}_k^2}
+	\begin{align*}
+	r &= ||\tilde{\mathbf{v}}||\\
+	\kappa^{(t)} &= \frac{\tilde{r}M-\tilde{r}^3}{1-\tilde{r}^2}
+	\end{align*}
+
+3. There are now different ways to integrated the sufficient statistics across subjects and parcels. For the estimation of the v-direction, we can either combine all the voxels across subjects in a fixed-effects analysis: 
 
 .. math::
-	\text{where}\;\; \bar{r}_k=\frac{||\sum_{i}^N\langle u_{i}^{(k)}\rangle_{q}\mathbf{y}_{i}||}{\sum_i^N \langle u_i^{(k)} \rangle_q}
+	\tilde{\mathbf{v}}_k = \frac{\sum_s\tilde{\mathbf{y}}_{s,k}}{\sum_s\tilde{u}_{s,k}} 
 
-
-For our specific case, we want to integrate the evidence across :math:`s={1,...,S}` subjects each with :math:`i={1,...,P}` voxels. Each subject and voxel may have :math:`J_{s,i}` observations. Under this assumption, the estimates become:
-
-for a totally common kappa: 
+Or we can weight each subjects equally (note that this makes noisier subjects less important - just the number of assigned voxels per parcel does not matter anymore): 
 
 .. math::
-	\bar{r}=\frac{\sum_k^K||\sum_{s}^S\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{s}^S\sum_{i}^PJ_{s,i}}
+	\tilde{\mathbf{v}}_k = \frac{1}{S} \sum_s{\frac{\tilde{\mathbf{y}}_{s,k}}{\tilde{u}_{s,k}}}
+
+4. Finally for :math:`\kappa` estimation we have a number of options: We can estimate a common kappa across classes and subjects (of course ignoring the variability across parcels, but counting the variability across subjects): 
+
+.. math::
+	r=\frac{\sum_k^K||\sum_{s}^S\tilde{\mathbf{y}}_{s,k}||}{\sum_k^K\sum_{s}^S\tilde{u}_{s,k}}
 
 for a subjects-specific kappa: 
 
 .. math::
-	\bar{r}_s=\frac{\sum_k^K||\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{i}^PJ_{s,i}}
+	r_s=\frac{\sum_k^K||\tilde{\mathbf{y}}_{s,k}||}{\sum_k^K\tilde{u}_{s,k}}
 
 and for parcel-specific :math:`\kappa` :
 
 .. math::
-	\bar{r}_k=\frac{||\sum_{s}^S\sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q}\mathbf{y}_{s,i}||}{\sum_{s}^S\sum_{i}^PJ_{s,i}\langle u_{s,i}^{(k)} \rangle_q}
+	r_k=\frac{||\sum_{s}^S\tilde{\mathbf{y}}_{s,k}||}{\sum_{s}^S\tilde{u}_{s,k}}
+
+and subjects and parcel-specific kappa: 
+
+.. math::
+	r_{s,k}=\frac{||\tilde{\mathbf{y}}_{s,k}||}{\tilde{u}_{s,k}}
+
+the update of kappa then follows point 2.
+
 
 Model Evaluation
 ----------------
