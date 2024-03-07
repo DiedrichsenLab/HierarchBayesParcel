@@ -482,27 +482,30 @@ Or we can weight each subjects equally (note that this makes noisier subjects le
 .. math::
 	\tilde{\mathbf{v}}_k = \frac{1}{S} \sum_s{\frac{\tilde{\mathbf{y}}_{s,k}}{\tilde{u}_{s,k}}}
 
-4. Finally for :math:`\kappa` estimation we have a number of options: We can estimate a common kappa across classes and subjects (of course ignoring the variability across parcels, but counting the variability across subjects): 
+1. Finally for :math:`\kappa` estimation we have a number of options: The most straightforward to understand is the subjects and parcel-specific kappa: 
 
 .. math::
-	r=\frac{\sum_k^K||\sum_{s}^S\tilde{\mathbf{y}}_{s,k}||}{\sum_k^K\sum_{s}^S\tilde{u}_{s,k}}
-
-for a subjects-specific kappa: 
-
-.. math::
-	r_s=\frac{\sum_k^K||\tilde{\mathbf{y}}_{s,k}||}{\sum_k^K\tilde{u}_{s,k}}
+	r_{s,k}=\frac{||\tilde{\mathbf{y}}_{s,k}||}{\tilde{u}_{s,k}}. 
 
 and for parcel-specific :math:`\kappa` :
 
 .. math::
 	r_k=\frac{||\sum_{s}^S\tilde{\mathbf{y}}_{s,k}||}{\sum_{s}^S\tilde{u}_{s,k}}
 
-and subjects and parcel-specific kappa: 
+for a subjects-specific kappa: 
 
 .. math::
-	r_{s,k}=\frac{||\tilde{\mathbf{y}}_{s,k}||}{\tilde{u}_{s,k}}
+	r_s=\frac{\sum_k^K||\tilde{\mathbf{y}}_{s,k}||}{\sum_k^K\tilde{u}_{s,k}}
 
-the update of kappa then follows point 2.
+and for the overall kappa: 
+
+.. math::
+	r=\frac{\sum_k^K||\sum_{s}^S\tilde{\mathbf{y}}_{s,k}||}{\sum_k^K\sum_{s}^S\tilde{u}_{s,k}}
+
+Note that the different regions / subjects are not weighted equally, but in proportion to the number of voxels assigned to each parcel.
+
+
+The update of kappa then follows point 2.
 
 
 Model Evaluation

@@ -500,38 +500,32 @@ class MixVMF(EmissionModel):
         
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i # (num_sub, N, K)
         YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)) 
-
-        # If the subjects are weighted differently
-        r_norm2 = pt.sum(YU ** 2, dim=1, keepdim=True) # (num_sub, 1, K)
-        r_norm2[r_norm2 == 0] = pt.nan # Avoid division by zero
         
-        # 1. Updating the V_k, which is || sum_i(Uhat(k)*Y_i) / sum_i(Uhat(k)) ||
+        # 1. Updating the V_k 
         if 'V' in self.param_list:
             if self.subjects_equal_weight:
-                self.V = YU / pt.sqrt(r_norm2)
-                self.V = pt.nanmean(self.V,dim=0)
-                self.V = self.V / pt.sqrt(pt.sum(self.V ** 2, dim=0))
+                self.V=pt.nanmean(YU / JU.unsqueeze(1),dim=0)
             else:
-                YU_tot = pt.sum(YU, dim=0)
-                r_norm2_tot = pt.sum(YU_tot**2, dim=0)
-                r_norm2_tot[r_norm2_tot == 0] = pt.nan # Avoid division by zero
-                self.V = YU_tot / pt.sqrt(r_norm2_tot)
+                self.V = pt.sum(YU,dim=0) / JU.sum(dim=0, keepdim=True)
+            v_norm = pt.sqrt(pt.sum(self.V**2, dim=0))
+            v_norm[v_norm == 0] = pt.nan # Avoid division by zero
+            self.V = self.V / v_norm
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
         # where r_bar = ||V_k||/N*Uhat
         if 'kappa' in self.param_list:
+            if not self.subject_specific_kappa and not self.parcel_specific_kappa:
+                yu = pt.sum(YU,dim=0)
+                r_bar =pt.sum(pt.sqrt(pt.sum(yu**2, dim=0)))/ pt.sum(JU)
             if self.parcel_specific_kappa and not self.subject_specific_kappa:
-                if self.subjects_equal_weight:
-                    raise(ValueError('Parcel specific kappa is not implemented for subjects_equal_weight'))
-                r_bar = pt.sqrt(r_norm2_tot) / pt.sum(JU, dim=[0,2])
-                r_bar[r_bar > 0.95] = 0.95
+                yu = pt.sum(YU,dim=0)
+                r_bar=pt.sqrt(pt.sum(yu**2, dim=0))/ pt.sum(JU,dim=0)
+                r_bar[r_bar > 0.98] = 0.98
                 r_bar[r_bar < 0.05] = 0.05
             elif self.subject_specific_kappa and not self.parcel_specific_kappa:
-                r_bar = pt.sqrt(r_norm2).sum(dim=[1,2]) / pt.sum(JU, dim=[1,2])
-            elif not self.subject_specific_kappa and not self.parcel_specific_kappa:
-                r_bar = pt.sqrt(r_norm2).sum() / self.num_part.sum()
+                r_bar = pt.sum(pt.sqrt(pt.sum(YU**2, dim=1)),dim=1)/pt.sum(JU,dim=1)
             else:
-                raise ValueError('Subject & Regions specific kappa is not implemented yet')    
+                r_bar=pt.sqrt(pt.sum(YU**2, dim=1))/ JU
         self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U, signal=None):
@@ -578,6 +572,11 @@ class MixVMF(EmissionModel):
                                              self.kappa[s].cpu().numpy(),
                                              int(counts[i] * num_parts)),
                                   dtype=pt.get_default_dtype())
+                elif self.subject_specific_kappa & self.parcel_specific_kappa:
+                    y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
+                                             self.kappa[s,this_par].cpu().numpy(),
+                                             int(counts[i] * num_parts)),
+                                  dtype=pt.get_default_dtype())
                 else: 
                     y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
                                              self.kappa.cpu().numpy(),
@@ -591,8 +590,6 @@ class MixVMF(EmissionModel):
                 Y[s, :, voxel_ind] = y_full
 
         return Y
-
-
 
 
 ####################################################################
