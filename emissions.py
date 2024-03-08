@@ -520,13 +520,12 @@ class MixVMF(EmissionModel):
             elif self.parcel_specific_kappa and (not self.subject_specific_kappa):
                 yu = pt.sum(YU,dim=0)
                 r_bar=pt.sqrt(pt.sum(yu**2, dim=0))/ pt.sum(JU,dim=0)
-                r_bar[r_bar > 0.98] = 0.98
-                r_bar[r_bar < 0.05] = 0.05
             elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
                 r_bar = pt.sum(pt.sqrt(pt.sum(YU**2, dim=1)),dim=1)/pt.sum(JU,dim=1)
             else:
                 r_bar=pt.sqrt(pt.sum(YU**2, dim=1))/ JU
-        self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
+            r_bar[r_bar > 0.99] = 0.99
+            self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
     def sample(self, U, signal=None):
         """ Draw data sample from this model and given parameters
