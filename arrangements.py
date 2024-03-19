@@ -1820,7 +1820,7 @@ def expand_mn_1d(U, K):
          [default float]
     """
     if type(U) is np.ndarray:
-        U = pt.tensor(U, dtype=pt.int)
+        U = pt.tensor(U, dtype=pt.long)
         
     P = U.shape[0]
     U_return = pt.zeros(K, P)
