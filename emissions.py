@@ -439,10 +439,12 @@ class MixVMF(EmissionModel):
         # model recovery difficult. Also, a small kappa cannot reflect to the real data
         # as the real parcels are likely to have concentrated within-parcel data.
 
-        if self.parcel_specific_kappa:
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K, ))
-        elif self.subject_specific_kappa:
+        if self.parcel_specific_kappa and (not self.subject_specific_kappa):
+            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K,))
+        elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
             self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.num_subj,))
+        elif self.parcel_specific_kappa and self.subject_specific_kappa:
+            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.num_subj, self.K))
         else:
             self.kappa = pt.distributions.uniform.Uniform(10, 150).sample()
 
@@ -472,10 +474,15 @@ class MixVMF(EmissionModel):
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
-        if self.parcel_specific_kappa:
-            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
-        elif self.subject_specific_kappa:
-            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1).unsqueeze(2) * YV
+        if self.parcel_specific_kappa and (not self.subject_specific_kappa):
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part 
+            + self.kappa.unsqueeze(1) * YV
+        elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
+            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part 
+            + self.kappa.unsqueeze(1).unsqueeze(2) * YV
+        elif self.subject_specific_kappa and self.parcel_specific_kappa:
+            LL = logCnK.unsqueeze(2) * self.num_part 
+            + self.kappa.unsqueeze(2) * YV
         else:
             LL = logCnK * self.num_part + self.kappa * YV
 
