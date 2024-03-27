@@ -106,13 +106,14 @@ class MixVMF2(em.MixVMF):
                 v = pt.sum(YU, dim=0) / pt.sum(JU,dim=0)
                 r_bar =pt.mean(pt.sum(v*self.V, dim=0))
             elif self.parcel_specific_kappa and (not self.subject_specific_kappa):
-                yu = pt.sum(YU,dim=0)
-                r_bar=pt.sqrt(pt.sum(yu**2, dim=0))/ pt.sum(JU,dim=0)
+                v = pt.sum(YU,dim=0) / pt.sum(JU,dim=0)
+                r_bar= pt.sum(v*self.V, dim=0)
             elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
                 v = YU/JU.unsqueeze(1)
                 r_bar = pt.mean(pt.sum(v*self.V,dim=1),dim=1)
             else:
-                r_bar=pt.sqrt(pt.sum(YU**2, dim=1))/ JU
+                v = YU/JU.unsqueeze(1)
+                r_bar=pt.sum(v*self.V, dim=1)
             r_bar[r_bar > 0.99] = 0.99
             self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
@@ -153,6 +154,8 @@ def fit_emissions(emissions,Y,U,true_kappa=None):
     for i,em in enumerate(emissions):
         em.initialize(Y)
         em.Mstep(U)
+        if em.parcel_specific_kappa:
+            em.kappa = pt.mean(em.kappa)
         D.append(pd.DataFrame({'model':[i]*n_subj,
                           'true_kappa':true_kappa,
                           'subj':np.arange(n_subj),
@@ -187,7 +190,7 @@ def sim_voxel_dependence(P = 5,
     kappa = np.array([kappa]*num_subj)
     D=[]
     for n in range(num_sim):
-        Y,em_true,U,part_vec,X = make_dataset(K =1, P=P,kappa=kappa,num_part=num_part)
+        Y,em_true,U,part_vec,X = make_dataset(K =1, P=P,kappa=kappa,num_part=num_part,num_subj=num_subj)
         Y = pt.tile(Y,(1,1,P_factor))
         U = pt.tile(U,(1,1,P_factor))
         em1 = MixVMF1(K=K,P=P*P_factor,part_vec=part_vec,X=X,num_subj=num_subj)
@@ -198,17 +201,17 @@ def sim_voxel_dependence(P = 5,
     D = pd.concat(D)
     return D
 
-def sim_subject_differences():
+def sim_subject_differences(P = 100,
+                        K = 1,
+                        num_sim=5,
+                        num_subj=8,
+                        kappa = 5):
     """ Checks if the M-step is working correctly for basic data"""
-    P = 100
-    K = 1
-    num_sim=5
-    num_subj=8
-    kappa = np.array([5]*num_subj)
+    kappa = np.array([kappa]*num_subj)
     D=[]
     for sig_s in [0,0.3]:
         for n in range(num_sim):
-            Y,em_true,U,part_vec,X = make_dataset(K =1, P=P,kappa=kappa,sig_subj=sig_s)
+            Y,em_true,U,part_vec,X = make_dataset(K =K, P=P,kappa=kappa,sig_subj=sig_s,num_subj=num_subj)
             em1 = MixVMF1(K=K,P=P,part_vec=part_vec,X=X,num_subj=num_subj)
             em2 = MixVMF1(K=K,P=P,part_vec=part_vec,X=X,subject_specific_kappa=True,num_subj=num_subj)
             em3 = MixVMF2(K=K,P=P,part_vec=part_vec,X=X,num_subj=num_subj)
@@ -219,9 +222,35 @@ def sim_subject_differences():
     D = pd.concat(D)
     return D
 
+def sim_subject_differences2(P = 100,
+                        K = 4,
+                        num_sim=5,
+                        num_subj=8,
+                        kappa = 5):
+    """ Checks if the M-step is working correctly for basic data"""
+    kappa = np.array([kappa]*num_subj)
+    D=[]
+    for sig_s in [0,0.3]:
+        for n in range(num_sim):
+            Y,em_true,U,part_vec,X = make_dataset(K=K, P=P,kappa=kappa,sig_subj=sig_s,num_subj=num_subj)
+            em1 = MixVMF1(K=K,P=P,part_vec=part_vec,X=X,num_subj=num_subj)
+            em2 = MixVMF1(K=K,P=P,part_vec=part_vec,X=X,subject_specific_kappa=True,num_subj=num_subj)
+            em3 = MixVMF1(K=K,P=P,part_vec=part_vec,X=X,parcel_specific_kappa=True,num_subj=num_subj)
+            em4 = MixVMF1(K=K,P=P,part_vec=part_vec,X=X,subject_specific_kappa=True,parcel_specific_kappa=True,num_subj=num_subj)
+            em5 = MixVMF2(K=K,P=P,part_vec=part_vec,X=X,num_subj=num_subj)
+            em6 = MixVMF2(K=K,P=P,part_vec=part_vec,X=X,subject_specific_kappa=True,num_subj=num_subj)
+            em7 = MixVMF2(K=K,P=P,part_vec=part_vec,X=X,parcel_specific_kappa=True,num_subj=num_subj)
+            em8 = MixVMF2(K=K,P=P,part_vec=part_vec,X=X,subject_specific_kappa=True,parcel_specific_kappa=True,num_subj=num_subj)
+            d=fit_emissions([em1,em2,em3,em4,em5,em6,em7,em8],Y,U,true_kappa=kappa)
+            d['sig_subj'] = [sig_s]*d['subj'].shape[0]
+            D.append(d)
+    D = pd.concat(D)
+    return D
+
+
 if __name__=='__main__':
     # D=sim_subject_differences()
     # sb.barplot(data=D,x='sig_subj',y='kappa',hue='model')
-    D = sim_voxel_dependence()
+    D = sim_subject_differences2(num_subj=8)
     sb.barplot(data=D,x='model',y='kappa')
     pass
