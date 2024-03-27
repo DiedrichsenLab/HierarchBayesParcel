@@ -177,8 +177,26 @@ def sim_basic():
     D = pd.concat(D)
     return D
 
-def sim_voxel_dependence():
-    pass
+def sim_voxel_dependence(P = 5,
+                        P_factor = 20,
+                        K = 1,
+                        num_sim=10,
+                        num_subj=8,
+                        num_part = 2,
+                        kappa= 3):
+    kappa = np.array([kappa]*num_subj)
+    D=[]
+    for n in range(num_sim):
+        Y,em_true,U,part_vec,X = make_dataset(K =1, P=P,kappa=kappa,num_part=num_part)
+        Y = pt.tile(Y,(1,1,P_factor))
+        U = pt.tile(U,(1,1,P_factor))
+        em1 = MixVMF1(K=K,P=P*P_factor,part_vec=part_vec,X=X,num_subj=num_subj)
+        em2 = MixVMF1(K=K,P=P*P_factor,part_vec=part_vec,X=X,subject_specific_kappa=True,num_subj=num_subj)
+        em3 = MixVMF2(K=K,P=P*P_factor,part_vec=part_vec,X=X,num_subj=num_subj)
+        em4 = MixVMF2(K=K,P=P*P_factor,part_vec=part_vec,X=X,subject_specific_kappa=True,num_subj=num_subj)
+        D.append(fit_emissions([em1,em2,em3,em4],Y,U,true_kappa=kappa))
+    D = pd.concat(D)
+    return D
 
 def sim_subject_differences():
     """ Checks if the M-step is working correctly for basic data"""
@@ -202,6 +220,8 @@ def sim_subject_differences():
     return D
 
 if __name__=='__main__':
-    D=sim_subject_differences()
-    sb.barplot(data=D,x='sig_subj',y='kappa',hue='model')
+    # D=sim_subject_differences()
+    # sb.barplot(data=D,x='sig_subj',y='kappa',hue='model')
+    D = sim_voxel_dependence()
+    sb.barplot(data=D,x='model',y='kappa')
     pass
