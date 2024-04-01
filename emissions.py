@@ -475,14 +475,11 @@ class MixVMF(EmissionModel):
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.parcel_specific_kappa and (not self.subject_specific_kappa):
-            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part
-            + self.kappa.unsqueeze(1) * YV
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
         elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
-            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part
-            + self.kappa.unsqueeze(1).unsqueeze(2) * YV
+            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1).unsqueeze(2) * YV
         elif self.subject_specific_kappa and self.parcel_specific_kappa:
-            LL = logCnK.unsqueeze(2) * self.num_part
-            + self.kappa.unsqueeze(2) * YV
+            LL = logCnK.unsqueeze(2) * self.num_part + self.kappa.unsqueeze(2) * YV
         else:
             LL = logCnK * self.num_part + self.kappa * YV
 
