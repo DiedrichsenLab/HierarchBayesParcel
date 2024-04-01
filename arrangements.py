@@ -179,7 +179,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
                 for each node (L/R)
             indx_reduced (ndarray): P_full - vector of node-indices
                 for each data location
-            same_parcels (bool): are the means of parcels the same
+            same_parcels (bool): are the mean functional profiles of parcels the same
                 or different across hemispheres?
             spatial_specific (bool): Use a spatially specific model
                 (default True)
@@ -336,33 +336,31 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
 
     def map_to_full(self, Uhat):
         """ remapping evidence from an
-        arrangement space to a emission space
+        arrangement space to emission space
         Args:
             Uhat (ndarray): tensor of estimated arrangement
         Returns:
-            Uhat (ndarray): tensor of estimated arrangements
+            Umap (ndarray): tensor of estimated arrangements
         """
-        left = self.indx_hem == -1
-        right = self.indx_hem == 1
-        midline = self.indx_hem == 0
+        left = (self.indx_hem == -1).squeeze()
+        right = (self.indx_hem == 1).squeeze()
+        midline = (self.indx_hem == 0).squeeze()
         if Uhat.ndim == 3:
             Umap = pt.zeros((Uhat.shape[0], self.K_full, self.P))
             # left hemisphere
-            Umap[:, :self.K, left.squeeze()] = Uhat[:, :, left.squeeze()]
+            Umap[:, :self.K, left] = Uhat[:, :, left]
             # right hemisphere
-            Umap[:, self.K:, right.squeeze()] = Uhat[:, :, right.squeeze()]
+            Umap[:, self.K:, right] = Uhat[:, :, right]
             # Map midline to both
-            Umap[:, :self.K, midline.squeeze()] = Uhat[:, :,
-                                                       midline.squeeze()] / 2
-            Umap[:, self.K:, midline.squeeze()] = Uhat[:, :,
-                                                       midline.squeeze()] / 2
+            Umap[:, :self.K, midline] = Uhat[:, :,midline] / 2
+            Umap[:, self.K:, midline] = Uhat[:, :,midline] / 2
         elif Uhat.ndim == 2:
             Umap = pt.zeros((self.K_full, self.P))
-            Umap[:self.K, left.squeeze()] = Uhat[:, left.squeeze()]
-            Umap[self.K:, right.squeeze()] = Uhat[:, right.squeeze()]
+            Umap[:self.K, left] = Uhat[:, left]
+            Umap[self.K:, right] = Uhat[:, right]
             # Map midline to both
-            Umap[:self.K, midline.squeeze()] = Uhat[:, midline.squeeze()] / 2
-            Umap[self.K:, midline.squeeze()] = Uhat[:, midline.squeeze()] / 2
+            Umap[:self.K, midline] = Uhat[:, midline] / 2
+            Umap[self.K:, midline] = Uhat[:, midline] / 2
         return Umap
 
     def map_to_arrange(self, emloglik):
