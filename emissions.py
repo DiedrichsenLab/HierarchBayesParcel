@@ -44,7 +44,7 @@ class EmissionModel(Model):
             self.N = N
             self.M = N
             self.X = pt.eye(self.N)
-        if num_subj is not None:    
+        if num_subj is not None:
             self.num_subj = num_subj
         self.tmp_list=['Y']
 
@@ -299,7 +299,7 @@ class MixGaussian(EmissionModel):
 class MixVMF(EmissionModel):
     """ Mixture of von Mises-Fisher distribution emission model
     """
-    def __init__(self, K=4, N=10, P=20, 
+    def __init__(self, K=4, N=10, P=20,
                 num_subj=None,
                 X=None,
                 part_vec=None,
@@ -314,7 +314,7 @@ class MixVMF(EmissionModel):
             K (int): the number of clusters
             N (int): the number of observations
             P (int): the number of voxels
-            num_subj (int): number of subjects 
+            num_subj (int): number of subjects
             X (ndarray or tensor): N x M design matrix for task conditions
             part_vec (ndarray or tensor): M-Vector indicating the number of the
                       data partition (repetition).
@@ -475,13 +475,13 @@ class MixVMF(EmissionModel):
                  log_bessel_function(self.M/2 - 1, self.kappa)
 
         if self.parcel_specific_kappa and (not self.subject_specific_kappa):
-            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part 
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part
             + self.kappa.unsqueeze(1) * YV
         elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
-            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part 
+            LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part
             + self.kappa.unsqueeze(1).unsqueeze(2) * YV
         elif self.subject_specific_kappa and self.parcel_specific_kappa:
-            LL = logCnK.unsqueeze(2) * self.num_part 
+            LL = logCnK.unsqueeze(2) * self.num_part
             + self.kappa.unsqueeze(2) * YV
         else:
             LL = logCnK * self.num_part + self.kappa * YV
@@ -502,13 +502,13 @@ class MixVMF(EmissionModel):
         if type(U_hat) is np.ndarray:
             U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
-        # JU is the number of observations (voxels x num_part) in each subject 
+        # JU is the number of observations (voxels x num_part) in each subject
         JU = pt.sum(self.num_part * U_hat,dim=2)   # (num_sub, K)
-        
+
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i # (num_sub, N, K)
-        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2)) 
-        
-        # 1. Updating the V_k 
+        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
+
+        # 1. Updating the V_k
         if 'V' in self.param_list:
             if self.subjects_equal_weight:
                 self.V=pt.nanmean(YU / JU.unsqueeze(1),dim=0)
@@ -519,18 +519,20 @@ class MixVMF(EmissionModel):
             self.V = self.V / v_norm
 
         # 2. Updating kappa, kappa_k = (r_bar*N - r_bar^3)/(1-r_bar^2),
-        # where r_bar = ||V_k||/N*Uhat
+        # where r_bar = y_bar/T * V
         if 'kappa' in self.param_list:
             if (not self.subject_specific_kappa) and (not self.parcel_specific_kappa):
-                yu = pt.sum(YU,dim=0)
-                r_bar =pt.sum(pt.sqrt(pt.sum(yu**2, dim=0)))/ pt.sum(JU)
+                v = pt.sum(YU, dim=0) / pt.sum(JU,dim=0)
+                r_bar =pt.mean(pt.sum(v*self.V, dim=0))
             elif self.parcel_specific_kappa and (not self.subject_specific_kappa):
-                yu = pt.sum(YU,dim=0)
-                r_bar=pt.sqrt(pt.sum(yu**2, dim=0))/ pt.sum(JU,dim=0)
+                v = pt.sum(YU,dim=0) / pt.sum(JU,dim=0)
+                r_bar= pt.sum(v*self.V, dim=0)
             elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
-                r_bar = pt.sum(pt.sqrt(pt.sum(YU**2, dim=1)),dim=1)/pt.sum(JU,dim=1)
+                v = YU/JU.unsqueeze(1)
+                r_bar = pt.mean(pt.sum(v*self.V,dim=1),dim=1)
             else:
-                r_bar=pt.sqrt(pt.sum(YU**2, dim=1))/ JU
+                v = YU/JU.unsqueeze(1)
+                r_bar=pt.sum(v*self.V, dim=1)
             r_bar[r_bar > 0.99] = 0.99
             self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
@@ -583,7 +585,7 @@ class MixVMF(EmissionModel):
                                              self.kappa[s,this_par].cpu().numpy(),
                                              int(counts[i] * num_parts)),
                                   dtype=pt.get_default_dtype())
-                else: 
+                else:
                     y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
                                              self.kappa.cpu().numpy(),
                                              int(counts[i] * num_parts)),
