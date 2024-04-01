@@ -436,19 +436,22 @@ class FullMultiModel:
                 for em in fm.emissions:
                     em.random_params()
 
-            fm, this_ll, theta, _ = fm.fit_em(first_iter, tol=tol, seperate_ll=False,
-                                           fit_emission=fit_emission,
-                                           fit_arrangement=fit_arrangement,
-                                           first_evidence=first_ev)
+            fm, this_ll, theta, _ = self.fit_em(first_iter, tol=tol,
+                                                seperate_ll=False,
+                                                fit_emission=fit_emission,
+                                                fit_arrangement=fit_arrangement,
+                                                first_evidence=first_ev)
             first_lls[i,:len(this_ll)]=this_ll
             if this_ll[-1] > max_ll[-1]:
                 max_ll = this_ll
                 self = fm
                 best_theta = theta
-        self, ll, theta, U_hat = self.fit_em(iter=iter-first_iter, tol=tol, seperate_ll=False,
-                                           fit_emission=fit_emission,
-                                           fit_arrangement=fit_arrangement,
-                                           first_evidence=True)
+
+        self, ll, theta, U_hat = self.fit_em(iter=iter-first_iter, tol=tol,
+                                             seperate_ll=False,
+                                             fit_emission=fit_emission,
+                                             fit_arrangement=fit_arrangement,
+                                             first_evidence=True)
         ll_n = pt.cat([max_ll,ll[1:]])
         theta_n = pt.cat([best_theta,theta[1:, :]])
         return self, ll_n, theta_n, U_hat, first_lls

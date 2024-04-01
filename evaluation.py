@@ -47,6 +47,52 @@ def nmi(U,Uhat):
     return 1-metrics.normalized_mutual_info_score(U, Uhat)
 
 
+def dice_coefficient(labels1, labels2):
+    """Compute the Dice coefficient between tow parcellations
+    Args:
+        labels1 (pt.Tensor): a 1d tensor of parcellation 1
+        labels2 (pt.Tensor): a 1d tensor of parcellation 2
+    Returns:
+        the Dice coefficient between the two parcellations
+    """
+    if len(labels1) != len(labels2):
+        raise ValueError("Length of input arrays must be the same.")
+
+    L_1, L_2 = pt.unique(labels1), pt.unique(labels2)
+    dice_matrix = pt.zeros((len(L_1), len(L_2)))
+
+    # 1. Calculate the Dice coefficient matrix
+    for i, label1 in enumerate(L_1):
+        for j, label2 in enumerate(L_2):
+            intersection = ((labels1 == label1) & (labels2 == label2)).sum().item()
+            union = (labels1 == label1).sum().item() + (labels2 == label2).sum().item()
+            dice = 2.0 * intersection / union if union != 0 else 0
+            dice_matrix[i, j] = dice
+
+    # 2. Initialize
+    matching_pairs, dice_coef = [], []
+    max_dice = 0
+
+    # Iterate until all labels from labels1 are matched
+    while not (dice_matrix == -1).all():
+        # find the best matching pair
+        best_pair = (dice_matrix == pt.max(dice_matrix)).nonzero()[0]
+        row, col = best_pair
+        max_dice = dice_matrix[row, col].clone()
+
+        # record matching pair and its dice value
+        matching_pairs.append(best_pair)
+        dice_coef.append(max_dice)
+
+        # Delete the row/col of the matching labels
+        dice_matrix[row] = -1
+        dice_matrix[:,col] = -1
+
+    # Calculate the average Dice coefficient
+    res = sum(dice_coef) / len(dice_coef) if dice_coef else 0
+    return res
+
+
 def ARI(U, Uhat, sparse=True):
     """Compute the 1 - (adjusted rand index) between the two parcellations
     Args:
