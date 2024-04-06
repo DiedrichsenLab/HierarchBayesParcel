@@ -306,6 +306,7 @@ class MixVMF(EmissionModel):
                 params=None,
                 uniform_kappa=None,
                 parcel_specific_kappa=False,
+                domain_specific_kappa=False,
                 subject_specific_kappa=False,
                 subjects_equal_weight=False
                 ):
@@ -342,7 +343,8 @@ class MixVMF(EmissionModel):
 
         self.parcel_specific_kappa = parcel_specific_kappa
         self.subject_specific_kappa = subject_specific_kappa
-
+        self.domain_specific_kappa = domain_specific_kappa
+        
         if part_vec is not None:
             if isinstance(part_vec,(np.ndarray,pt.Tensor)):
                 self.part_vec = pt.tensor(part_vec, dtype=pt.int)
@@ -480,6 +482,8 @@ class MixVMF(EmissionModel):
             LL = logCnK.unsqueeze(1).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1).unsqueeze(2) * YV
         elif self.subject_specific_kappa and self.parcel_specific_kappa:
             LL = logCnK.unsqueeze(2) * self.num_part + self.kappa.unsqueeze(2) * YV
+        elif self.domain_specific_kappa and (not self.subject_specific_kappa):
+            LL = logCnK.unsqueeze(0).unsqueeze(2) * self.num_part + self.kappa.unsqueeze(1) * YV
         else:
             LL = logCnK * self.num_part + self.kappa * YV
 
