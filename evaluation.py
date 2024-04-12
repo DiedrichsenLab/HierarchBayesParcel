@@ -354,11 +354,6 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
     # Compute the correlation matrix
     r = pt.corrcoef(Y.T)
     r.fill_diagonal_(pt.nan)
-    # cov = pt.matmul(Y.T, Y) / (P - 1)
-    # sd = pt.sqrt(pt.sum(Y ** 2, dim=0, keepdim=True) / (P - 1))
-    # var = pt.matmul(sd.T, sd)
-    # r = cov / var
-    # del cov, sd, var
 
     if z_transfer:
         r = 0.5 * pt.log((1 + r) / (1 - r))
@@ -391,7 +386,7 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         assert pt.all(N >= 0)
 
     if single_return:
-        return g_homogeneity.nanmean()
+        return global_homo.nanmean()
     else:
         return global_homo, N
     

@@ -530,6 +530,7 @@ class MixVMF(EmissionModel):
             else:
                 v = YU/JU.unsqueeze(1)
                 r_bar=pt.sum(v*self.V, dim=1)
+            r_bar[r_bar < 0.01] = 0.01
             r_bar[r_bar > 0.99] = 0.99
             self.kappa = (r_bar * self.M - r_bar**3) / (1 - r_bar**2)
 
