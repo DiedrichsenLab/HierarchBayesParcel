@@ -19,8 +19,9 @@ def pt_nanstd(tensor, dim=None):
        specified dimension.
     
     Args:
-        tensor (torch.Tensor): the given pytorch tensor 
-        dim: the dimension along which to compute the 
+        tensor (torch.Tensor): 
+            the given pytorch tensor 
+        dim (int): the dimension along which to compute the 
             standard deviation. If None, compute the
             standard deviation of the flattened tensor.
 
@@ -38,6 +39,7 @@ def pt_nanstd(tensor, dim=None):
         
 def nmi(U,Uhat):
     """Compute the normalized mutual information score
+
     Args:
         U: The real U's
         Uhat: The estimated U's from fitted model
@@ -49,6 +51,7 @@ def nmi(U,Uhat):
 
 def dice_coefficient(labels1, labels2):
     """Compute the Dice coefficient between tow parcellations
+    
     Args:
         labels1 (pt.Tensor): a 1d tensor of parcellation 1
         labels2 (pt.Tensor): a 1d tensor of parcellation 2
@@ -95,6 +98,7 @@ def dice_coefficient(labels1, labels2):
 
 def ARI(U, Uhat, sparse=True):
     """Compute the 1 - (adjusted rand index) between the two parcellations
+
     Args:
         U: The true U's
         Uhat: The estimated U's from fitted model
@@ -126,6 +130,7 @@ def ARI(U, Uhat, sparse=True):
 
 def BIC(loglik, N, d):
     """Bayesian Information Criterion
+
     Args:
         loglik: the log-likelihood of the model
         N: the number of examples in the training dataset
@@ -171,6 +176,7 @@ def KL_divergence(p, q):
        p and q. p and q are assumed to be have the same shape (nsub, K, P),
        or multiply broadcastable shapes. For example, (nsub, K, P) and (K, P)
        are valid shapes.
+
     Args:
         p (ndarray or tensor): the true probability distribution.
             typically it has a shape of (sub, K, P), where the dimension K
@@ -180,7 +186,7 @@ def KL_divergence(p, q):
             reprensents the multinomial distribution, which must sum to 1
 
     Returns:
-
+        KL_div (float): The KL divergence between p and q.
     """
     if type(p) is np.ndarray:
         p = pt.tensor(p, dtype=pt.get_default_dtype())
@@ -193,6 +199,7 @@ def KL_divergence(p, q):
 
 def u_abserr(U,uhat):
     """Absolute error on U
+
     Args:
         U (tensor): Real U's
         uhat (tensor): Estimated U's from arrangement model
@@ -202,6 +209,7 @@ def u_abserr(U,uhat):
 
 def u_prederr(U, uhat, expectation=True):
     """Prediction error on U
+
     Args:
         U: The true U (tensor like)
         uhat: The predicted U's from emission model
@@ -209,7 +217,7 @@ def u_prederr(U, uhat, expectation=True):
                      calculate the hard assignment error between true
                      and the inference Uhat
     Returns:
-        the averaged prediction error
+        urpred: the averaged prediction error
     """
     U_true = pt.zeros(uhat.shape)
     U_true = U_true.scatter_(1, U.unsqueeze(1), 1)
@@ -222,6 +230,7 @@ def u_prederr(U, uhat, expectation=True):
 
 def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """Compute the cosine distance between the data to the predicted V's
+
     Args:
         Y: the test data, with a shape (num_sub, N, P)
         V: the predicted mean directions
@@ -599,6 +608,7 @@ def evaluate_U(U_true, U_predict, crit='u_prederr'):
         criterion. This data set can be the training dataset (includes
         U and signal if applied), or a new dataset
         given criterion
+
     Args:
         U_predict: the predicted arrangement
         U_true: the reference (true) arrangement
@@ -688,6 +698,7 @@ def matching_greedy(Y_target, Y_source):
     """ Matches the rows of two Y_source matrix to Y_target
     Using row-wise correlation and matching the highest pairs
     consecutively
+
     Args:
         Y_target: Matrix to align to
         Y_source: Matrix that is being aligned
@@ -721,6 +732,7 @@ def calc_consistency(params,dim_rem = None):
     to a problem (after alignment of the rows/columns)
     Computes cosine similarities across the entire matrix of
     params
+
     Args:
         params (pt.tensor): n_sol x N x P array of data
         dim_rem (int): Dimension along which to remove the mean
@@ -815,6 +827,7 @@ def align_models(models, in_place=True):
     """Aligns the marginal probabilities across different models
     if in_place = True, it changes arrangement and emission models
     ... Note that the models will be changed!
+
     Args:
         models (list): List of full models
         in_place (bool): Changes the models in place 

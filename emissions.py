@@ -601,30 +601,6 @@ class MixVMF(EmissionModel):
 ####################################################################
 ## Belows are the helper functions for the emission models        ##
 ####################################################################
-def loglik2prob(loglik, dim=0):
-    """Safe transformation and normalization of
-    logliklihood
-
-    Args:
-        loglik (ndarray): Log likelihood (not normalized)
-        axis (int): Number of axis (or axes), along which the probability is being standardized
-    Returns:
-        prob (ndarray): Probability
-    """
-    if dim==0:
-        ml, _ = pt.max(loglik, dim=0)
-        loglik = loglik - ml + 10
-        prob = np.exp(loglik)
-        prob = prob / pt.sum(prob, dim=0)
-    else:
-        a = pt.tensor(loglik.shape)
-        a[dim] = 1  # Insert singleton dimension
-        ml, _ = pt.max(loglik, dim=0)
-        loglik = loglik - ml.reshape(a) + 10
-        prob = pt.exp(loglik)
-        prob = prob/pt.sum(prob, dim=1).reshape(a)
-    return prob
-
 
 def bessel_function(self, order, kappa):
     """ The modified bessel function of the first kind of real order
@@ -783,7 +759,6 @@ def build_emission_model(K, atlas, emission, x_matrix, part_vec, V=None,
             throughout the modeling learning.
         em_params (dictionary): Parameters passed to the emission model
             constructor
-
 
     Returns:
         em_model (object): the emission model object

@@ -72,9 +72,12 @@ class FullMultiModel:
     """
     def __init__(self, arrange, emission):
         """Constructor
+
         Args:
-            arrange: the arrangement model
-            emission: the list of emission models
+            arrange (ArrangementModel): 
+                the arrangement model
+            emission (list): 
+                the list of emission models
         """
         self.arrange = arrange
         self.emissions = emission
@@ -89,8 +92,10 @@ class FullMultiModel:
         If set to None, the old existing will be used.
 
         Args:
-            Y (list): List of (numsubj x N x numvoxel) arrays of data
-            subj_ind (list): List of unique subject indicators OR
+            Y (list): 
+                List of (numsubj x N x numvoxel) arrays of data
+            subj_ind (list): 
+                List of unique subject indicators OR
                 'separate': sets seperate subjs for each data set OR
                 None: Don't change anything
         """
@@ -137,24 +142,17 @@ class FullMultiModel:
 
     def random_params(self, init_arrangement=True,
                       init_emission=True):
+        """Sets all arrangement and emission model parameters to random values
+
+        Args:
+            init_arrangement (bool): Defaults to True.
+            init_emission (bool): Defaults to True.
+        """
         if init_arrangement:
             self.arrange.random_params()
         if init_emission:
             for em in self.emissions:
                 em.random_params()
-
-    def remap_evidence(self,Uhat):
-        """Placeholder function of remapping evidence from an
-        arrangement space to a emission space
-        WARNING: To be removed in future version
-
-        Args:
-            Uhat (ndarray): tensor of estimated arrangement
-        Returns:
-            Uhat (ndarray): tensor of estimated arrangements
-        """
-        warnings.DeprecationWarning('remap evidence is deprecated. Use arrangement model instead')
-        return Uhat
 
     def collect_evidence(self,emloglik):
         """Collects evidence over the different data sets
@@ -199,10 +197,11 @@ class FullMultiModel:
 
     def set_num_subj(self,num_subj=None):
         """Sets the number of subjects for simulations
+
         Args:
-            num_subj: list of subjects number. i.e [2, 3, 4] for
-                            Separate subejcts per dataset OR
-                      list of subject indices [[0,1,2],[0,1,2],[2,3,4]]
+            num_subj (list): 
+                list of subjects number. i.e [2, 3, 4] for each dataset OR
+                list of subject indices [[0,1,2],[0,1,2],[2,3,4]] for overlapping subjects
         """
         # Default - assign 10 subjects per dataset
         if num_subj is None:
@@ -223,9 +222,11 @@ class FullMultiModel:
 
     def sample(self, num_subj=None, U=None):
         """Take in the number of subjects to sample for each emission model
+
         Args:
-            num_subj: list of subjects number. i.e [2, 3, 4] Or
-                      list of subject indices [[0,1,2],[0,1,2],[2,3,4]]
+            num_subj (list):
+                list of subjects number. i.e [2, 3, 4] Or
+                list of subject indices [[0,1,2],[0,1,2],[2,3,4]]
         Returns:
             U: the true Us of all subjects concatenated vertically,
                shape(num_subs, P)
@@ -642,15 +643,11 @@ class FullMultiModel:
     def move_to(self, device='cpu'):
         """Recursively move all torch.Tensor object in fullModel
            class to the targe device
-       Args:
-        M: a FullMultiModel or FullMultiModelSymmetric
-           object
-        device: the target device to store the tensor
-                default - 'cpu'
-        Returns:
-            None
-        Notes:
-
+        
+        Args:
+            M (FullMultiModel): Full model 
+            device (str or pt.device): 
+                the target device to store the tensors default - 'cpu'
        """
         for attr, value in self.__dict__.items():
             if isinstance(value, pt.Tensor):

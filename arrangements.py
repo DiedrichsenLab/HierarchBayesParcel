@@ -28,6 +28,7 @@ class ArrangementModel(Model):
     
     def map_to_full(self,Uhat):
         """ Placeholder
+
         Args:
             Uhat (ndarray): tensor of estimated arrangement
 
@@ -37,8 +38,7 @@ class ArrangementModel(Model):
         return Uhat
 
     def map_to_arrange(self, emloglik):
-        """ Maps emission log likelihoods to the internal size of the
-            representation: Empty
+        """ Maps emission log likelihoods to the internal size of the representation: Empty
 
         Args:
             emloglik (list): List of emission logliklihoods
@@ -51,6 +51,7 @@ class ArrangementModel(Model):
 class ArrangeIndependent(ArrangementModel):
     """ Independent arrangement model
     """
+
     def __init__(self, K=3, P=100, spatial_specific=True,
                  remove_redundancy=False):
         """Constructor for the independent arrangement model
@@ -128,9 +129,9 @@ class ArrangeIndependent(ArrangementModel):
 
     def sample(self, num_subj=10):
         """ Samples a number of subjects from the prior.
-            In this i.i.d arrangement model we assume each node has
-            no relation with other nodes, which means it equals to
-            sample from the prior pi.
+        In this i.i.d arrangement model we assume each node has
+        no relation with other nodes, which means it equals to
+        sample from the prior pi.
 
         Args:
             num_subj (int): the number of subjects to sample
@@ -207,7 +208,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
 
     def map_to_full(self,Uhat):
         """ Remapping evidence from an arrangement space to a
-            emission space (here it doesn't do anything)
+        emission space (here it doesn't do anything)
 
         Args:
             Uhat (ndarray): tensor of estimated arrangement
@@ -233,7 +234,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
 
     def map_to_arrange(self, emloglik):
         """ Maps emission log likelihoods to the internal size of the
-            representation
+        representation
 
         Args:
             emloglik (list): List of emission logliklihoods
@@ -272,9 +273,9 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
 
     def sample(self, num_subj=10):
         """ Samples a number of subjects from the prior.
-            In this i.i.d arrangement model we assume each node has
-            no relation with other nodes, which means it equals to
-            sample from the prior pi.
+        In this i.i.d arrangement model we assume each node has
+        no relation with other nodes, which means it equals to
+        sample from the prior pi.
 
         Args:
             num_subj (int): the number of subjects to sample
@@ -287,7 +288,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         return U
 
     def marginal_prob(self):
-        """ Returns marginal probabilty for every node under the model
+        """ Returns marginal probability for every node under the model
 
         Returns:
             pi (pt.tensor): marginal probability under the model
@@ -337,6 +338,7 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
     def map_to_full(self, Uhat):
         """ remapping evidence from an
         arrangement space to emission space
+
         Args:
             Uhat (ndarray): tensor of estimated arrangement
         Returns:
@@ -449,7 +451,7 @@ class PottsModel(ArrangementModel):
 
     def loglike(self,U):
         """ Returns the energy term of the network up to a constant
-            the loglikelihood of the state
+        the loglikelihood of the state
 
         Args:
             U (ndarray): 2d array (NxP) of network states
@@ -499,7 +501,7 @@ class PottsModel(ArrangementModel):
     def sample_gibbs(self, U0=None, num_chains=None, bias=None,
                      iter=5, return_hist=False, track=None):
         """ Samples a number of gibbs-chains simulatenously
-            using the same bias term
+        using the same bias term
 
         Args:
             U0 (nd-array): Initial starting point (num_chains x P).
@@ -576,7 +578,7 @@ class PottsModel(ArrangementModel):
 
     def Estep(self, emloglik):
         """ Positive phase of getting p(U|Y) for the spatial arrangement model
-            Gets the expectations.
+        Gets the expectations.
 
         Args:
             emloglik (pt.tensor):
@@ -634,8 +636,8 @@ class PottsModel(ArrangementModel):
 
     def eneg_sample(self, num_chains=None, iter=5):
         """ Negative phase of the learning: uses persistent contrastive divergence
-            with sampling from the spatial arrangement model (not clampled to data)
-            Uses persistence across negative smapling steps
+        with sampling from the spatial arrangement model (not clampled to data)
+        Uses persistence across negative smapling steps
 
         Args:
             num_chains (int, optional): Number of chains to use. Defaults to None.
@@ -1722,8 +1724,7 @@ class wcmDBM(mpRBM):
 ## Belows are the helper functions for spatial arrangement models ##
 ####################################################################
 def sample_multinomial_pt(p, num_subj=1, kdim=0, compress=False):
-    """ Samples from a multinomial distribution using pytorch built in
-        multinomial distribution sampler
+    """ Samples from a multinomial distribution using pytorch built in multinomial distribution sampler
 
     Args:
         p (pt.tensor): Tensor of probabilities
@@ -1752,8 +1753,7 @@ def sample_multinomial_pt(p, num_subj=1, kdim=0, compress=False):
         return expand_mn(sample, K)
 
 def sample_multinomial(p,shape=None,kdim=0,compress=False):
-    """ Samples from a multinomial distribution
-        Fast smpling from matrix probability without looping
+    """ Samples from a multinomial distribution. fast smpling from matrix probability without looping
 
     Args:
         p (tensor): Tensor of probilities, which sums to 1
@@ -1787,8 +1787,7 @@ def sample_multinomial(p,shape=None,kdim=0,compress=False):
 
 
 def expand_mn(u,K):
-    """ Expands a N x P multinomial vector
-        to an N x K x P tensor of indictor variables
+    """ Expands a N x P multinomial vector to an N x K x P tensor of indictor variables
 
     Args:
         u (2d-tensor): N x nv matrix of samples from [int]
@@ -1806,8 +1805,7 @@ def expand_mn(u,K):
 
 
 def expand_mn_1d(U, K):
-    """ Expands a P long multinomial vector
-        to an K x P tensor of indictor variables
+    """ Expands a P long multinomial vector to an K x P tensor of indictor variables
 
     Args:
         U (1d-tensor): P vector of samples from [int]
@@ -1828,12 +1826,11 @@ def expand_mn_1d(U, K):
 
 
 def compress_mn(U):
-    """ Compresses a N x K x P tensor of indictor variables
-        to a N x P multinomial tensor
+    """ Compresses a N x K x P tensor of indictor variables to a N x P multinomial tensor
 
     Args:
         U (3d-tensor): N x K x P matrix of indicator variables
-    Returns
+    Returns:
         u (2d-tensor): N x P matrix of category labels [int]
     """
     u = U.argmax(1)
@@ -1842,6 +1839,7 @@ def compress_mn(U):
 def load_batch_fit(fname, device=None):
     """ Loads a batch of fits and extracts marginal probability maps
     and mean vectors
+
     Args:
         fname (str): File name
     Returns:
@@ -1862,8 +1860,7 @@ def load_batch_fit(fname, device=None):
 
 def load_group_parcellation(fname, index=None, marginal=False,
                             device=None):
-    """ Loads a group parcellation prior from a list of
-        pre-trained model
+    """ Loads a group parcellation prior from a list of pre-trained model
 
     Args:
         fname (str): File name of pre-trained model
