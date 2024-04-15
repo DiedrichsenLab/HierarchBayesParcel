@@ -104,7 +104,9 @@ the data likelihood given the individual brain parcellation. The main active emi
 ### Full Model
 `full_model.py` contains the implementation of the `FullMultiModel` class that combines the 
 arrangement and emission models. The class have the learning and inference details 
-for different arrangment and emission models combination. The main active learning methods are:
+for different arrangment and emission models combination. 
+
+The main active learning methods are:
 
 * `fit_em_ninits()`: which runs the EM-algorithm on a full model starting with `n_inits` multiple 
 random initialization values and escape from local maxima by selecting the model with the highest

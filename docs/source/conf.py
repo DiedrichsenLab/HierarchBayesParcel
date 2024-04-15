@@ -27,6 +27,9 @@ release = '1.0.0'
 extensions = ['sphinx.ext.napoleon',
               'sphinx.ext.autodoc',
               'sphinx.ext.autosectionlabel',
+              'sphinx.ext.mathjax',
+              'sphinx.ext.intersphinx',
+              'sphinx.ext.doctest',
               'nbsphinx']
 
 napoleon_custom_sections = [('Returns', 'params_style')]
