@@ -53,10 +53,10 @@ class Model:
                 delattr(self,att)
 
     def move_to(self, device='cpu'):
-        """move all torch.Tensor object in Model class to the targe device
+        """move all torch.Tensor object in Model class to the target device
 
         Args:
-            M (FullMultiModel): object
+            M (Model): Model object
             device (str or pt.device): 
                 the target device to store the tensor default - 'cpu'
         Returns:
