@@ -1,7 +1,8 @@
 .. _full_model:
 
-Full model module
+Full_model module
 =================
 
-.. automodule:: full_model
-   :members:
+.. autoclass:: full_model.FullMultiModel
+    :members:
+
