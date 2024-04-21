@@ -153,7 +153,7 @@ class FullMultiModel:
         Returns:
             Uhat (ndarray): tensor of estimated arrangements
         """
-        warnings.DeprecationWarning('remap evidence is deprecated. Use arrangement model instead')
+        DeprecationWarning('remap evidence is deprecated. Use arrangement model instead')
         return Uhat
 
     def collect_evidence(self,emloglik):
@@ -355,10 +355,9 @@ class FullMultiModel:
                     break
 
             # Updates the parameters
-            Uhat_split = self.distribute_evidence(Uhat)
             if fit_arrangement:
                 self.arrange.Mstep()
-            for em, Us in enumerate(Uhat_split):
+            for em, Us in enumerate(self.distribute_evidence(Uhat)):
                 if fit_emission[em]:
                     self.emissions[em].Mstep(Us)
 

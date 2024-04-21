@@ -47,7 +47,7 @@ def nmi(U,Uhat):
     return 1-metrics.normalized_mutual_info_score(U, Uhat)
 
 
-def dice_coefficient(labels1, labels2):
+def dice_coefficient(labels1, labels2, label_matching=True):
     """Compute the Dice coefficient between tow parcellations
     Args:
         labels1 (pt.Tensor): a 1d tensor of parcellation 1
@@ -69,28 +69,34 @@ def dice_coefficient(labels1, labels2):
             dice = 2.0 * intersection / union if union != 0 else 0
             dice_matrix[i, j] = dice
 
-    # 2. Initialize
-    matching_pairs, dice_coef = [], []
-    max_dice = 0
+    if not label_matching:
+        assert pt.equal(L_1, L_2), "By selecting no label matching for " \
+                                   "dice coefficient, the give parcellations" \
+                                   " must be have exectly the same parcel labels."
+        return pt.diagonal(dice_matrix).mean()
 
-    # Iterate until all labels from labels1 are matched
-    while not (dice_matrix == -1).all():
-        # find the best matching pair
-        best_pair = (dice_matrix == pt.max(dice_matrix)).nonzero()[0]
-        row, col = best_pair
-        max_dice = dice_matrix[row, col].clone()
+    else:
+        # 2. Initialize
+        matching_pairs, dice_coef = [], []
+        max_dice = 0
+        # Iterate until all labels from labels1 are matched
+        while not (dice_matrix == -1).all():
+            # find the best matching pair
+            best_pair = (dice_matrix == pt.max(dice_matrix)).nonzero()[0]
+            row, col = best_pair
+            max_dice = dice_matrix[row, col].clone()
 
-        # record matching pair and its dice value
-        matching_pairs.append(best_pair)
-        dice_coef.append(max_dice)
+            # record matching pair and its dice value
+            matching_pairs.append(best_pair)
+            dice_coef.append(max_dice)
 
-        # Delete the row/col of the matching labels
-        dice_matrix[row] = -1
-        dice_matrix[:,col] = -1
+            # Delete the row/col of the matching labels
+            dice_matrix[row] = -1
+            dice_matrix[:,col] = -1
 
-    # Calculate the average Dice coefficient
-    res = sum(dice_coef) / len(dice_coef) if dice_coef else 0
-    return res
+        # Calculate the average Dice coefficient
+        res = sum(dice_coef) / len(dice_coef) if dice_coef else 0
+        return res
 
 
 def ARI(U, Uhat, sparse=True):

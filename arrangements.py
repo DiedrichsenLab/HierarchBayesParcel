@@ -99,8 +99,8 @@ class ArrangeIndependent(ArrangementModel):
         """
         if type(emloglik) is np.ndarray:
             emloglik = pt.tensor(emloglik, dtype=pt.get_default_dtype())
-        logq = emloglik + self.logpi
-        Uhat = pt.softmax(logq, dim=1)
+
+        Uhat = pt.softmax(emloglik + self.logpi, dim=1)
         if gather_ss:
             self.estep_Uhat = Uhat
         # The log likelihood for arrangement model
