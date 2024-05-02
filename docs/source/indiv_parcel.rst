@@ -21,15 +21,6 @@ Import all dependencies
 	import HierarchBayesParcel.full_model as fm
 	from FusionModel.util import plot_data_flat
 
-CUDA GPU acceleration
----------------------
-
-Our framwork is coded with NVIDIA and Apple M1/M2 chip GPU compatible using PyTorch package. For PyTorch CUDA installation, please refer to :ref:`install`.
-
-.. sourcecode:: python
-
-	pt.set_default_tensor_type(pt.cuda.FloatTensor if pt.cuda.is_available()
-							   else pt.FloatTensor)
 
 Step 1: Define the the space in which to generate the individual parcellations
 ------------------------------------------------------------------------------

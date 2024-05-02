@@ -44,12 +44,18 @@ Full Model
 
 * ``fit_sml()``: which runs a stochastic maximum likelihood algorithm on a full model when the posterior given the data likelihood and arrangment model parameters is intracted. The emission model is still assumed to have E-step and Mstep. The arrangement model is has a postive and negative phase estep, and a gradient M-step to perform the contrastive divergence algorithm.
 
-Usage
------
+Scope and related repositories
+------------------------------
+This repository implements the computational side of the hierarchical Bayesian 
+parcellation framework. In the interest of making this toolbox as modular as possible, we do not provide the 
+tools to extract the individual subject data in a group atlas space or to project the parcellations back into the volume of the surface. 
 
-This repository hosts the computation models and implementatoin of a hierarchical Bayesian parcellation framework to learn probabilistic brain parcellations across a number of different fMRI datasets. We treat this repository as a toolbox for the framework, which can be used to and callable from other projects. It can and should be used along with the [`Functional_fusion <https://github.com/DiedrichsenLab/Functional_Fusion>`_] reporitory to import the preprocessed data as the input to the framework.
+For the illustrative examples, we are using the 
+[Functional_Fusion](https://github.com/DiedrichsenLab/Functional_Fusion)
+repository to import the preprocessed data as the input to the framework.
 
-Please also find [`FusionModel <https://github.com/DiedrichsenLab/FusionModel>`_] repository to find minimum usage example of the framework and to reproduce the results in the paper.
+The analyzes and simulations reported in Zhi et al. (2023), can be replicated using the [FusionModel](https://github.com/DiedrichsenLab/FusionModel) repository. 
+
 
 License
 -------
