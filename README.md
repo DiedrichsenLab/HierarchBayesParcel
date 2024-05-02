@@ -8,7 +8,7 @@ The technical details are described in the following
 
 The code for this framework is openly available. You can use this repository to 
 * Learn new probabilistic brain parcellations across multiple fMRI datasets using other datasets for different brain structures. 
-* Use existing probabistic atlases to obtain individualized brain parcellations for new subects through the optimal integration of individual localizer data and the group atlas. 
+* Use existing probabilistic atlases to obtain individualized brain parcellations for new subjects through the optimal integration of individual localizer data and the group atlas. 
 
 Reference
 ------

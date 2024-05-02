@@ -7,11 +7,19 @@ Dependencies
 The required dependencies to use the software are:
 
 * python >= 3.6,
-* setuptools
 * numpy >= 1.16
 * nibabel >= 2.5
-* pandas >= 0.24
+* nitools >= 1.0.0
+* pandas
 * matplotlib >= 1.5.1
+* torch 
+
+```
+pip install numpy nibabel neuroimagingtools matplotlib pandas torch
+```
+
+To run some of the example scripts, you may also need to clone  
+* [Functional_Fusion repository](https://github.com/DiedrichsenLab/Functional_Fusion) 
 
 Install over pip
 ----------------
@@ -20,8 +28,7 @@ This project is currently not support pip install
 
 Install for developers
 ----------------------
-
-Alternatively you can also fork or clone the repository at https://github.com/DiedrichsenLab/HierarchBayesParcel to a desired location (DIR). Simply include the lines::
+Fork or clone the repository at https://github.com/DiedrichsenLab/HierarchBayesParcel to a desired location (DIR). Simply include the lines::
 
     PYTHONPATH=/DIR/SUITPy:${PYTHONPATH}
     export PYTHONPATH
