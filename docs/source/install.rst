@@ -30,7 +30,7 @@ Install for developers
 ----------------------
 Fork or clone the repository at https://github.com/DiedrichsenLab/HierarchBayesParcel to a desired location (DIR). Simply include the lines::
 
-    PYTHONPATH=/DIR/SUITPy:${PYTHONPATH}
+    PYTHONPATH=/DIR/HierarchBayesParcel:${PYTHONPATH}
     export PYTHONPATH
 
 To your ``.bash.profile`` or other shell startup file.

@@ -40,7 +40,7 @@ Once you clone the functional fusion repository, you need to add it to your PYTH
 import the functionality. Add these lines to your .bash_profile, .bash_rc .zsh_profile file... 
 
 ```
-PYTHONPATH=<your_repo_absolute_path>:${PYTHONPATH}
+PYTHONPATH=<your_repo_absolute_path>/HierarchBayesParcel:${PYTHONPATH}
 export PYTHONPATH
 ```
 
