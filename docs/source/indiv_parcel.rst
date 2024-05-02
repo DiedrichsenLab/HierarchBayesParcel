@@ -1,5 +1,7 @@
-Individual Parcellation Pipeline
-================================
+.. _individual_parcellation:
+
+Individual Parcellation Example
+===============================
 
 This jupyter notebook is to demenstrate a minimal example for generating individual cerebellar parcellations using individual localizing data. Usually, the individual data are collected within a relatively short period (e.g. 10 mins) or higher signal-to-noise ratio. If we generate individual parcellations based on those data directly using some traditional methods, the results are poor and very noisy. However, in the ``HierarchBayesParcel`` framework, the high-quality individual parcellations are generated using a common group prior and individual localizing data. The main idea of this settings is to "fill-in" the knowledge to those uncertain areas with the group prior. This is a unique advantage that Bayesian model can offer.
 

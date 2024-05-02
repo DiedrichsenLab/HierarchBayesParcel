@@ -1,3 +1,5 @@
+.. _training_example:
+
 Model Training Example
 ======================
 
