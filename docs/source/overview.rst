@@ -7,7 +7,23 @@ Overview
 	:alt: fusion_model
 	:align: center
 
-One important barrier in the development of complex models of human brain organization is the lack of a large and comprehensive task-based neuroimaging dataset. Therefore, current atlases of functional brain organization are mainly based on single and homogeneous resting-state datasets. Here, we propose a hierarchical Bayesian framework that can learn a probabilistically defined brain parcellation across numerous task-based and resting-state datasets, exploiting their combined strengths. The framework is partitioned into a spatial arrangement model that defines the probability of a specific individual brain parcellation, and a set of dataset-specific emission models that defines the probability of the observed data given the individual brain organization. We show that the framework optimally combines information from different datasets to achieve a new population-based atlas of the human cerebellum. Furthermore, we demonstrate that, using only 10 min of individual data, the framework is able to generate individual brain parcellations that outperform group atlases.
+The Hierarchical Bayesian Parcellation framework is designed to 
+
+
+ can learn a probabilistically defined brain parcellation across numerous task-based and resting-state datasets, exploiting their combined strengths. The framework is partitioned into a spatial arrangement model that defines the probability of a specific individual brain parcellation, and a set of dataset-specific emission models that defines the probability of the observed data given the individual brain organization. We show that the framework optimally combines information from different datasets to achieve a new population-based atlas of the human cerebellum. Furthermore, we demonstrate that, using only 10 min of individual data, the framework is able to generate individual brain parcellations that outperform group atlases.
+
+
+The hierarchical Bayesian parcellation The code for this framework is openly available. You can use this repository to: 
+
+* Learn new probabilistic brain parcellations across multiple fMRI datasets using other datasets for different brain structures. 
+* Use existing probabilistic atlases to obtain individualized brain parcellations for new subjects through the optimal integration of individual localizer data and the group atlas. 
+
+
+
+
+* Learn new probabilistic brain parcellations across multiple fMRI datasets using other datasets for different brain structures. 
+* Use existing probabilistic atlases to obtain individualized brain parcellations for new subjects through the optimal integration of individual localizer data and the group atlas. 
+
 
 
 Arrangement Model
