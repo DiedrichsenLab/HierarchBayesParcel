@@ -6,16 +6,12 @@ Arrangement models class
 
 Author: dzhi, jdiedrichsen
 """
-import os  # to handle path information
-import sys
 import numpy as np
 import torch as pt
-from torch import exp,log,sqrt
+from torch import exp,log
 from HierarchBayesParcel.model import Model
 import pandas as pd
-import pickle
 import warnings
-
 
 class ArrangementModel(Model):
     """ Abstract arrangement model class
@@ -1835,66 +1831,6 @@ def compress_mn(U):
     """
     u = U.argmax(1)
     return u
-
-def load_batch_fit(fname, device=None):
-    """ Loads a batch of fits and extracts marginal probability maps
-    and mean vectors
-
-    Args:
-        fname (str): File name
-    Returns:
-        info: Data Frame with information
-        models: List of models
-    """
-    wdir = model_dir + '/Models/'
-    info = pd.read_csv(wdir + fname + '.tsv', sep='\t')
-    with open(wdir + fname + '.pickle', 'rb') as file:
-        models = pickle.load(file)
-
-    if device is not None:
-        for m in models:
-            m.move_to(device)
-
-    return info, models
-
-
-def load_group_parcellation(fname, index=None, marginal=False,
-                            device=None):
-    """ Loads a group parcellation prior from a list of pre-trained model
-
-    Args:
-        fname (str): File name of pre-trained model
-        index (int): Index of the model to load. If None,
-            loads the model with the highest log-likelihood
-            by default.
-        marginal (bool): If True, return marginal probability.
-            Else, return the logpi.
-        device (str): Device to load the model to. Current
-            support 'cuda' and 'cpu'.
-
-    Returns:
-        U: the logpi of arrangement model
-        info_reduced: Data Frame with information
-    """
-    info = pd.read_csv(fname + '.tsv', sep='\t')
-    with open(fname + '.pickle', 'rb') as file:
-        models = pickle.load(file)
-
-    if index is None:
-        index = info.loglik.argmax()
-
-    select_model = models[index]
-    if device is not None:
-        select_model.move_to(device)
-
-    info_reduced = info.iloc[index]
-    if marginal:
-        U = select_model.marginal_prob()
-    else:
-        U = select_model.arrange.logpi
-        U = select_model.arrange.map_to_full(U)
-
-    return U, info_reduced
 
 def build_arrangement_model(U, prior_type='prob', atlas=None, sym_type='asym',
                             model_type='independent'):

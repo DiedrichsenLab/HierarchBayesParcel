@@ -8,7 +8,7 @@ Author: dzhi, jdiedrichsen
 """
 import numpy as np
 import torch as pt
-from torch.utils.data import Dataset, DataLoader, TensorDataset
+from torch.utils.data import Dataset, DataLoader
 import HierarchBayesParcel.emissions as emi
 import HierarchBayesParcel.arrangements as arr
 import HierarchBayesParcel.evaluation as ev
@@ -16,55 +16,6 @@ import warnings
 from copy import copy,deepcopy
 import time
 import pandas as pd
-
-def report_cuda_memory():
-    """Reports the current memory usage of the GPU
-    """
-    if pt.cuda.is_available():
-        ma = pt.cuda.memory_allocated()/1024/1024
-        mma = pt.cuda.max_memory_allocated()/1024/1024
-        mr = pt.cuda.memory_reserved()/1024/1024
-        print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
-
-def find_maximum_divisor(N):
-    """Finds the maximum divisor of a number
-    Args:
-        N: a integer number
-
-    Returns:
-        i: the maximum divisor of N
-    """
-    for i in range(N-1, 0, -1):
-        if N % i == 0:
-            return i
-
-class fMRI_Dataset(Dataset):
-    """Helper class to create mini-batches from a large tensor
-    """
-    def __init__(self, data):
-        """Constructor for the dataset
-        Args:
-            data: tensor of data
-        """
-        self.data = data
-
-    def __len__(self):
-        """Returns the length of the dataset
-        """
-        return len(self.data)
-
-    def __getitem__(self, index):
-        """Returns the data at the given index
-        Args:
-            index: index of the data
-
-        Returns:
-            data: data at the given index
-            index: index of the data
-        """
-        data = self.data[index]
-        return data, index
-
 
 class FullMultiModel:
     """The full generative model contains arrangement model and multiple
@@ -659,35 +610,32 @@ class FullMultiModel:
                     obj_in_list.move_to(device=device)
 
 
-####################################################################
-## Belows are the helper functions for full models                ##
-####################################################################
-def indicator(index_vector, positive=False):
-    """Indicator matrix with one
-    column per unique element in vector
-
-    Args:
-        index_vector (numpy.ndarray): n_row vector to
-            code - discrete values (one dimensional)
-        positive (bool): should the function ignore zero
-            negative entries in the index_vector?
-            Default: false
-
-    Returns:
-        indicator_matrix (numpy.ndarray): nrow x nconditions
-            indicator matrix
-
+class fMRI_Dataset(Dataset):
+    """Helper class to create mini-batches from a large tensor
     """
-    c_unique = np.unique(index_vector)
-    n_unique = c_unique.size
-    rows = np.size(index_vector)
-    if positive:
-        c_unique = c_unique[c_unique > 0]
-        n_unique = c_unique.size
-    indicator_matrix = np.zeros((rows, n_unique))
-    for i in np.arange(n_unique):
-        indicator_matrix[index_vector == c_unique[i], i] = 1
-    return indicator_matrix
+    def __init__(self, data):
+        """Constructor for the dataset
+        Args:
+            data: tensor of data
+        """
+        self.data = data
+
+    def __len__(self):
+        """Returns the length of the dataset
+        """
+        return len(self.data)
+
+    def __getitem__(self, index):
+        """Returns the data at the given index
+        Args:
+            index: index of the data
+
+        Returns:
+            data: data at the given index
+            index: index of the data
+        """
+        data = self.data[index]
+        return data, index
 
 def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
                   join_sess_part=False):

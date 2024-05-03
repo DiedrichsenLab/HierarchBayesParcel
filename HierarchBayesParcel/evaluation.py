@@ -12,7 +12,6 @@ Author: dzhi, jdiedrichsen
 import torch as pt
 import numpy as np
 from sklearn import metrics
-import matplotlib.pyplot as plt
 
 def pt_nanstd(tensor, dim=None):
     """Compute the standard deviation of tensor along the 

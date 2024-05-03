@@ -1,6 +1,6 @@
 .. _training_example:
 
-Model Training Example
+Atlas Training Example
 ======================
 
 Under construction ...

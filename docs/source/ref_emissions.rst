@@ -17,8 +17,6 @@ Emission Model Classes
 
 Functions
 ---------
-.. autofunction:: emissions.load_emission_params
-
 .. autofunction::emissions.bessel_function
 
 .. autofunction::emissions.log_bessel_function
