@@ -48,3 +48,11 @@ References
 
 
 GitHub repository link: https://github.com/DiedrichsenLab/HierarchBayesParcel
+
+License
+-------
+Please find out our development license (MIT) in ``LICENSE`` file.
+
+Bug reports
+-----------
+For any problems and questions, please use the issues page on this repository. https://github.com/DiedrichsenLab/HierarchBayesParcel/issues.  We will endeavour to answer quickly. 
