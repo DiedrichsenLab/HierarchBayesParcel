@@ -39,8 +39,6 @@ napoleon_custom_sections = [('Returns', 'params_style')]
 templates_path = ['_templates']
 exclude_patterns = []
 
-language = 'Python'
-
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 

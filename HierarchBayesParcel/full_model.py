@@ -25,9 +25,9 @@ class FullMultiModel:
         """Constructor
 
         Args:
-            arrange (ArrangementModel): 
+            arrange (ArrangementModel):
                 the arrangement model
-            emission (list): 
+            emission (list):
                 the list of emission models
         """
         self.arrange = arrange
@@ -43,9 +43,9 @@ class FullMultiModel:
         If set to None, the old existing will be used.
 
         Args:
-            Y (list): 
+            Y (list):
                 List of (numsubj x N x numvoxel) arrays of data
-            subj_ind (list): 
+            subj_ind (list):
                 List of unique subject indicators OR
                 'separate': sets seperate subjs for each data set OR
                 None: Don't change anything
@@ -150,7 +150,7 @@ class FullMultiModel:
         """Sets the number of subjects for simulations
 
         Args:
-            num_subj (list): 
+            num_subj (list):
                 list of subjects number. i.e [2, 3, 4] for each dataset OR
                 list of subject indices [[0,1,2],[0,1,2],[2,3,4]] for overlapping subjects
         """
@@ -199,8 +199,8 @@ class FullMultiModel:
         return U, Y
 
     def Estep(self, separate_ll=False):
-        """E step for full model. Run a full process of EM procedure once
-           on both arrangement and emission models.
+        """E step for full model. Run a full process of EM procedure once on both arrangement and emission models.
+
         Args:
             separate_ll: if True, return separte ll_A and ll_E
         Returns:
@@ -225,10 +225,9 @@ class FullMultiModel:
 
     def fit_em(self,iter=30, tol=0.01, seperate_ll=False, fit_emission=True,
                fit_arrangement=True, first_evidence=False):
-        """ Run the EM-algorithm on a full model
-            this demands that both the Emission and Arrangement model
-            have a full Estep and Mstep and can calculate the likelihood,
-            including the partition function
+        """ Run the EM-algorithm on a full model this demands that both the Emission and Arrangement model
+            have a full Estep and Mstep and can calculate the likelihood, including the partition function
+
         Args:
             iter (int): Maximal number of iterations (def:30)
             tol (double): Tolerance on overall likelihood (def: 0.01)
@@ -239,7 +238,7 @@ class FullMultiModel:
                     Otherwise, freeze it
             first_evidence (bool or list of bool): Determines whether evidence
                     is passed from emission models to arrangement model on the
-                    first iteration. Default = False. This is improve estimation for 
+                    first iteration. Default = False. This is improve estimation for
                     emission models from random starting values, as the initial guess
                     will be determined by the intialization of the arrangement model.
                     If a list of bools, it determines this for each emission model seperately.
@@ -274,7 +273,7 @@ class FullMultiModel:
             # If first iteration, only pass the desired emission models (pretraining)
             emloglik_c = [e.Estep() for e in self.emissions]
             pt.cuda.empty_cache()
-            if i==0:                
+            if i==0:
                 for j,emLL in enumerate(emloglik_c):
                     if not first_evidence[j]:
                         emLL[:,:,:]=0
@@ -330,12 +329,8 @@ class FullMultiModel:
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
                       align = 'arrange',verbose=True):
-        """Run the EM-algorithm on a full model starting with n_inits multiple
-           random initialization values and escape from local maxima by selecting
-           the model with the highest likelihood after first_iter.
-           This demands that both the Emission and
-           Arrangement model have a full Estep and Mstep and can calculate the
-           likelihood, including the partition function
+        """Run the EM-algorithm on a full model starting with n_inits multiple random initialization values and escape from local maxima by selecting the model with the highest likelihood after first_iter. This demands that both the Emission and Arrangement model have a full Estep and Mstep and can calculate the likelihood, including the partition function
+
         Args:
             n_inits: the number of random inits
             first_iter: the first few iterations for the random inits to find
@@ -348,11 +343,9 @@ class FullMultiModel:
             init_arrangement (bool): Randomly initialize arrangement model before fitting?
             align: (None,'arrange', or int): Alignment one first step is performed
                 None: Not performed - Emission models may not get aligned
-                'arrange': from the arrangement model only (works only if spatially
-                        non-flat (i.e. random) initialization)
-                int: from emission model with number i. Works with spatially flat
-                        initialization of arrangement model
-            verbose: if set to true, gives memory update for each iteration  
+                'arrange': from the arrangement model only (works only if spatially non-flat (i.e. random) initialization)
+                int: from emission model with number i. Works with spatially flat initialization of arrangement model
+            verbose: if set to true, gives memory update for each iteration
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of best full model as function of iteration
@@ -375,7 +368,7 @@ class FullMultiModel:
         if verbose:
             print('n_inits starting')
             report_cuda_memory()
-        
+
         for i in range(n_inits):
             # Making the new set of emission models with random initializations
             fm = deepcopy(self)
@@ -421,6 +414,7 @@ class FullMultiModel:
         * adaptitive stopping criteria
         * Adaptive stepsizes
         * Gradient acceleration methods
+
         Args:
             Y (3d-ndarray): numsubj x N x numvoxel array of data
             iter (int): Maximal number of iterations
@@ -557,9 +551,10 @@ class FullMultiModel:
         else:
             return self, ll[0:i+1].sum(axis=1), theta, Uhat
 
-  
+
     def get_params(self):
         """Get the concatenated parameters from arrangemenet + emission model
+
         Returns:
             theta (ndarrap)
         """
@@ -568,6 +563,7 @@ class FullMultiModel:
 
     def get_param_indices(self, name):
         """Return the indices for the full model theta vector
+
         Args:
             name (str): Parameter name in the format of 'arrange.logpi'
                         or 'emissions.<X>.V' where <X> is the index of
@@ -594,10 +590,10 @@ class FullMultiModel:
     def move_to(self, device='cpu'):
         """Recursively move all torch.Tensor object in fullModel
            class to the targe device
-        
+
         Args:
-            M (FullMultiModel): Full model 
-            device (str or pt.device): 
+            M (FullMultiModel): Full model
+            device (str or pt.device):
                 the target device to store the tensors default - 'cpu'
        """
         for attr, value in self.__dict__.items():
@@ -708,7 +704,7 @@ def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
 
 def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                            subj_ind, Vs=None, sym_type='asym', n_iter=200,
-                           em_params={}, 
+                           em_params={},
                            fit_arrangement=False,
                            fit_emission=True, device=None):
     """ Calculates the individual parcellations using the given individual
@@ -781,11 +777,11 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
         else:
             K=ar_model.K
         em_model = emi.build_emission_model(K,
-                                            atlas, 
+                                            atlas,
                                             'VMF',
-                                            indicator(this_cv), 
+                                            indicator(this_cv),
                                             part_vec[j],
-                                            V=Vs[j], 
+                                            V=Vs[j],
                                             em_params=em_params)
         em_models.append(em_model)
 

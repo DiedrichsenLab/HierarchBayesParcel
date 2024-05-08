@@ -17,8 +17,9 @@ Arrangement Model Classes
 .. autoclass:: arrangements.ArrangeIndependentSeparateHem
    :members:
 
-Functions
----------
+Functions for Arrangement Models
+--------------------------------
+
 .. autofunction:: arrangements.sample_multinomial_pt
 
 .. autofunction:: arrangements.sample_multinomial
@@ -28,7 +29,5 @@ Functions
 .. autofunction:: arrangements.expand_mn_1d
 
 .. autofunction:: arrangements.compress_mn
-
-.. autofunction:: arrangements.load_group_parcellation
 
 .. autofunction:: arrangements.build_arrangement_model

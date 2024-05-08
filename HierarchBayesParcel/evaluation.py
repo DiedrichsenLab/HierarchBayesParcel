@@ -14,13 +14,13 @@ import numpy as np
 from sklearn import metrics
 
 def pt_nanstd(tensor, dim=None):
-    """Compute the standard deviation of tensor along the 
+    """Compute the standard deviation of tensor along the
        specified dimension.
-    
+
     Args:
-        tensor (torch.Tensor): 
-            the given pytorch tensor 
-        dim (int): the dimension along which to compute the 
+        tensor (torch.Tensor):
+            the given pytorch tensor
+        dim (int): the dimension along which to compute the
             standard deviation. If None, compute the
             standard deviation of the flattened tensor.
 
@@ -28,14 +28,14 @@ def pt_nanstd(tensor, dim=None):
         the standard deviation of tensor along the specified
     """
     if dim is not None:
-        return pt.sqrt(pt.nanmean(pt.pow(pt.abs(tensor - 
+        return pt.sqrt(pt.nanmean(pt.pow(pt.abs(tensor -
             pt.nanmean(tensor, dim=dim, keepdim=True)), 2),
             dim=dim))
     else:
-        return pt.sqrt(pt.nanmean(pt.pow(pt.abs(tensor - 
+        return pt.sqrt(pt.nanmean(pt.pow(pt.abs(tensor -
             pt.nanmean(tensor)), 2)))
-       
-        
+
+
 def nmi(U,Uhat):
     """Compute the normalized mutual information score
 
@@ -50,7 +50,7 @@ def nmi(U,Uhat):
 
 def dice_coefficient(labels1, labels2):
     """Compute the Dice coefficient between tow parcellations
-    
+
     Args:
         labels1 (pt.Tensor): a 1d tensor of parcellation 1
         labels2 (pt.Tensor): a 1d tensor of parcellation 2
@@ -301,13 +301,13 @@ def coserr_2(Y, V, U, adjusted=False, soft_assign=True):
         idx = pt.argmax(U, dim=0, keepdim=True)
         V = pt.matmul(V, pt.zeros_like(U).scatter_(0, idx, 1.))
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-        
+
     # If U and Y are 2-dimensional (1 subject), add the first dimension
     Y = Y.unsqueeze(0) if Y.dim() == 2 else Y
     Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
     Ynorm = pt.sqrt(Ynorm2)
 
-    if adjusted: 
+    if adjusted:
         # ||Y_i||-(V_k)T(Y_i)||Y_i||
         cos_distance = Ynorm2 - pt.sum(V * (Y*Ynorm), dim=1)
         return pt.nansum(cos_distance) / Ynorm2[:, 0, :].nansum(dim=1)
@@ -315,8 +315,8 @@ def coserr_2(Y, V, U, adjusted=False, soft_assign=True):
         # 1 - (V_k)T ((Y_i) / ||Y_i||)
         cos_distance = 1 - pt.sum(V * (Y/Ynorm), dim=1)
         return pt.nanmean(cos_distance, dim=1)
-    
-    
+
+
 def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
                 single_return=True):
     """ Compute the global homogeneity measure for a given parcellation.
@@ -397,7 +397,7 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         return global_homo.nanmean()
     else:
         return global_homo, N
-    
+
 
 def logpY(emloglik,Uhat):
     """Averaged log of <p(Y|U)>q
@@ -439,8 +439,8 @@ def rmse_YUhat(U_pred, data, prediction, soft_assign=True):
 
 
 def permutations(res, nums, l, h):
-    """The recursive algorithm to find all permutations using
-       back-tracking algorithm
+    """The recursive algorithm to find all permutations using back-tracking algorithm
+
     Args:
         res: resultant combinations
         nums: the original array to find permutations
@@ -472,6 +472,7 @@ def permutations(res, nums, l, h):
 
 def permute(nums):
     """Function to get the permutations
+
     Args:
         nums: The input array to find all permutations
     Returns:
@@ -490,13 +491,13 @@ def permute(nums):
 
 def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
     """Calculate the adjusted squared error for goodness of model fitting
+
     Args:
         data: the real mean-centered data, shape (n_subject, n_conditions, n_locations)
         prediction: the predicted mu with shape (n_conditions, n_clusters)
         U_hat: the probability of brain location i belongs to cluster k
         adjusted: True - if calculate adjusted SSE; Otherwise, normal SSE
-        soft_assign: True - expected U over all k clusters; False - if take the argmax
-                     from the k probability
+        soft_assign: True - expected U over all k clusters; False - if take the argmax from the k probability
     Returns:
         The adjusted SSE
     """
@@ -543,6 +544,7 @@ def mean_adjusted_sse(data, prediction, U_hat, adjusted=True, soft_assign=True):
 def evaluate_full_arr(emM,data,Uhat,crit='cos_err'):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
+
     Args:
         emM (EmissionModel)
         data (tensor): Y-data or U true (depends on crit)
@@ -569,6 +571,7 @@ def evaluate_full_arr(emM,data,Uhat,crit='cos_err'):
 def evaluate_completion_arr(arM,emM,data,part,crit='Ecos_err',Utrue=None):
     """Evaluates an arrangement model new data set using pattern completion from partition to
        partition, using a leave-one-partition out crossvalidation approach.
+
     Args:
         arM (ArrangementModel): arrangement model
         emloglik (tensor): Emission log-liklihood
@@ -650,6 +653,7 @@ def evaluate_U(U_true, U_predict, crit='u_prederr'):
 
 def matching_U(U_true, U_predict):
     """Matching the parcel labels of U_hat with the true Us.
+
     Args:
         U_true: The ground truth Us
         U_predict: U_hat, the predicted Us
@@ -676,6 +680,7 @@ def matching_U(U_true, U_predict):
 def unravel_index(index, shape):
     """Equalavent function of np.unravel_index()
     that support Pytorch tensors
+
     Args:
         index: An integer array whose elements are indices
                into the flattened version of an array of
@@ -760,7 +765,7 @@ def calc_consistency(params,dim_rem = None):
     return R
 
 def extract_marginal_prob(models):
-    """Extracts marginal probability values 
+    """Extracts marginal probability values
 
     Args:
         models (list): List of FullMultiModel
@@ -770,7 +775,7 @@ def extract_marginal_prob(models):
     n_models = len(models)
     K = models[0].emissions[0].K
     n_vox = models[0].emissions[0].P
-    
+
     # Intialize data arrays
     Prob = pt.zeros((n_models,K,n_vox))
 
@@ -783,7 +788,7 @@ def extract_marginal_prob(models):
     return Prob
 
 def extract_V(models):
-    """ Extracts emission models vectors from a list of models 
+    """ Extracts emission models vectors from a list of models
 
     Args:
         models (list): List of FullMultiModel
@@ -793,8 +798,8 @@ def extract_V(models):
     n_models = len(models)
     K = models[0].emissions[0].K
     n_vox = models[0].emission[0].P
-    
-    V = [] 
+
+    V = []
 
     for i,M in enumerate(models):
          for j,em in enumerate(M.emissions):
@@ -804,7 +809,7 @@ def extract_V(models):
     return V
 
 def extract_kappa(model):
-    """ Summarizes Kappas from a model  
+    """ Summarizes Kappas from a model
     All emission models need to be either uniform or non-uniform
 
     Args:
@@ -829,7 +834,7 @@ def align_models(models, in_place=True):
 
     Args:
         models (list): List of full models
-        in_place (bool): Changes the models in place 
+        in_place (bool): Changes the models in place
     Returns:
         Marginal probability: (n_models x K x n_vox) tensor
 
@@ -850,7 +855,7 @@ def align_models(models, in_place=True):
         else:
             indx = matching_greedy(Prob[0,:,:],pp)
         Prob[i,:,:]=pp[indx,:]
-        if in_place: 
+        if in_place:
             models[i].arrange.logpi=models[i].arrange.logpi[indx,:]
 
             # Now switch the emission models accordingly

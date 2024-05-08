@@ -1,3 +1,5 @@
+.. _emissions:
+
 Emission Module
 ===============
 
@@ -15,8 +17,9 @@ Emission Model Classes
 .. autoclass:: emissions.MixVMF
    :members:
 
-Functions
----------
+Functions for Emission Models
+-----------------------------
+
 .. autofunction::emissions.bessel_function
 
 .. autofunction::emissions.log_bessel_function

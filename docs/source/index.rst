@@ -6,13 +6,13 @@
 HierarchBayesParcel's documentation
 ===================================
 
-This repository implements the hierarchical Bayesian framework for learning brain parcellations across task-based and resting-state fMRI datasets. 
-The technical details are described in the following `paper <https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1>`_, and we have applied the framework to generate a new probabilistic `atlas of the human cerebellum <https://www.biorxiv.org/content/10.1101/2023.09.14.557689v2>`_. 
+This repository implements the hierarchical Bayesian framework for learning brain parcellations across task-based and resting-state fMRI datasets.
+The technical details are described in the following `paper <https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1>`_, and we have applied the framework to generate a new probabilistic `atlas of the human cerebellum <https://www.biorxiv.org/content/10.1101/2023.09.14.557689v2>`_.
 
-The code for this framework is openly available. You can use this repository to: 
+The code for this framework is openly available. You can use this repository to:
 
-* Learn new probabilistic brain parcellations across multiple fMRI datasets using other datasets for different brain structures. 
-* Use existing probabilistic atlases to obtain individualized brain parcellations for new subjects through the optimal integration of individual localizer data and the group atlas. 
+* Learn new probabilistic brain parcellations across multiple fMRI datasets using other datasets for different brain structures.
+* Use existing probabilistic atlases to obtain individualized brain parcellations for new subjects through the optimal integration of individual localizer data and the group atlas.
 
 
 
@@ -40,13 +40,8 @@ Indices and tables
 * :ref:`search`
 
 
-References
-==========
-
-* Zhi, D., Shahshahani, L., Nettekoven, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). A hierarchical Bayesian brain parcellation framework for fusion of functional imaging datasets. BioRxiv. `link <https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1>`_
-* Nettekoven, C., Zhi, D., Ladan, S., Pinho, A., Saadon, N., Buckner, R., Diedrichsen, J. (2023). A hierarchical atlas of the human cerebellum for functional precision mapping. BioRviv. `link <https://www.biorxiv.org/content/10.1101/2023.09.14.557689v2>`_
-
-
+Repository
+----------
 GitHub repository link: https://github.com/DiedrichsenLab/HierarchBayesParcel
 
 License
@@ -55,4 +50,4 @@ Please find out our development license (MIT) in ``LICENSE`` file.
 
 Bug reports
 -----------
-For any problems and questions, please use the issues page on this repository. https://github.com/DiedrichsenLab/HierarchBayesParcel/issues.  We will endeavour to answer quickly. 
+For any problems and questions, please use the issues page on this repository. https://github.com/DiedrichsenLab/HierarchBayesParcel/issues.  We will endeavour to answer quickly.
