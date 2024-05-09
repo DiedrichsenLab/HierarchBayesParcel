@@ -12,6 +12,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
+sys.path.insert(0, os.path.abspath('../../HierarchBayesParcel'))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -27,6 +28,9 @@ release = '1.0.0'
 extensions = ['sphinx.ext.napoleon',
               'sphinx.ext.autodoc',
               'sphinx.ext.autosectionlabel',
+              'sphinx.ext.mathjax',
+              'sphinx.ext.intersphinx',
+              'sphinx.ext.doctest',
               'nbsphinx']
 
 napoleon_custom_sections = [('Returns', 'params_style')]
@@ -34,8 +38,6 @@ napoleon_custom_sections = [('Returns', 'params_style')]
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 exclude_patterns = []
-
-language = 'Python'
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
