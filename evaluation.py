@@ -47,7 +47,7 @@ def nmi(U,Uhat):
     return 1-metrics.normalized_mutual_info_score(U, Uhat)
 
 
-def dice_coefficient(labels1, labels2, label_matching=True):
+def dice_coefficient(labels1, labels2, label_matching=True, separate=False):
     """Compute the Dice coefficient between tow parcellations
     Args:
         labels1 (pt.Tensor): a 1d tensor of parcellation 1
@@ -73,7 +73,10 @@ def dice_coefficient(labels1, labels2, label_matching=True):
         assert pt.equal(L_1, L_2), "By selecting no label matching for " \
                                    "dice coefficient, the give parcellations" \
                                    " must be have exectly the same parcel labels."
-        return pt.diagonal(dice_matrix).mean()
+        if separate:
+            return pt.diagonal(dice_matrix)
+        else:
+            return pt.diagonal(dice_matrix).mean()
 
     else:
         # 2. Initialize
@@ -95,8 +98,11 @@ def dice_coefficient(labels1, labels2, label_matching=True):
             dice_matrix[:,col] = -1
 
         # Calculate the average Dice coefficient
-        res = sum(dice_coef) / len(dice_coef) if dice_coef else 0
-        return res
+        if separate:
+            return dice_coef
+        else:
+            res = sum(dice_coef) / len(dice_coef) if dice_coef else 0
+            return res
 
 
 def ARI(U, Uhat, sparse=True):
@@ -352,8 +358,11 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
     # Setup - remove missing voxels and mean-centering
-    idx = pt.where(~Y[0].isnan())[0]
-    Y, U_hat = Y[:, idx], U_hat[:, idx]
+    idx_data = pt.where(~Y[0].isnan())[0]
+    idx_par = pt.where(~U_hat.isnan())[0]
+    idx = pt.tensor(list(set(idx_data.cpu().numpy())
+                         & set(idx_par.cpu().numpy())))
+    Y, U_hat = Y[:, idx], U_hat[idx]
     Y = Y - pt.nanmean(Y, dim=0, keepdim=True)
     P = Y.shape[1]
 
@@ -372,10 +381,9 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         pass
     else:
         # Calculate the argmax U_hat (hard assignments)
-        parcellation = pt.argmax(U_hat, dim=0)
-        for parcel in pt.unique(parcellation):
+        for parcel in pt.unique(U_hat):
             # Find the vertex in current parcel
-            in_vertex = pt.where(parcellation == parcel)[0]
+            in_vertex = pt.where(U_hat == parcel)[0]
             this_r = r[in_vertex, :][:, in_vertex]
             # remove vertex with no data in current parcel
             n_k = in_vertex.numel()
