@@ -9,4 +9,4 @@ nbsphinx
 scipy
 sphinx_rtd_theme
 torch
-sklearn
+scikit-learn
