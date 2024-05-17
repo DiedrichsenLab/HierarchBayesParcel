@@ -2,5 +2,3 @@
 
 Atlas Training Example
 ======================
-
-Under construction ...

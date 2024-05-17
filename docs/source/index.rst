@@ -25,7 +25,7 @@ Diedrichsen Lab, Western University
 
    install.rst
    overview.rst
-   training.rst
+   atlas_training_example
    indiv_parcel.rst
    math.rst
    gpu_acceleration.rst
