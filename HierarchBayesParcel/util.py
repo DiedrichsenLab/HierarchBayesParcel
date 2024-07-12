@@ -5,6 +5,8 @@ Module for Utility functions for Hierarchical Bayesian Parcellation
 
 Author: jdiedrichsen
 """
+
+import HierarchBayesParcel.HierarchBayesParcel.full_model
 import pickle
 import numpy as np
 import torch as pt

@@ -12,10 +12,10 @@ import torch as pt
 import pandas as pd
 from copy import copy, deepcopy
 from torch.utils.data import Dataset, DataLoader
-import HierarchBayesParcel.emissions as emi
-import HierarchBayesParcel.arrangements as arr
-import HierarchBayesParcel.evaluation as ev
-import HierarchBayesParcel.util as ut
+import HierarchBayesParcel.HierarchBayesParcel.emissions as emi
+import HierarchBayesParcel.HierarchBayesParcel.arrangements as arr
+import HierarchBayesParcel.HierarchBayesParcel.evaluation as ev
+import HierarchBayesParcel.HierarchBayesParcel.util as ut
 
 
 class FullMultiModel:

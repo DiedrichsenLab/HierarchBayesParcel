@@ -9,7 +9,7 @@ Author: dzhi, jdiedrichsen
 import numpy as np
 import torch as pt
 from torch import exp,log
-from HierarchBayesParcel.model import Model
+from HierarchBayesParcel.HierarchBayesParcel.model import Model
 import pandas as pd
 import warnings
 
