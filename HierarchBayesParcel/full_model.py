@@ -722,9 +722,14 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
         train_data (np.ndarray or pt.Tensor):
             Individual localizing data
         cond_vec (list):
-            The condition vectors for each emission model
+            The condition vectors for each emission model. They contain 
+            the unique indices for each unique condition.
         part_vec (list):
-            The partition vectors for each emission model
+            The partition vectors for each emission model. They contain 
+            the indices of the partitions for each condition. Partitions 
+            refer to what data were used to calculate the condition 
+            estimate. (Ex: Indices of partitions can refer to the 
+            indices of runs or sessions.)
         subj_ind (list):
             The subject indices for each emission model
         Vs (list):
