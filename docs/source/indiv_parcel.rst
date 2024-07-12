@@ -24,10 +24,10 @@ Import all dependencies
     import matplotlib.pyplot as plt
     import Functional_Fusion.atlas_map as am
     import Functional_Fusion.dataset as ds
-    import HierarchBayesParcel.arrangements as ar
-    import HierarchBayesParcel.emissions as em
-    import HierarchBayesParcel.full_model as fm
-    import HierarchBayesParcel.util as ut
+    import HierarchBayesParcel.HierarchBayesParcel.arrangements as ar
+    import HierarchBayesParcel.HierarchBayesParcel.emissions as em
+    import HierarchBayesParcel.HierarchBayesParcel.full_model as fm
+    import HierarchBayesParcel.HierarchBayesParcel.util as ut
     import SUITPy as suit
 
 
