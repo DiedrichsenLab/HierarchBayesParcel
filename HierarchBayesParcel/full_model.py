@@ -800,12 +800,17 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
     # Real training starts here with a frozen arrangement model
     # ---------------------------------------------------------
     if M.arrange.name.startswith('indp'):
-        M, ll, _, U_indiv = M.fit_em(iter=n_iter, tol=0.01,
-                                     fit_arrangement=fit_arrangement,
-                                     fit_emission=fit_emission,
-                                     first_evidence=False)
+        M, _, _, _ = M.fit_em(iter=n_iter, tol=0.01,
+                              fit_arrangement=fit_arrangement,
+                              fit_emission=fit_emission,
+                              first_evidence=False)
     else:
         raise NameError("The arrangement model is not supported yet.")
 
+    # Get imndividual parcellations, using the estimated V's and kappas 
+    emloglik  = M.emissions[0].Estep()
+    Uhat_data = pt.softmax(emloglik, dim=1)
+    Uhat_full, _ = M.arrange.Estep(emloglik)
+
     # Return the individual PROBABILISTIC parcellations
-    return U_indiv, ll, M
+    return Uhat_full, Uhat_data, M
