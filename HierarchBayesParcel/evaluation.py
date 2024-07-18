@@ -254,6 +254,7 @@ def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """
     # standardise V and data to unit length
     V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+    V = V.double()
 
     # If U and Y are 2-dimensional (1 subject), add the first dimension
     if Y.dim() == 2:
