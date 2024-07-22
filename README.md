@@ -31,7 +31,7 @@ This project depends on several third party libraries, including:
 Installation
 ------------
 ```
-pip install numpy nilearn nibabel neuroimagingtools nilearn
+pip install numpy nilearn nibabel neuroimagingtools
 ```
 
 Or you can install the package manually from their original binary source as above links.

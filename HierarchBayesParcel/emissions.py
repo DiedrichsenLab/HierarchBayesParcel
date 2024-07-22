@@ -12,8 +12,8 @@ import pandas as pd
 import pickle
 from scipy import stats, special
 from torch import log, exp, sqrt
-from HierarchBayesParcel.HierarchBayesParcel.model import Model
-import HierarchBayesParcel.HierarchBayesParcel.arrangements as ar
+from HierarchBayesParcel.model import Model
+import HierarchBayesParcel.arrangements as ar
 import warnings as warn
 
 class EmissionModel(Model):

@@ -12,10 +12,10 @@ import torch as pt
 import pandas as pd
 from copy import copy, deepcopy
 from torch.utils.data import Dataset, DataLoader
-import HierarchBayesParcel.HierarchBayesParcel.emissions as emi
-import HierarchBayesParcel.HierarchBayesParcel.arrangements as arr
-import HierarchBayesParcel.HierarchBayesParcel.evaluation as ev
-import HierarchBayesParcel.HierarchBayesParcel.util as ut
+import HierarchBayesParcel.emissions as emi
+import HierarchBayesParcel.arrangements as arr
+import HierarchBayesParcel.evaluation as ev
+import HierarchBayesParcel.util as ut
 
 
 class FullMultiModel:
@@ -754,10 +754,13 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
             The device name to load trained model
 
     Returns:
-        U_indiv (pt.Tensor):
-            The individual probabilistic parcellations
-        ll (list):
-            The log-likelihood of the individual parcellations
+        Uhat_full (pt.Tensor):
+            The individual probabilistic parcellations obtained with the 
+            full model (i.e. the combined estimation of the arrangement 
+            E-Step with the M-Step)
+        Uhat_data (pt.Tensor):
+            The individual probabilistic parcellations obtained from the 
+            probabilistic data likelihood model (E-Step)
         M (object):
             The trained arrangement model
     """
