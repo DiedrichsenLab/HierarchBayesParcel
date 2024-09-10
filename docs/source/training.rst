@@ -1,4 +1,4 @@
-Model Training Example
-======================
+.. _training_example:
 
-Under construction ...
+Atlas Training Example
+======================

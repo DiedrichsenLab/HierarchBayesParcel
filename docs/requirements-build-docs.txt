@@ -7,5 +7,6 @@ matplotlib
 ipykernel
 nbsphinx
 scipy
-seaborn
 sphinx_rtd_theme
+torch
+scikit-learn
