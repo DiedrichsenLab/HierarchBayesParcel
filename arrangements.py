@@ -80,7 +80,10 @@ class ArrangeIndependent(ArrangementModel):
     def random_params(self):
         """ Sets prior parameters to random starting values
         """
-        self.logpi = pt.normal(0, 1, size=self.logpi.shape)
+        # self.logpi = pt.distributions.normal.Normal(0, 1).sample(self.logpi.shape)
+
+        self.logpi = pt.distributions.uniform.Uniform(1,100).sample(self.logpi.shape)
+        self.logpi = self.logpi - self.logpi.mean(dim=0)
 
     def Estep(self, emloglik, gather_ss=True):
         """ Estep for the spatial arrangement model
@@ -1900,7 +1903,8 @@ def load_group_parcellation(fname, index=None, marginal=False,
     return U, info_reduced
 
 def build_arrangement_model(U, prior_type='prob', atlas=None, sym_type='asym',
-                            model_type='independent'):
+                            model_type='independent', Wc=None, theta=None, 
+                            epos_iter=5, num_chain=20):
     """ Builds an arrangment model based on a set of probability 
 
     Args:
@@ -1979,6 +1983,17 @@ def build_arrangement_model(U, prior_type='prob', atlas=None, sym_type='asym',
 
         # Attach the logpi to the model
         ar_model.logpi = U
+    elif model_type == 'cRBM_Wc':
+        if Wc is None:
+            raise ValueError('Wc must be provided')
+
+        ar_model = wcmDBM(K, atlas.P, Wc=Wc, theta=theta, eneg_iter=5,
+                             epos_iter=epos_iter, eneg_numchains=num_chain)
+        ar_model.bu = U
+        ar_model.name = 'cRBM_Wc'
+        ar_model.momentum = False
+        ar_model.fit_W = False
+        ar_model.fit_bu = False
     else:
         raise NameError(f'Unknown model_type:{model_type} - Currently only '
                         f'support independent arrangement model.')

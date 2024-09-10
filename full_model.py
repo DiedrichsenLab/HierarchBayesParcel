@@ -345,11 +345,13 @@ class FullMultiModel:
             # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
             if i==iter-1:
                 break
-            elif i>1:
+            elif i>=1:
                 dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood
                 # Check if likelihood decreases more than tolerance
                 if dl<-tol:
-                    warnings.warn(f'Likelihood decreased - terminating on iteration {i}')
+                    print(f'Likelihood decreased - terminating on iteration {i}')
+                    # go back to the parameters of i-1 iter 
+                    self.set_params(theta[i-1])
                     break
                 elif dl<tol:
                     break
@@ -443,17 +445,17 @@ class FullMultiModel:
             first_lls[i,:len(this_ll)]=this_ll
             if this_ll[-1] > max_ll[-1]:
                 max_ll = this_ll
-                self = fm
+                best_fm = fm
                 best_theta = theta
 
-        self, ll, theta, U_hat = self.fit_em(iter=iter-first_iter, tol=tol,
+        best_fm, ll, theta, U_hat = best_fm.fit_em(iter=iter-first_iter, tol=tol,
                                              seperate_ll=False,
                                              fit_emission=fit_emission,
                                              fit_arrangement=fit_arrangement,
                                              first_evidence=True)
         ll_n = pt.cat([max_ll,ll[1:]])
         theta_n = pt.cat([best_theta,theta[1:, :]])
-        return self, ll_n, theta_n, U_hat, first_lls
+        return best_fm, ll_n, theta_n, U_hat, first_lls
 
     def fit_sml(self, iter=60, batch_size=None, stepsize=0.8, estep='sample',
                 seperate_ll=False, fit_emission=True, fit_arrangement=True,
@@ -526,33 +528,33 @@ class FullMultiModel:
             pt.cuda.empty_cache()
 
             # Update the arrangment model in batches
-            for j, (bat_emlog_train, bat_indx) in enumerate(train_loader):
-                print(f'------Batch {j+1}: training batch size '
-                      f'{bat_emlog_train.shape}, batch subject '
-                      f'indices {bat_indx} ------')
-                # 1. arrangement E-step: positive phase
-                tic = time.perf_counter()
-                self.arrange.Estep(bat_emlog_train)
-                toc = time.perf_counter()
-                print(f'positive phase {self.arrange.epos_iter} '
-                      f'iters used {toc - tic:0.4f} seconds!')
-                pt.cuda.empty_cache()
-                report_cuda_memory()
+            if fit_arrangement:
+                for j, (bat_emlog_train, bat_indx) in enumerate(train_loader):
+                    print(f'------Batch {j+1}: training batch size '
+                        f'{bat_emlog_train.shape}, batch subject '
+                        f'indices {bat_indx} ------')
+                    # 1. arrangement E-step: positive phase
+                    tic = time.perf_counter()
+                    self.arrange.Estep(bat_emlog_train)
+                    toc = time.perf_counter()
+                    print(f'positive phase {self.arrange.epos_iter} '
+                        f'iters used {toc - tic:0.4f} seconds!')
+                    pt.cuda.empty_cache()
+                    report_cuda_memory()
+                
+                    # 2. arrangement E-step: negative phase
+                    tic = time.perf_counter()
+                    if hasattr(self.arrange, 'Eneg'):
+                        # TODO: if there are multiple emission models,
+                        # which emission should be used for sampling?
+                        self.arrange.Eneg(use_chains=bat_indx,
+                                        emission_model=deepcopy(self.emissions[0]))
+                    toc = time.perf_counter()
+                    print(f'negative phase {self.arrange.eneg_iter} '
+                        f'iters used {toc - tic:0.4f} seconds!')
+                    pt.cuda.empty_cache()
+                    report_cuda_memory()
 
-                # 2. arrangement E-step: negative phase
-                tic = time.perf_counter()
-                if hasattr(self.arrange, 'Eneg'):
-                    # TODO: if there are multiple emission models,
-                    # which emission should be used for sampling?
-                    self.arrange.Eneg(use_chains=bat_indx,
-                                      emission_model=deepcopy(self.emissions[0]))
-                toc = time.perf_counter()
-                print(f'negative phase {self.arrange.eneg_iter} '
-                      f'iters used {toc - tic:0.4f} seconds!')
-                pt.cuda.empty_cache()
-                report_cuda_memory()
-
-                if fit_arrangement:
                     # 3. arrangement M-step
                     tic = time.perf_counter()
                     self.arrange.Mstep()
@@ -563,7 +565,7 @@ class FullMultiModel:
 
             # Monitor the RBM training - cross entropy
             CE = ev.cross_entropy(self.arrange.epos_Uhat,
-                                  self.arrange.eneg_U)
+                                  self.arrange.eneg_U) if fit_arrangement else pt.tensor(0)
             # Compute Uhat in batch - Don't gather the sufficient
             # statistics as the model is already updated
             Uhat = []
@@ -608,10 +610,32 @@ class FullMultiModel:
     def get_params(self):
         """Get the concatenated parameters from arrangemenet + emission model
         Returns:
-            theta (ndarrap)
+            theta (ndarray)
         """
         emi_params = [i.get_params() for i in self.emissions]
         return pt.cat([self.arrange.get_params(), pt.cat(emi_params)])
+
+    def set_params(self, theta):
+        """ Sets the parameters from a params vector 'theta'
+            Assume the params order is arrange, emissions[0],
+            emissions[1],..., emissions[X]
+        Args:
+            theta (np.ndarray or pt.tensor): Input parameters as vector.
+        """
+        # Convert input theta to tensor if it is ndarray
+        if type(theta) is np.ndarray:
+            theta = pt.tensor(theta, dtype=pt.get_default_dtype())
+
+        # set arrangement model params
+        arr_ind = np.concatenate([self.get_param_indices(f'arrange.{p}') 
+                                  for p in self.arrange.param_list])
+        self.arrange.set_params(theta[arr_ind])
+
+        # set emission models params
+        for i, em in enumerate(self.emissions):
+            emi_ind = np.concatenate([self.get_param_indices( \
+                f'emissions.{i}.{p}') for p in em.param_list])
+            self.emissions[i].set_params(theta[emi_ind])
 
     def get_param_indices(self, name):
         """Return the indices for the full model theta vector
@@ -762,8 +786,7 @@ def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
 
 def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                            subj_ind, Vs=None, sym_type='asym', n_iter=200,
-                           em_params={}, 
-                           fit_arrangement=False,
+                           em_params={}, fit_arrangement=False,
                            fit_emission=True, device=None):
     """ Calculates the individual parcellations using the given individual
         training data and the given arrangement model with the pre-defined
@@ -854,6 +877,12 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                                      fit_arrangement=fit_arrangement,
                                      fit_emission=fit_emission,
                                      first_evidence=False)
+    elif M.arrange.name.startswith('cRBM'):
+        M, ll, theta, U_indiv = M.fit_sml(iter=n_iter, batch_size=10,
+                                          stepsize=0.5,
+                                          seperate_ll=False,
+                                          fit_arrangement=False,
+                                          fit_emission=True)
     else:
         raise NameError("The arrangement model is not supported yet.")
 

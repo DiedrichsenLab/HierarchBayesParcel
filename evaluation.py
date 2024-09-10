@@ -352,8 +352,11 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
     # Setup - remove missing voxels and mean-centering
-    idx = pt.where(~Y[0].isnan())[0]
-    Y, U_hat = Y[:, idx], U_hat[:, idx]
+    idx_data = pt.where(~Y[0].isnan())[0]
+    idx_par = pt.where(~U_hat.isnan())[0]
+    idx = pt.tensor(list(set(idx_data.cpu().numpy())
+                         & set(idx_par.cpu().numpy())))
+    Y, U_hat = Y[:, idx], U_hat[idx]
     Y = Y - pt.nanmean(Y, dim=0, keepdim=True)
     P = Y.shape[1]
 
@@ -372,15 +375,14 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         pass
     else:
         # Calculate the argmax U_hat (hard assignments)
-        parcellation = pt.argmax(U_hat, dim=0)
-        for parcel in pt.unique(parcellation):
+        for parcel in pt.unique(U_hat):
             # Find the vertex in current parcel
-            in_vertex = pt.where(parcellation == parcel)[0]
+            in_vertex = pt.where(U_hat == parcel)[0]
             this_r = r[in_vertex, :][:, in_vertex]
             # remove vertex with no data in current parcel
             n_k = in_vertex.numel()
             # Compute the average homogeneity within current parcel
-            this_homo = this_r.nanmean() if inhomo==False \
+            this_homo = this_r.nansum() / (n_k*(n_k-1))  if inhomo==False \
                 else pt_nanstd(this_r)
             # Check if there is less than two vertices in the parcel
             this_homo = pt.tensor(1.0) if n_k < 2 else this_homo
@@ -392,7 +394,8 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         assert pt.all(N >= 0)
 
     if single_return:
-        return global_homo.nanmean()
+        # retrun weighted average
+        return pt.nansum(global_homo * N)/N.sum()
     else:
         return global_homo, N
     
