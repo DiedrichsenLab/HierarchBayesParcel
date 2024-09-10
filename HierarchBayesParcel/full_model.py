@@ -298,7 +298,6 @@ class FullMultiModel:
             # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
             if i == iter - 1:
                 break
-<<<<<<< HEAD:full_model.py
             elif i>=1:
                 dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood
                 # Check if likelihood decreases more than tolerance
@@ -306,13 +305,6 @@ class FullMultiModel:
                     print(f'Likelihood decreased - terminating on iteration {i}')
                     # go back to the parameters of i-1 iter 
                     self.set_params(theta[i-1])
-=======
-            elif i > 1:
-                dl = ll[i, :].sum() - ll[i - 1, :].sum()  # Change in logliklihood
-                # Check if likelihood decreases more than tolerance
-                if dl < -tol:
-                    warnings.warn(f'Likelihood decreased - terminating on iteration {i}')
->>>>>>> 4f7ad126a3a37cf80a095029159f3602c6b4c051:HierarchBayesParcel/full_model.py
                     break
                 elif dl < tol:
                     break
@@ -340,27 +332,39 @@ class FullMultiModel:
                       fit_emission=True, fit_arrangement=True,
                       init_emission=True, init_arrangement=True,
                       align='arrange', verbose=True):
-        """Run the EM-algorithm on a full model starting with n_inits multiple random initialization values and escape from local maxima by selecting the model with the highest likelihood after first_iter. This demands that both the Emission and Arrangement model have a full Estep and Mstep and can calculate the likelihood, including the partition function
+        """Run the EM-algorithm on a full model starting with n_inits
+        multiple random initialization values and escape from local
+        maxima by selecting the model with the highest likelihood
+        after first_iter. This demands that both the Emission and
+        Arrangement model have a full Estep and Mstep and can calculate
+        the likelihood, including the partition function
 
         Args:
             n_inits: the number of random inits
-            first_iter: the first few iterations for the random inits to find
-                        the inits parameters with maximal likelihood
+            first_iter: the first few iterations for the random inits to
+                        find the inits parameters with maximal likelihood
             iter: the number of iterations for full EM process
             tol: Tolerance on overall likelihood (def: 0.01)
-            fit_emission (list): If True, fit emission model. Otherwise, freeze it
-            fit_arrangement: If True, fit arrangement model. Otherwise, freeze it
-            init_emission (list or bool): Randomly initialize emission models before fitting?
-            init_arrangement (bool): Randomly initialize arrangement model before fitting?
-            align: (None,'arrange', or int): Alignment one first step is performed
+            fit_emission (list): If True, fit emission model.
+                                 Otherwise, freeze it
+            fit_arrangement: If True, fit arrangement model.
+                                 Otherwise, freeze it
+            init_emission (list or bool): Randomly initialize emission
+                                 models before fitting?
+            init_arrangement (bool): Randomly initialize arrangement
+                                 model before fitting?
+            align: (None,'arrange', or int): Alignment one first step
+                                             is performed
                 None: Not performed - Emission models may not get aligned
-                'arrange': from the arrangement model only (works only if spatially non-flat (i.e. random) initialization)
-                int: from emission model with number i. Works with spatially flat initialization of arrangement model
+                'arrange': from the arrangement model only (works only if
+                    spatially non-flat (i.e. random) initialization)
+                int: from emission model with number i. Works with spatially
+                    flat initialization of arrangement model
             verbose: if set to true, gives memory update for each iteration
         Returns:
             model (Full Model): fitted model (also updated)
-            ll (ndarray): Log-likelihood of best full model as function of iteration
-                the initial iterations are included
+            ll (ndarray): Log-likelihood of best full model as function of
+                iteration the initial iterations are included
             theta (ndarray): History of the parameter vector
             Uhat: the predicted U (probabilistic)
             first_lls: the log-likelihoods for the n_inits random parameters
@@ -403,24 +407,15 @@ class FullMultiModel:
                 best_fm = fm
                 best_theta = theta
 
-<<<<<<< HEAD:full_model.py
         best_fm, ll, theta, U_hat = best_fm.fit_em(iter=iter-first_iter, tol=tol,
-=======
-        self, ll, theta, U_hat = self.fit_em(iter=iter - first_iter, tol=tol,
->>>>>>> 4f7ad126a3a37cf80a095029159f3602c6b4c051:HierarchBayesParcel/full_model.py
                                              seperate_ll=False,
                                              fit_emission=fit_emission,
                                              fit_arrangement=fit_arrangement,
                                              first_evidence=True)
-<<<<<<< HEAD:full_model.py
+
         ll_n = pt.cat([max_ll,ll[1:]])
         theta_n = pt.cat([best_theta,theta[1:, :]])
         return best_fm, ll_n, theta_n, U_hat, first_lls
-=======
-        ll_n = pt.cat([max_ll, ll[1:]])
-        theta_n = pt.cat([best_theta, theta[1:, :]])
-        return self, ll_n, theta_n, U_hat, first_lls
->>>>>>> 4f7ad126a3a37cf80a095029159f3602c6b4c051:HierarchBayesParcel/full_model.py
 
     def fit_sml(self, iter=60, batch_size=None, stepsize=0.8, estep='sample',
                 seperate_ll=False, fit_emission=True, fit_arrangement=True,
@@ -494,7 +489,6 @@ class FullMultiModel:
             pt.cuda.empty_cache()
 
             # Update the arrangment model in batches
-<<<<<<< HEAD:full_model.py
             if fit_arrangement:
                 for j, (bat_emlog_train, bat_indx) in enumerate(train_loader):
                     print(f'------Batch {j+1}: training batch size '
@@ -507,7 +501,7 @@ class FullMultiModel:
                     print(f'positive phase {self.arrange.epos_iter} '
                         f'iters used {toc - tic:0.4f} seconds!')
                     pt.cuda.empty_cache()
-                    report_cuda_memory()
+                    ut.report_cuda_memory()
                 
                     # 2. arrangement E-step: negative phase
                     tic = time.perf_counter()
@@ -520,34 +514,7 @@ class FullMultiModel:
                     print(f'negative phase {self.arrange.eneg_iter} '
                         f'iters used {toc - tic:0.4f} seconds!')
                     pt.cuda.empty_cache()
-                    report_cuda_memory()
-=======
-            for j, (bat_emlog_train, bat_indx) in enumerate(train_loader):
-                print(f'------Batch {j + 1}: training batch size '
-                      f'{bat_emlog_train.shape}, batch subject '
-                      f'indices {bat_indx} ------')
-                # 1. arrangement E-step: positive phase
-                tic = time.perf_counter()
-                self.arrange.Estep(bat_emlog_train)
-                toc = time.perf_counter()
-                print(f'positive phase {self.arrange.epos_iter} '
-                      f'iters used {toc - tic:0.4f} seconds!')
-                pt.cuda.empty_cache()
-                ut.report_cuda_memory()
-
-                # 2. arrangement E-step: negative phase
-                tic = time.perf_counter()
-                if hasattr(self.arrange, 'Eneg'):
-                    # TODO: if there are multiple emission models,
-                    # which emission should be used for sampling?
-                    self.arrange.Eneg(use_chains=bat_indx,
-                                      emission_model=deepcopy(self.emissions[0]))
-                toc = time.perf_counter()
-                print(f'negative phase {self.arrange.eneg_iter} '
-                      f'iters used {toc - tic:0.4f} seconds!')
-                pt.cuda.empty_cache()
-                ut.report_cuda_memory()
->>>>>>> 4f7ad126a3a37cf80a095029159f3602c6b4c051:HierarchBayesParcel/full_model.py
+                    ut.report_cuda_memory()
 
                     # 3. arrangement M-step
                     tic = time.perf_counter()
@@ -777,12 +744,7 @@ def prep_datasets(dat, info, cond_vector, part_vector, join_sess=False,
 
 def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                            subj_ind, Vs=None, sym_type='asym', n_iter=200,
-<<<<<<< HEAD:full_model.py
                            em_params={}, fit_arrangement=False,
-=======
-                           em_params={},
-                           fit_arrangement=False,
->>>>>>> 4f7ad126a3a37cf80a095029159f3602c6b4c051:HierarchBayesParcel/full_model.py
                            fit_emission=True, device=None):
     """ Calculates the individual parcellations using the given individual
         training data and the given arrangement model with the pre-defined
