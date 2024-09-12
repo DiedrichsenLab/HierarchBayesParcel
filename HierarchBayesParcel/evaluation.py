@@ -329,8 +329,7 @@ def coserr_2(Y, V, U, adjusted=False, soft_assign=True):
         return pt.nanmean(cos_distance, dim=1)
 
 
-def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
-                single_return=True):
+def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, single_return=True):
     """ Compute the global homogeneity measure for a given parcellation.
         The homogeneity is defined as the averaged correlation (Pearson's)
         between all vertex pairs within a parcel. Then the global homogeneity
@@ -344,7 +343,6 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         soft_assign: if True, compute the expected homogeneity. Otherwise,
         calcualte the hard assignment homogeneity.
         z_transfer: if True, apply r-to-z transformation
-        inhomo: if True, compute the inhomogeneity measure.
         single_return: if True, return the global homogeneity measure only.
             Otherwise, return the homogeneity measure per parcel, and the
             number of vertices within each parcel.
@@ -366,10 +364,9 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
     # Setup - remove missing voxels and mean-centering
-    idx_data = pt.where(~Y[0].isnan())[0]
-    idx_par = pt.where(~U_hat.isnan())[0]
-    idx = pt.tensor(list(set(idx_data.cpu().numpy())
-                         & set(idx_par.cpu().numpy())))
+    idx_data = pt.all(pt.where(Y.isnan(), False, True),dim=0)
+    idx_par = pt.where(U_hat.isnan(), False, True)
+    idx = pt.logical_and(idx_data, idx_par)
     Y, U_hat = Y[:, idx], U_hat[idx]
     Y = Y - pt.nanmean(Y, dim=0, keepdim=True)
     P = Y.shape[1]
@@ -396,8 +393,7 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
             # remove vertex with no data in current parcel
             n_k = in_vertex.numel()
             # Compute the average homogeneity within current parcel
-            this_homo = this_r.nansum() / (n_k*(n_k-1))  if inhomo==False \
-                else pt_nanstd(this_r)
+            this_homo = this_r.nansum() / (n_k*(n_k-1))
             # Check if there is less than two vertices in the parcel
             this_homo = pt.tensor(1.0) if n_k < 2 else this_homo
             global_homo.append(this_homo)
@@ -412,6 +408,75 @@ def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, inhomo=False,
         return pt.nansum(global_homo * N)/N.sum()
     else:
         return global_homo, N
+
+
+def task_inhomogeneity(Y, U_hat, z_transfer=True, single_return=True):
+    """ Compute the global inhomogeneity measure for a given parcellation.
+        The task inhomogeneity is defined as the standard deviation of
+        activation z-values within each parcel. Then the task
+        inhomogeneity of a contrast is calculated as the weighted mean
+        across all parcels. Finally, the global task inhomogeneity is
+        averaged across all task contrast.
+
+    Args:
+        Y: The underlying task contrast with a shope of (N, P) where N
+            is the number of task activations and P is the number of
+            brain locations.
+        U_hat: the given probabilistic parcellation, shape (K, P)
+        z_transfer: if True, apply r-to-z transformation
+        single_return: if True, return the global homogeneity measure only.
+            Otherwise, return the homogeneity measure per parcel, and the
+            number of vertices within each parcel.
+
+    Returns:
+        global_homo: the mean honogeneity for each parcel
+        N: the valid (non-NaN) number of vertices in each parcel
+
+    Notes:
+        In case of inhomogeneity measure, a lower value = better
+        parcellation performance.
+    """
+    # convert data to tensor
+    if type(Y) is np.ndarray:
+        Y = pt.tensor(Y, dtype=pt.get_default_dtype())
+    if type(U_hat) is np.ndarray:
+        U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
+
+    # Setup - remove missing voxels and mean-centering
+    idx_data = pt.all(pt.where(Y.isnan(), False, True),dim=0)
+    idx_par = pt.where(U_hat.isnan(), False, True)
+    idx = pt.logical_and(idx_data, idx_par)
+    Y, U_hat = Y[:, idx], U_hat[idx]
+
+    if z_transfer:
+        # first demean along the voxel dimension
+        Y = Y - pt.nanmean(Y, dim=1, keepdim=True)
+        Y = Y / pt.std(Y, dim=1, keepdim=True)
+
+    global_inhomo, N = [], []
+    # Calculate the argmax U_hat (hard assignments)
+    for parcel in pt.unique(U_hat):
+        # Find the vertex in current parcel
+        in_vertex = pt.where(U_hat == parcel)[0]
+        this_Y = Y[:, in_vertex]
+        n_k = in_vertex.numel()
+        # Compute the average inhomogeneity within current parcel
+        this_inhomo = pt.std(this_Y, dim=1)
+        # Check if there is less than two vertices in the parcel
+        this_inhomo = pt.zeros(this_inhomo.shape) if n_k < 2 else this_inhomo
+        global_inhomo.append(this_inhomo)
+        N.append(pt.tensor(n_k))
+
+    global_inhomo = pt.stack(global_inhomo)  # (K, num_contrast)
+    N = pt.stack(N).reshape(-1,1)
+    assert pt.all(N >= 0)
+
+    if single_return:
+        # retrun averaged task inhomo across all contrasts
+        return pt.nansum((global_inhomo * N) / N.sum(), dim=0).mean()
+    else:
+        # return the task inhomo per task contrast
+        return pt.nansum((global_inhomo * N) / N.sum(), dim=0)
 
 
 def logpY(emloglik,Uhat):
