@@ -15,7 +15,7 @@ Reference
 * Zhi, D., Shahshahani, L., Nettekoven, C., Pinho, A. L. Bzdok, D., Diedrichsen, J., (2023). 
 "A hierarchical Bayesian brain parcellation framework for fusion of functional imaging datasets". 
 BioRxiv. [[link]](https://www.biorxiv.org/content/10.1101/2023.05.24.542121v1)
-* Nettekoven, C., Zhi, D., Ladan, S., Pinho, A., Saadon, N., Buckner, R., Diedrichsen, J. (2023). A hierarchical atlas of the human cerebellum for functional precision mapping. BioRviv. [[link]](https://www.biorxiv.org/content/10.1101/2023.09.14.557689v2)
+* Nettekoven, C., Zhi, D., Ladan, S., Pinho, A. L., Saadon, N., Buckner, R., Diedrichsen, J. (2023). A hierarchical atlas of the human cerebellum for functional precision mapping. BioRviv. [[link]](https://www.biorxiv.org/content/10.1101/2023.09.14.557689v2)
 
 Dependencies
 ------------
