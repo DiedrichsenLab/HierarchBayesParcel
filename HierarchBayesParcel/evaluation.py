@@ -1065,7 +1065,7 @@ def calc_test_error(M, tdata, U_hats):
             else:
                 raise (
                     NameError("U_hats needs to be 'group','floor',a 2-d or 3d-tensor"))
-            a = ev.coserr(dat, M.emissions[0].V, U,
+            a = coserr(dat, M.emissions[0].V, U,
                           adjusted=True, soft_assign=True)
             pred_err[i, s] = a
         toc = time.perf_counter()
