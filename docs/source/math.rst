@@ -516,12 +516,12 @@ After model fitting, we need a fair way to quantitatively compare different emis
 Comparing the true :math:`\mathbf{U}` and the inferred :math:`\hat{\mathbf{U}}`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Note that these criteria only have value for simulations, for which we have the true
+Note that these criteria only have value for simulations, for which we have the true parcellation :math:`\mathbf{U}`.
 
-1. the absolute error between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+1. The absolute error between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
 *****************************************************************************
 
-the first evaluation criterion is to calculate the absolute error between the true parcellation :math:`\mathbf{U}` and the expected :math:`\mathbf{\hat{U}}` which inferred on the training data. It defined as,
+The first evaluation criterion is to calculate the absolute error between the true parcellation :math:`\mathbf{U}` and the expected :math:`\mathbf{\hat{U}}` which inferred on the training data. It defined as,
 
 .. math::
 	\bar{U}_{error}=\frac{\sum_i|\mathbf{u_i}-\langle \mathbf{u}_{i}\rangle_{q}|}{P}
@@ -535,7 +535,7 @@ Note, this calculation of the mean absolute error is subject to the premutation 
 2. Normalized Mutual information (NMI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
 **********************************************************************************************
 
-the second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
+The second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
 
 .. math::
 	NMI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\sum_{i=1}^{k_\mathbf{u}}\sum_{j=1}^{k_\mathbf{\hat{u}}}\frac{|\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j|}{P}\log (P\frac{||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||}{|\mathbf{u}=i|\cdot|\mathbf{\hat{u}}=j|})}{\sum_{i=1}^{k_\mathbf{u}}\frac{|\mathbf{u}=i|}{P}\log(\frac{|\mathbf{u}=i|}{P})+\sum_{j=1}^{k_{\mathbf{\hat{u}}}}\frac{|\hat{\mathbf{u}}=j|}{P}\log(\frac{|\hat{\mathbf{u}}=j|}{P})}
@@ -549,7 +549,7 @@ Similarly, the :math:`||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||` means the total 
 3. Adjusted rand index (ARI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
 ************************************************************************************
 
-the third one is the commonly used adjust rand index to test how similar the two given parcellations are. It defined as:
+The third one is the commonly used adjust rand index to test how similar the two given parcellations are. It defined as:
 
 .. math::
 	ARI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\times(M_{11}M_{00}-M_{10}M_{01})}{(M_{00}+M_{10})(M_{10}+M_{11})+(M_{00}+M_{01})(M_{01}+M_{11})}
@@ -562,10 +562,19 @@ Intuitively, :math:`M_{00}` and :math:`M_{11}` account for the agreement of parc
 Evaluation on independent test data (:math:`\mathbf{Y}_{test}`)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-1. Cosine error
+1. Cosine Error
 ***************
 
-the first evaluation criterion based on the difference between some observed activity profiles :math:`\mathbf{Y}_{test}` and the predicted mean directions from the model  :math:`\mathbf{v}_k` given some expectation of which voxel belongs to what cluster :math:`\langle \mathbf{u}_i \rangle` . One possibility is to use for each voxel the most likely predicted mean direction.
+The Cosine Error is an evaluation criterion based on the difference between some observed activity profiles :math:`\mathbf{Y}_{test}` and the predicted mean directions from the model  
+:math:`\mathbf{v}_k` given some expectation of which voxel belongs to what cluster :math:`\langle \mathbf{u}_i \rangle` . The overall cosine error is thus defined as the arithmetic 
+mean of the cosine error across $P$ voxels as follows:
+
+
+
+
+
+
+One possibility is to use for each voxel the most likely predicted mean direction.
 
 .. math::
 	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
@@ -577,7 +586,7 @@ where :math:`||\mathbf{y}_i||` is the length of the data at brain location :math
 
 where :math:`\hat{u}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
 
-2. the Adjusted Cosine error
+2. The Adjusted Cosine Error
 ****************************
 
 A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the squared length of the data vector:
@@ -592,7 +601,7 @@ where :math:`||\mathbf{y}_i||` is the length of the data at brain location :math
 
 where :math:`\hat{u}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
 
-Proof of the adjusted cosine distance is equivalent to :math:`1-R^2`
+Proof of the Adjusted Cosine Distance is equivalent to :math:`1-R^2`
 ********************************************************************
 
 Weighting the error by the length of the vector effectively calculates squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`). For simplicity, we use :math:`\mathbf{v}_k` to represent the most likely predicted mean direction :math:`{\mathbf{v}_\underset{k}{\operatorname{argmax}}}` for each voxel in the following proof. :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`) is defined as:
