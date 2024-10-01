@@ -456,7 +456,7 @@ Now, we update the parameters :math:`\theta` of the von-Mises mixture in the M-s
 	\tilde{u}_{s,k} &= \sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q} J_{s,i}
 	\end{align*}
 
-2. In general, given these two estimates, we can updated the v parameter for the van-Mises Fisher distribution as follows:
+2. In general, given these two estimates, we can updated the v parameter for the von-Mises Fisher distribution as follows:
 
 .. math::
 	\begin{align*}
@@ -574,29 +574,39 @@ The Cosine Error is an evaluation criterion based on the dissimilarity between s
 	                          &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\hat{y}_i^{(k)}\Bigr)}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}\sqrt{\displaystyle \sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2}} \right]
     \end{align*}
 
-For each voxel :math:`i`, the reconstructed profile is normalized to length 1, i.e. :math:`||\mathbf{\hat{y}}_i||=\sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2=1`. 
+For each voxel :math:`i`, the reconstructed activation profile is normalized to length 1, i.e. :math:`||\mathbf{\hat{y}}_i||=\sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2=1`. 
 The cosine error can be then simplified to:
 
 .. math::
 	\begin{align*}
 	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\hat{y}_i^{(k)}\Bigr)}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right]
-	                           = \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K y_i^{(k)} \displaystyle \sum_k^K \hat{y}_i^{(k)}}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right] \\
+	                           = \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K y_i^{(k)} \displaystyle \sum_k^K \hat{y}_i^{(k)}}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right] \\\\
 							  &= \frac{1}{P}\sum_i^P \Biggl[ 1- \Biggl( \displaystyle \sum_k^K \hat{y}_i^{(k)} \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr]
     \end{align*}
 
+For a given emission model, the recontructed profiles can be defined as :math:`\mathbf{\hat{Y}}_{test} = \mathbf{\hat{U}}_{test} \mathbf{V}^T`, where :math:`\mathbf{\hat{U}}_{test}` is the 
+predicted probabilistic parcellation from the test data, following a proposed distribution :math:`q(\mathbf{U})`, and :math:`\mathbf{V}` is the inferred mean direction of the model obtained 
+from the training data. The *expected* mean cosine error under :math:`q(\mathbf{u}_i)` can be thus expressed as:
 
+.. math::
+	\begin{align*}
+	   \langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i^P \Biggl[ 1- \Biggl( \displaystyle \sum_k^K \hat{u}_i^{(k)} \mathbf{v}_k^T \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr]
+    \end{align*}
+
+Because the sum of the probabilities for each voxel :math:`i` across :math:`K` parcels must be 1, the equation above can be simplified to:
+
+.. math::
+	\begin{align*}
+	  \langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i^P \Biggl[  \displaystyle \sum_k^K \hat{u}_i^{(k)} - \Biggl( \displaystyle \sum_k^K \hat{u}_i^{(k)} \mathbf{v}_k^T \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr] \\\\
+                                              &= \frac{1}{P}\sum_i^P \sum_k^K \hat{u}_i^{(k)} \left(1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
+    \end{align*}
 
 One possibility is to use for each voxel the most likely predicted mean direction.
 
 .. math::
 	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
 
-where :math:`||\mathbf{y}_i||` is the length of the data at brain location :math:`i`, :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v_k}` with the maximum expectation for that voxel. We then compute the mean cosine distance across all :math:`P` brain locations. We can also compute the  *expected* mean cosine distance under the :math:`q(\mathbf{u}_i)` which defined as below:
-
-.. math::
-	\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} (1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
-
-where :math:`\hat{u}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
+where :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v_k}` with the maximum expectation for that voxel.
 
 2. The Adjusted Cosine Error
 ****************************
