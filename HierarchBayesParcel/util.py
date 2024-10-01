@@ -50,6 +50,45 @@ def load_group_parcellation(fname, index=None, marginal=False,
     return U, info_reduced
 
 
+def load_emission_params(fname, param_name, index=None,
+                         device=None):
+    """ Loads parameters from a list of emission models
+        of a pre-trained model.
+    Args:
+        fname (str): File name of pre-trained model
+        param_name (str): Name of the parameter to load
+        index (int): Index of the model to load. If None,
+            loads the model with the highest log-likelihood
+            by default.
+        device (str): Device to load the model to. Current
+            support 'cuda' and 'cpu'.
+    Returns:
+        params (list): a list of emission parameters from
+            the emission models
+        info_reduced (pandas.Dataframe): Data Frame with
+            necessary information
+    """
+    info = pd.read_csv(fname + '.tsv', sep='\t')
+    with open(fname + '.pickle', 'rb') as file:
+        models = pickle.load(file)
+
+    if index is None:
+        index = info.loglik.argmax()
+
+    select_model = models[index]
+    if device is not None:
+        select_model.move_to(device)
+
+    info_reduced = info.iloc[index]
+    params = []
+    for em_model in select_model.emissions:
+        assert param_name in em_model.param_list, \
+            f'{param_name} is not in the param_list.'
+        params.append(vars(em_model)[param_name])
+
+    return params, info_reduced
+
+
 def report_cuda_memory():
     """Reports the current memory usage of the GPU
     """
