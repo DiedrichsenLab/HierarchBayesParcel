@@ -570,8 +570,8 @@ The Cosine Error is an evaluation criterion based on the dissimilarity between s
 
 .. math::
 	\begin{align*}
-	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P [1-\mathrm{cos}(\mathbf{Y}_{test}, \mathbf{\hat{Y}}_{test})] \\
-	                          &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\hat{y}_i^{(k)}\Bigr)}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}\sqrt{\displaystyle \sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2}} \right]
+	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P \left[ 1-\mathrm{cos} \left(\mathbf{Y}_{test}, \mathbf{\hat{Y}}_{test} \right) \right] \\
+	                          &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K \left( y_i^{(k)}\hat{y}_i^{(k)}\right)}{\sqrt{ \displaystyle \sum_k^K\left(y_i^{(k)} \right)^2}\sqrt{\displaystyle \sum_k^K\left(\hat{y}_i^{(k)}\right)^2}} \right]
     \end{align*}
 
 For each voxel :math:`i`, the reconstructed activation profile is normalized to length 1, i.e. :math:`||\mathbf{\hat{y}}_i||=\sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2=1`. 
@@ -604,24 +604,30 @@ Because the sum of the probabilities for each voxel :math:`i` across :math:`K` p
 One possibility is to use for each voxel the most likely predicted mean direction.
 
 .. math::
-	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 
-where :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v_k}` with the maximum expectation for that voxel.
+where :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v}_k` with the maximum expectation for that voxel.
 
 2. The Adjusted Cosine Error
 ****************************
 
-A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the squared length of the data vector:
+A possible problem with the cosine error is that voxels which have very little signal count as much as voxels with a lot of signal. To address this, we can compute the weighted arithmetic mean of 
+the cosine error across these :math:`P` voxels, where each voxel's cosine error is weighted by the squared length of the data vector:
 
 .. math::
-	\bar{\epsilon}_{Acosine} = \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||) \label{ref1}
+	\begin{align*}
+	  \langle\bar{\epsilon}_{Acosine}\rangle_q &= \frac{\sum_i^P ||\mathbf{y}_i||^2}{\sum_i^P ||\mathbf{y}_i||^2} \left[ \sum_k^K \hat{u}_i^{(k)} \left( 1 - \frac{\mathbf{v}_k^T \mathbf{y}_i}{||\mathbf{y}_i||} \right) \right] \\\\
+	                                           &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P \sum_k^K \hat{u}_i^{(k)} \left( ||\mathbf{y}_i||^2-  \frac{\mathbf{v}_k^T\mathbf{y}_i||\mathbf{y}_i||^2} {||\mathbf{y}_i||} \right) \\\\
+											   &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i \sum_k^K  \hat{u}_i^{(k)} \left(||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i|| \right)
+    \end{align*}
 
-where :math:`||\mathbf{y}_i||` is the length of the data at brain location :math:`i`, :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v_k}` with the maximum expectation. We then compute the mean cosine distance across all :math:`P` brain locations. Another option is to calculate the *expected* mean cosine distance under the :math:`q(\mathbf{u}_i)` which defined as below:
+Similarly, for the special case when one uses the most likely predicted mean direction, the adjusted cosine error can be simplified to:
 
 .. math::
-	\langle\bar{\epsilon}_{Acosine}\rangle_q = \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
-
-where :math:`\hat{u}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
+	\begin{align*}
+	  \bar{\epsilon}_{Acosine} &= \frac{\sum_i^P ||\mathbf{y}_i||^2}{\sum_i^P ||\mathbf{y}_i||^2} \left( 1 -  \frac{{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i}{{||y||_i}}\right) \\\\
+	                           &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i^P \left( ||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i|| \right)
+	\end{align*}
 
 Proof of the Adjusted Cosine Distance is equivalent to :math:`1-R^2`
 ********************************************************************
@@ -630,19 +636,19 @@ Weighting the error by the length of the vector effectively calculates squared e
 
 .. math::
 	\begin{align*}
-	1-R^2 &= \frac{RSS}{TSS}\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i[(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2)\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
-	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||)
+	1-R^2 &= \frac{RSS}{TSS} \\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( \mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i|| \right)^2 \\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left[ (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||) \right] \\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( \mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2 \right) \\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( ||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2 \right) \\
+	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( ||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i|| \right)
 	\end{align*}
 
 By :math:`\bar{\epsilon}_{Acosine}`, we can see that :math:`1-R^2 = 2\bar{\epsilon}_{Acosine}`, and similarly we can easily proof below equation:
 
 .. math::
 	\begin{align*}
-	\langle\bar{\epsilon}_{MSE}\rangle_q &= \frac{1}{P}\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2=2\langle\bar{\epsilon}_{Acosine}\rangle_q
+	\langle\bar{\epsilon}_{MSE}\rangle_q &= \frac{1}{P}\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} \left( \mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i|| \right)^2=2\langle\bar{\epsilon}_{Acosine}\rangle_q
 	\end{align*}
 
 where :math:`\hat{\mathbf{u}}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
