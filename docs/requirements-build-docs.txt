@@ -10,3 +10,4 @@ scipy
 sphinx_rtd_theme
 torch
 scikit-learn
+pandoc

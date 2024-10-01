@@ -758,9 +758,14 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
         train_data (np.ndarray or pt.Tensor):
             Individual localizing data
         cond_vec (list):
-            The condition vectors for each emission model
+            The condition vectors for each emission model. They contain 
+            the unique indices for each unique condition.
         part_vec (list):
-            The partition vectors for each emission model
+            The partition vectors for each emission model. They contain 
+            the indices of the partitions for each condition. Partitions 
+            refer to what data were used to calculate the condition 
+            estimate. (Ex: Indices of partitions can refer to the 
+            indices of runs or sessions.)
         subj_ind (list):
             The subject indices for each emission model
         Vs (list):
@@ -791,6 +796,17 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
             The log-likelihood of the individual parcellations
         M (object):
             The trained arrangement model
+
+    Notes:
+        For users who want to get data-only individual parcellations, the
+        individual specific data-only likelihood (num_subj, K, P) can be
+        infered by a single E-step using the trained model `M`. We then
+        normalize it along the second dimension to make sure a probabilistic
+        parcellation, such as:
+
+            emloglik  = M.emissions[0].Estep()
+            Uhat_data = pt.softmax(emloglik, dim=1)
+
     """
     # convert tdata to tensor
     if type(train_data) is np.ndarray:

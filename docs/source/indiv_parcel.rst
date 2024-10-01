@@ -108,7 +108,7 @@ Of course, we want to keep the atlas the same, so the arrangement model will not
     M.initialize([data])
 
     # Now we can run the EM algorithm
-    M, ll, _, U_indiv = M.fit_em(iter=200, tol=0.01,
+    M, _, _, _ = M.fit_em(iter=200, tol=0.01,
         fit_arrangement=False,fit_emission=True,first_evidence=False)
 
 Step 6: Get the individual parcellation for a new subject
@@ -118,7 +118,7 @@ The last step already returns the individual parcellation for all the subjects i
 .. sourcecode:: python
 
 	M.initialize([data])
-	U_indiv,_ = M.Estep()
+	U_indiv, _ = M.Estep()
 
 
 Step 7: Visualize the individual parcellations
