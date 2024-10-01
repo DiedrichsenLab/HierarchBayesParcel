@@ -565,12 +565,24 @@ Evaluation on independent test data (:math:`\mathbf{Y}_{test}`)
 1. Cosine Error
 ***************
 
-The Cosine Error is an evaluation criterion based on the difference between some observed activity profiles :math:`\mathbf{Y}_{test}` and the predicted mean directions from the model  
-:math:`\mathbf{v}_k` given some expectation of which voxel belongs to what cluster :math:`\langle \mathbf{u}_i \rangle` . The overall cosine error is thus defined as the arithmetic 
-mean of the cosine error across $P$ voxels as follows:
+The Cosine Error is an evaluation criterion based on the dissimilarity between some observed activation profiles :math:`\mathbf{Y}_{test}` across :math:`P` voxels and reconstructed profiles 
+:math:`\mathbf{\hat{Y}}_{test}` from a model defined along :math:`K` parcels, with :math:`K \ll P`. The overall cosine error is thus defined as the arithmetic mean of the cosine error across voxels.
 
+.. math::
+	\begin{align*}
+	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P [1-\mathrm{cos}(\mathbf{Y}_{test}, \mathbf{\hat{Y}}_{test})] \\
+	                          &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\hat{y}_i^{(k)}\Bigr)}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}\sqrt{\displaystyle \sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2}} \right]
+    \end{align*}
 
+For each voxel :math:`i`, the reconstructed profile is normalized to length 1, i.e. :math:`||\mathbf{\hat{y}}_i||=\sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2=1`. 
+The cosine error can be then simplified to:
 
+.. math::
+	\begin{align*}
+	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\hat{y}_i^{(k)}\Bigr)}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right]
+	                           = \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K y_i^{(k)} \displaystyle \sum_k^K \hat{y}_i^{(k)}}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right] \\
+							  &= \frac{1}{P}\sum_i^P \Biggl[ 1- \Biggl( \displaystyle \sum_k^K \hat{y}_i^{(k)} \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr]
+    \end{align*}
 
 
 
