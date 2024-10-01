@@ -439,13 +439,13 @@ class MixVMF(EmissionModel):
         # as the real parcels are likely to have concentrated within-parcel data.
 
         if self.parcel_specific_kappa and (not self.subject_specific_kappa):
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.K,))
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample((self.K,))
         elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.num_subj,))
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample((self.num_subj,))
         elif self.parcel_specific_kappa and self.subject_specific_kappa:
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample((self.num_subj, self.K))
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample((self.num_subj, self.K))
         else:
-            self.kappa = pt.distributions.uniform.Uniform(10, 150).sample()
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample()
 
     def Estep(self, Y=None, sub=None):
         """ Estep: Returns log p(Y|U) for each voxel and value of U,
@@ -567,12 +567,12 @@ class MixVMF(EmissionModel):
                 voxel_ind = pt.nonzero(U[s] == this_par).view(-1)
 
                 # samples y shape (num_parts, P, M)
-                if self.parcel_specific_kappa:
+                if self.parcel_specific_kappa and not self.subject_specific_kappa:
                     y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
                                              self.kappa[this_par].cpu().numpy(),
                                              int(counts[i] * num_parts)),
                                   dtype=pt.get_default_dtype())
-                elif self.subject_specific_kappa:
+                elif self.subject_specific_kappa and not self.parcel_specific_kappa:
                     y = pt.tensor(random_VMF(self.V[:, this_par].cpu().numpy(),
                                              self.kappa[s].cpu().numpy(),
                                              int(counts[i] * num_parts)),
