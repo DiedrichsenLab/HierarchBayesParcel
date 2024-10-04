@@ -209,7 +209,6 @@ where C is the part of the normalized log-likelihood that does not depend on :ma
 So in this parameterization in the iid case, :math:`Z=1` and we don't need the negative step. In general, however, we cannot simply set the above derivative to zero and solve it, as the parameter :math:`\theta_w` will also have an influences on :math:`\langle u_{ik} \rangle`.
 
 
-
 Probabilistic multinomial restricted Boltzmann machine
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -561,6 +560,8 @@ Intuitively, :math:`M_{00}` and :math:`M_{11}` account for the agreement of parc
 
 Evaluation on independent test data (:math:`\mathbf{Y}_{test}`)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
 
 1. Cosine Error
 ***************
