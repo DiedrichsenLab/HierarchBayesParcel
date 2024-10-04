@@ -539,7 +539,7 @@ The second criteria is the normalized mutual information which examine the actua
 .. math::
 	NMI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\sum_{i=1}^{k_\mathbf{u}}\sum_{j=1}^{k_\mathbf{\hat{u}}}\frac{|\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j|}{P}\log (P\frac{||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||}{|\mathbf{u}=i|\cdot|\mathbf{\hat{u}}=j|})}{\sum_{i=1}^{k_\mathbf{u}}\frac{|\mathbf{u}=i|}{P}\log(\frac{|\mathbf{u}=i|}{P})+\sum_{j=1}^{k_{\mathbf{\hat{u}}}}\frac{|\hat{\mathbf{u}}=j|}{P}\log(\frac{|\hat{\mathbf{u}}=j|}{P})}
 
-where :math:`k_{\mathbf{u}}=\{1,2,3,...,k\}` and :math:`k_{\mathbf{\hat{u}}}=\{1,2,3,...,k\}` represents the cluster labels of :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}` respectively. The term:math:`|\mathbf{u}=i|` and :math:`|\hat{\mathbf{u}}=j|` are the number of brain locations that belongs to cluster :math:`k_\mathbf{u}=i` in parcellation :math:`\mathbf{U}` or to cluster :math:`k_\mathbf{\hat{u}}=j` in :math:`\mathbf{\hat{U}}`, in other words, the terms :math:`\frac{|\mathbf{u}=i|}{P}` and :math:`\frac{|\mathbf{\hat{u}}=j|}{P}` represents the probability that a brain location picked at random from :math:`\mathbf{U}` falls into class :math:`k_{\mathbf{u}}=i`, or from :math:`\mathbf{\hat{U}}` falls into class :math:`k_{\mathbf{\hat{u}}}=j`.
+where :math:`k_{\mathbf{u}}=\{1,2,3,...,k\}` and :math:`k_{\mathbf{\hat{u}}}=\{1,2,3,...,k\}` represents the cluster labels of :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}` respectively. The term :math:`|\mathbf{u}=i|` and :math:`|\hat{\mathbf{u}}=j|` are the number of brain locations that belongs to cluster :math:`k_\mathbf{u}=i` in parcellation :math:`\mathbf{U}` or to cluster :math:`k_\mathbf{\hat{u}}=j` in :math:`\mathbf{\hat{U}}`, in other words, the terms :math:`\frac{|\mathbf{u}=i|}{P}` and :math:`\frac{|\mathbf{\hat{u}}=j|}{P}` represents the probability that a brain location picked at random from :math:`\mathbf{U}` falls into class :math:`k_{\mathbf{u}}=i`, or from :math:`\mathbf{\hat{U}}` falls into class :math:`k_{\mathbf{\hat{u}}}=j`.
 
 Similarly, the :math:`||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||` means the total number of a brain locations that both falls into classes :math:`k_{\mathbf{u}}=i` and :math:`k_{\mathbf{\hat{u}}}=j`. Note, the NMI calculation would not suffer from the permutation.
 
@@ -566,7 +566,7 @@ One way to evaluate parcellation models is to test how well they can predict new
 Because fMRI data (task activities or time series) have very different signal to noise levels across different voxels and subjects (and because the model does not necessarily predict the amplitude of responses), a natural evaluation criterion is the cosine error between predicted and observed data. 
 
 .. math::
-	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||})
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||} \right)
 
 For deriving a prediction from a probabilistic parcellation model, we have three options: 
 
@@ -575,7 +575,7 @@ Cosine error using a hard parcellation
 A simple evaluation is to set the prediction of the model to the response profile for the most likely parcel, :math:`\mathbf{v}_{\underset{k}{\operatorname{argmax}}}`. Assuming that the predicted response profiles are already length 1, the cosine error is then:
 
 .. math::
-	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 
 
 Cosine Error for the average prediction
@@ -591,7 +591,7 @@ where :math:`\hat{u}_i^{(k)}` is a probability that brain location *i* belongs t
 The entire cosine error is then: 
 
 .. math::
-	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-\frac{( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k)^{T}\mathbf{y}_i}{|| \sum_k \hat{u}_i^{(k)}\mathbf{v}_k||||\mathbf{y}_i||})
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-\frac{ \left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{|| \sum_k \hat{u}_i^{(k)}\mathbf{v}_k||\:||\mathbf{y}_i||} \right)
 
 Expected cosine error
 *********************
@@ -600,24 +600,26 @@ Rather than calculating the **cosine error for the average prediction** of the p
 
 .. math::
 	\begin{align*}
-	\langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} (1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})\\
-	& = \frac{1}{P}\sum_i^P (1-\frac{( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k)^{T}\mathbf{y}_i}{||\mathbf{y}_i||})
+	\langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i^P \left( 1-\frac{\left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{||\mathbf{y}_i||} \right) \\\\
+	&= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} \left( 1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 	\end{align*}
 
-From the second line we can see that for the difference between the cosine error for the average prediction abd the expected cosine error differ in that the prediction is being normalized to unit length for the former, but not for the latter. 
+When we compare the first expression of the expected cosine error with the expression of the cosine error for the average prediction, we can conclude that the prediction term is normalized to unit length 
+for the former (i.e. for each voxel :math:`i`, the sum across :math:`k` parcels must be 1) whereas that is not the case for the latter.
+
 
 Adjusted vs. non-adjusted cosine error
 ************************************** 
 
-For all three types of cosine error mentioned so far, a possible problem is that voxel that have very little signal count as much as voxel with a lot of signal.To address this, we can change how we average the cosine error across different voxels. A interesting choice is to weight each error by the squared length of the data vector:
+For all three types of cosine error mentioned so far, a possible problem is that a voxel which has very little signal count as much as a voxel with a lot of signal. To address this, we can change how we average the cosine error across different voxels. An interesting choice is to weight each error by the squared length of the data vector:
 
 .. math::
 	\begin{align*}
-	\bar{\epsilon}_{Acosine} &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P ||\mathbf{y}_i||^2 (1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||}))\\
-	&= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P  (||\mathbf{y}_i||^2-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i ||\mathbf{y}_i||}{||\hat{\mathbf{y}}_i||}))
+	\bar{\epsilon}_{Acosine} &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P ||\mathbf{y}_i||^2 \left( 1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||\,||\mathbf{y}_i||} \right) \\\\
+	&= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P  \left( ||\mathbf{y}_i||^2-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i ||\mathbf{y}_i||}{||\hat{\mathbf{y}}_i||} \right)
 	\end{align*}
 
-Weighting the error by the squared length of the vector effectively calculates squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`). For simplicity, we use :math:`\mathbf{v}_i` to represent the predicted mean direction for this voxel (already normalized to unit length). :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_i||\mathbf{y}_i||`) is defined as:
+Weighting the error by the squared length of the vector effectively calculates the squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k\,||\mathbf{y}_i||`). For simplicity, we replace :math:`\mathbf{v}_k` by :math:`\mathbf{v}_i` to represent the predicted mean direction for voxel :math:`i` (already normalized to unit length). Therefore, :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_i\,||\mathbf{y}_i||`) is defined as:
 
 .. math::
 	\begin{align*}
@@ -629,4 +631,4 @@ Weighting the error by the squared length of the vector effectively calculates s
 	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_i||\mathbf{y}_i||)
 	\end{align*}
 
-Adjusting for the length of the data vector can be done for any of the previously mentioned types of cosine error: The hard cosine error, the cosine error for the average prediction, and the expected cosine error.
+Adjusting for the length of the data vector can be done for any of the previously mentioned types of cosine error, i.e. for the hard-parcellation cosine error, the cosine error for the average prediction, and the expected cosine error.
