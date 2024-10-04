@@ -561,7 +561,7 @@ Intuitively, :math:`M_{00}` and :math:`M_{11}` account for the agreement of parc
 Prediction error on independent test data (:math:`\mathbf{Y}_{test}`)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-One way to evaluate parcellation models is to test how well they can predict new test data. In general we have test data :math:`\mathbf{Y}_{test}`, a :math:`N \times P` matrix with *N* measurements (tasks, timepoints, features) and *P* brain locations (voxels, vertices) for each subject. :math:`\mathbf{y}_{i}` is the response profile (a N-long vector) for each brain location :math:`i`. 
+One way to evaluate parcellation models is to test how well they can predict new test data. In general we have test data :math:`\mathbf{Y}_{test}`, a :math:`N \times P` matrix with *N* measurements (tasks, timepoints) and *P* brain locations (voxels, vertices) for each subject. Therefore, :math:`\mathbf{y}_{i}` is the response profile (a N-long vector) for each brain location :math:`i`. 
 
 Because fMRI data (task activities or time series) have very different signal to noise levels across different voxels and subjects (and because the model does not necessarily predict the amplitude of responses), a natural evaluation criterion is the cosine error between predicted and observed data. 
 
@@ -604,8 +604,8 @@ Rather than calculating the **cosine error for the average prediction** of the p
 	&= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} \left( 1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 	\end{align*}
 
-When we compare the first expression of the expected cosine error with the expression of the cosine error for the average prediction, we can conclude that the prediction term is normalized to unit length 
-for the former (i.e. for each voxel :math:`i`, the sum across :math:`k` parcels must be 1) whereas that is not the case for the latter.
+When we compare the first expression of the expected cosine error with the expression of the cosine error for the average prediction, we conclude that the prediction term is normalized to unit length 
+for the former (i.e. for each voxel :math:`i`, the sum across :math:`k` parcels is 1) whereas that is not the case for the latter.
 
 
 Adjusted vs. non-adjusted cosine error
