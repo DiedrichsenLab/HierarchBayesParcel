@@ -558,98 +558,75 @@ where :math:`M_{11}` corresponds to the number of pairs that are assigned to the
 Intuitively, :math:`M_{00}` and :math:`M_{11}` account for the agreement of parcellations, whereas :math:`M_{10}` and :math:`M_{01}` indicate their disagreement. Note, the ARI calculation would not suffer from the permutation.
 
 
-Evaluation on independent test data (:math:`\mathbf{Y}_{test}`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Prediction error on independent test data (:math:`\mathbf{Y}_{test}`)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+One way to evaluate parcellation models is to test how well they can predict new test data. In general we have test data :math:`\mathbf{Y}_{test}`, a :math:`N \times P` matrix with *N* measurements (tasks, timepoints, features) and *P* brain locations (voxels, vertices) for each subject. :math:`\mathbf{y}_{i}` is the response profile (a N-long vector) for each brain location :math:`i`. 
+
+Because fMRI data (task activities or time series) have very different signal to noise levels across different voxels and subjects (and because the model does not necessarily predict the amplitude of responses), a natural evaluation criterion is the cosine error between predicted and observed data. 
+
+.. math::
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||})
+
+For deriving a prediction from a probabilistic parcellation model, we have three options: 
+
+Cosine error using a hard parcellation
+**************************************
+A simple evaluation is to set the prediction of the model to the response profile for the most likely parcel, :math:`\mathbf{v}_{\underset{k}{\operatorname{argmax}}}`. Assuming that the predicted response profiles are already length 1, the cosine error is then:
+
+.. math::
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
 
 
+Cosine Error for the average prediction
+***************************************
 
-1. Cosine Error
-***************
+Alternatively, we can set the prediction to the average of the response profiles across all the parcels, weighted by the probability that the voxels belongs to that parcel: 
 
-The Cosine Error is an evaluation criterion based on the dissimilarity between some observed activation profiles :math:`\mathbf{Y}_{test}` across :math:`P` voxels and reconstructed profiles 
-:math:`\mathbf{\hat{Y}}_{test}` from a model defined along :math:`K` parcels, with :math:`K \ll P`. The overall cosine error is thus defined as the arithmetic mean of the cosine error across voxels.
+.. math::
+	\hat{\mathbf{y}}_{i} = \sum_k \hat{u}_i^{(k)}\mathbf{v}_k
+
+where :math:`\hat{u}_i^{(k)}` is a probability that brain location *i* belongs to parcel *k*. This probabilistic parcellation should of course be estimated on independent training data.  
+
+The entire cosine error is then: 
+
+.. math::
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-\frac{( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k)^{T}\mathbf{y}_i}{|| \sum_k \hat{u}_i^{(k)}\mathbf{v}_k||||\mathbf{y}_i||})
+
+Expected cosine error
+*********************
+
+Rather than calculating the **cosine error for the average prediction** of the probabilistic model, we can also compute the **average cosine error across all possible predictions**. The expected cosine error is defined as: 
 
 .. math::
 	\begin{align*}
-	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P \left[ 1-\mathrm{cos} \left(\mathbf{Y}_{test}, \mathbf{\hat{Y}}_{test} \right) \right] \\
-	                          &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K \left( y_i^{(k)}\hat{y}_i^{(k)}\right)}{\sqrt{ \displaystyle \sum_k^K\left(y_i^{(k)} \right)^2}\sqrt{\displaystyle \sum_k^K\left(\hat{y}_i^{(k)}\right)^2}} \right]
-    \end{align*}
-
-For each voxel :math:`i`, the reconstructed activation profile is normalized to length 1, i.e. :math:`||\mathbf{\hat{y}}_i||=\sum_k^K\Bigl(\hat{y}_i^{(k)}\Bigr)^2=1`. 
-The cosine error can be then simplified to:
-
-.. math::
-	\begin{align*}
-	  \bar{\epsilon}_{cosine} &= \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\hat{y}_i^{(k)}\Bigr)}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right]
-	                           = \frac{1}{P}\sum_i^P \left[ 1-\frac{ \displaystyle \sum_k^K y_i^{(k)} \displaystyle \sum_k^K \hat{y}_i^{(k)}}{\sqrt{ \displaystyle \sum_k^K\Bigl(y_i^{(k)}\Bigr)^2}} \right] \\\\
-							  &= \frac{1}{P}\sum_i^P \Biggl[ 1- \Biggl( \displaystyle \sum_k^K \hat{y}_i^{(k)} \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr]
-    \end{align*}
-
-For a given emission model, the recontructed profiles can be defined as :math:`\mathbf{\hat{Y}}_{test} = \mathbf{\hat{U}}_{test} \mathbf{V}^T`, where :math:`\mathbf{\hat{U}}_{test}` is the 
-predicted probabilistic parcellation from the test data, following a proposed distribution :math:`q(\mathbf{U})`, and :math:`\mathbf{V}` is the inferred mean direction of the model obtained 
-from the training data. The *expected* mean cosine error under :math:`q(\mathbf{u}_i)` can be thus expressed as:
-
-.. math::
-	\begin{align*}
-	   \langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i^P \Biggl[ 1- \Biggl( \displaystyle \sum_k^K \hat{u}_i^{(k)} \mathbf{v}_k^T \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr]
-    \end{align*}
-
-Because the sum of the probabilities for each voxel :math:`i` across :math:`K` parcels must be 1, the equation above can be simplified to:
-
-.. math::
-	\begin{align*}
-	  \langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i^P \Biggl[  \displaystyle \sum_k^K \hat{u}_i^{(k)} - \Biggl( \displaystyle \sum_k^K \hat{u}_i^{(k)} \mathbf{v}_k^T \Biggl) \frac{\mathbf{y}_i}{||\mathbf{y}_i||} \Biggr] \\\\
-                                              &= \frac{1}{P}\sum_i^P \sum_k^K \hat{u}_i^{(k)} \left(1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
-    \end{align*}
-
-One possibility is to use for each voxel the most likely predicted mean direction.
-
-.. math::
-	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
-
-where :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v}_k` with the maximum expectation for that voxel.
-
-2. The Adjusted Cosine Error
-****************************
-
-A possible problem with the cosine error is that voxels which have very little signal count as much as voxels with a lot of signal. To address this, we can compute the weighted arithmetic mean of 
-the cosine error across these :math:`P` voxels, where each voxel's cosine error is weighted by the squared length of the data vector:
-
-.. math::
-	\begin{align*}
-	  \langle\bar{\epsilon}_{Acosine}\rangle_q &= \frac{\sum_i^P ||\mathbf{y}_i||^2}{\sum_i^P ||\mathbf{y}_i||^2} \left[ \sum_k^K \hat{u}_i^{(k)} \left( 1 - \frac{\mathbf{v}_k^T \mathbf{y}_i}{||\mathbf{y}_i||} \right) \right] \\\\
-	                                           &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P \sum_k^K \hat{u}_i^{(k)} \left( ||\mathbf{y}_i||^2-  \frac{\mathbf{v}_k^T\mathbf{y}_i||\mathbf{y}_i||^2} {||\mathbf{y}_i||} \right) \\\\
-											   &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i \sum_k^K  \hat{u}_i^{(k)} \left(||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i|| \right)
-    \end{align*}
-
-Similarly, for the special case when one uses the most likely predicted mean direction, the adjusted cosine error can be simplified to:
-
-.. math::
-	\begin{align*}
-	  \bar{\epsilon}_{Acosine} &= \frac{\sum_i^P ||\mathbf{y}_i||^2}{\sum_i^P ||\mathbf{y}_i||^2} \left( 1 -  \frac{{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i}{{||y||_i}}\right) \\\\
-	                           &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i^P \left( ||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i|| \right)
+	\langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} (1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})\\
+	& = \frac{1}{P}\sum_i^P (1-\frac{( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k)^{T}\mathbf{y}_i}{||\mathbf{y}_i||})
 	\end{align*}
 
-Proof of the Adjusted Cosine Distance is equivalent to :math:`1-R^2`
-********************************************************************
+From the second line we can see that for the difference between the cosine error for the average prediction abd the expected cosine error differ in that the prediction is being normalized to unit length for the former, but not for the latter. 
 
-Weighting the error by the length of the vector effectively calculates squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`). For simplicity, we use :math:`\mathbf{v}_k` to represent the most likely predicted mean direction :math:`{\mathbf{v}_\underset{k}{\operatorname{argmax}}}` for each voxel in the following proof. :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`) is defined as:
+Adjusted vs. non-adjusted cosine error
+************************************** 
 
-.. math::
-	\begin{align*}
-	1-R^2 &= \frac{RSS}{TSS} \\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( \mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i|| \right)^2 \\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left[ (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||) \right] \\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( \mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2 \right) \\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( ||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2 \right) \\
-	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i \left( ||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i|| \right)
-	\end{align*}
-
-By :math:`\bar{\epsilon}_{Acosine}`, we can see that :math:`1-R^2 = 2\bar{\epsilon}_{Acosine}`, and similarly we can easily proof below equation:
+For all three types of cosine error mentioned so far, a possible problem is that voxel that have very little signal count as much as voxel with a lot of signal.To address this, we can change how we average the cosine error across different voxels. A interesting choice is to weight each error by the squared length of the data vector:
 
 .. math::
 	\begin{align*}
-	\langle\bar{\epsilon}_{MSE}\rangle_q &= \frac{1}{P}\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} \left( \mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i|| \right)^2=2\langle\bar{\epsilon}_{Acosine}\rangle_q
+	\bar{\epsilon}_{Acosine} &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P ||\mathbf{y}_i||^2 (1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||}))\\
+	&= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P  (||\mathbf{y}_i||^2-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i ||\mathbf{y}_i||}{||\hat{\mathbf{y}}_i||}))
 	\end{align*}
 
-where :math:`\hat{\mathbf{u}}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
+Weighting the error by the squared length of the vector effectively calculates squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`). For simplicity, we use :math:`\mathbf{v}_i` to represent the predicted mean direction for this voxel (already normalized to unit length). :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_i||\mathbf{y}_i||`) is defined as:
+
+.. math::
+	\begin{align*}
+	1-R^2 &= \frac{RSS}{TSS}\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i (\mathbf{y}_i-\mathbf{v}_i||\mathbf{y}_i||)^2\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i[(\mathbf{y}_i-\mathbf{v}_i||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_i^T\mathbf{v}_i||\mathbf{y}_i||^2)\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_i||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
+	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_i||\mathbf{y}_i||)
+	\end{align*}
+
+Adjusting for the length of the data vector can be done for any of the previously mentioned types of cosine error: The hard cosine error, the cosine error for the average prediction, and the expected cosine error.
