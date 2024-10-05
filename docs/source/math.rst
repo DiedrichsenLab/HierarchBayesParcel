@@ -600,8 +600,8 @@ Rather than calculating the **cosine error for the average prediction** of the p
 
 .. math::
 	\begin{align*}
-	\langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i^P \left( 1-\frac{\left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{||\mathbf{y}_i||} \right) \\\\
-	&= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} \left( 1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
+	\langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} \left( 1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)\\
+	&= \frac{1}{P}\sum_i^P \left( 1-\frac{\left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 	\end{align*}
 
 When we compare the second line for the expected cosine error with the expression for cosine error for the average prediction, we see that the prediction term is normalized to unit length
