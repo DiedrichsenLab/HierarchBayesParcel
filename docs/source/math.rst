@@ -517,8 +517,8 @@ Comparing the true :math:`\mathbf{U}` and the inferred :math:`\hat{\mathbf{U}}`
 
 Note that these criteria only have value for simulations, for which we have the true parcellation :math:`\mathbf{U}`.
 
-1. The absolute error between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
-*****************************************************************************
+The absolute error between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+**************************************************************************
 
 The first evaluation criterion is to calculate the absolute error between the true parcellation :math:`\mathbf{U}` and the expected :math:`\mathbf{\hat{U}}` which inferred on the training data. It defined as,
 
@@ -531,8 +531,8 @@ Note, this calculation of the mean absolute error is subject to the premutation 
 
 
 
-2. Normalized Mutual information (NMI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
-**********************************************************************************************
+Normalized Mutual information (NMI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+*******************************************************************************************
 
 The second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
 
@@ -545,8 +545,8 @@ Similarly, the :math:`||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||` means the total 
 
 
 
-3. Adjusted rand index (ARI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
-************************************************************************************
+Adjusted rand index (ARI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+*********************************************************************************
 
 The third one is the commonly used adjust rand index to test how similar the two given parcellations are. It defined as:
 
@@ -561,14 +561,14 @@ Intuitively, :math:`M_{00}` and :math:`M_{11}` account for the agreement of parc
 Prediction error on independent test data (:math:`\mathbf{Y}_{test}`)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-One way to evaluate parcellation models is to test how well they can predict new test data. In general we have test data :math:`\mathbf{Y}_{test}`, a :math:`N \times P` matrix with *N* measurements (tasks, timepoints) and *P* brain locations (voxels, vertices) for each subject. Therefore, :math:`\mathbf{y}_{i}` is the response profile (a N-long vector) for each brain location :math:`i`. 
+One way to evaluate parcellation models is to test how well they can predict new test data. In general we have test data :math:`\mathbf{Y}_{test}`, a :math:`N \times P` matrix with *N* measurements (tasks, timepoints) and *P* brain locations (voxels, vertices) for each subject. Therefore, :math:`\mathbf{y}_{i}` is the response profile (a N-long vector) for each brain location :math:`i`.
 
-Because fMRI data (task activities or time series) have very different signal to noise levels across different voxels and subjects (and because the model does not necessarily predict the amplitude of responses), a natural evaluation criterion is the cosine error between predicted and observed data. 
+Because fMRI data (task activities or time series) have very different signal to noise levels across different voxels and subjects (and because the model does not necessarily predict the amplitude of responses), a natural evaluation criterion is the cosine error between predicted and observed data.
 
 .. math::
 	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||} \right)
 
-For deriving a prediction from a probabilistic parcellation model, we have three options: 
+For deriving a prediction from a probabilistic parcellation model, we have three options:
 
 Cosine error using a hard parcellation
 **************************************
@@ -581,14 +581,14 @@ A simple evaluation is to set the prediction of the model to the response profil
 Cosine Error for the average prediction
 ***************************************
 
-Alternatively, we can set the prediction to the average of the response profiles across all the parcels, weighted by the probability that the voxels belongs to that parcel: 
+Alternatively, we can set the prediction to the average of the response profiles across all the parcels, weighted by the probability that the voxels belongs to that parcel:
 
 .. math::
 	\hat{\mathbf{y}}_{i} = \sum_k \hat{u}_i^{(k)}\mathbf{v}_k
 
-where :math:`\hat{u}_i^{(k)}` is a probability that brain location *i* belongs to parcel *k*. This probabilistic parcellation should of course be estimated on independent training data.  
+where :math:`\hat{u}_i^{(k)}` is a probability that brain location *i* belongs to parcel *k*. This probabilistic parcellation should of course be estimated on independent training data.
 
-The entire cosine error is then: 
+The entire cosine error is then:
 
 .. math::
 	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-\frac{ \left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{|| \sum_k \hat{u}_i^{(k)}\mathbf{v}_k||\:||\mathbf{y}_i||} \right)
@@ -596,7 +596,7 @@ The entire cosine error is then:
 Expected cosine error
 *********************
 
-Rather than calculating the **cosine error for the average prediction** of the probabilistic model, we can also compute the **average cosine error across all possible predictions**. The expected cosine error is defined as: 
+Rather than calculating the **cosine error for the average prediction** of the probabilistic model, we can also compute the **average cosine error across all possible predictions**. The expected cosine error is defined as:
 
 .. math::
 	\begin{align*}
@@ -604,12 +604,12 @@ Rather than calculating the **cosine error for the average prediction** of the p
 	&= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} \left( 1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 	\end{align*}
 
-When we compare the first expression of the expected cosine error with the expression of the cosine error for the average prediction, we conclude that the prediction term is normalized to unit length 
-for the former (i.e. for each voxel :math:`i`, the sum across :math:`k` parcels is 1) whereas that is not the case for the latter.
+When we compare the second line for the expected cosine error with the expression for cosine error for the average prediction, we see that the prediction term is normalized to unit length
+for the former (i.e. for each voxel :math:`i`, the sum across :math:`N` observations is 1) whereas that is not the case for the latter.
 
 
 Adjusted vs. non-adjusted cosine error
-************************************** 
+**************************************
 
 For all three types of cosine error mentioned so far, a possible problem is that a voxel which has very little signal count as much as a voxel with a lot of signal. To address this, we can change how we average the cosine error across different voxels. An interesting choice is to weight each error by the squared length of the data vector:
 
@@ -619,7 +619,7 @@ For all three types of cosine error mentioned so far, a possible problem is that
 	&= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P  \left( ||\mathbf{y}_i||^2-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i ||\mathbf{y}_i||}{||\hat{\mathbf{y}}_i||} \right)
 	\end{align*}
 
-Weighting the error by the squared length of the vector effectively calculates the squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k\,||\mathbf{y}_i||`). For simplicity, we replace :math:`\mathbf{v}_k` by :math:`\mathbf{v}_i` to represent the predicted mean direction for voxel :math:`i` (already normalized to unit length). Therefore, :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_i\,||\mathbf{y}_i||`) is defined as:
+Weighting the error by the squared length of the vector effectively calculates the squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k\,||\mathbf{y}_i||`). To show this, we use :math:`\mathbf{v}_i` to denote the predicted mean direction for voxel :math:`i` , normalized to unit length. Therefore, :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_i\,||\mathbf{y}_i||`) is defined as:
 
 .. math::
 	\begin{align*}
