@@ -239,15 +239,15 @@ def u_prederr(U, uhat, expectation=True):
         return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
 
-def coserr(Y, V, U, adjusted=False, soft_assign=True):
+def coserr(Y, V, U, adjusted=False, ):
     """Compute the cosine distance between the data to the predicted V's
 
     Args:
         Y: the test data, with a shape (num_sub, N, P)
         V: the predicted mean directions
         U: the predicted U's from the trained emission model (in multinomial notation)
-        adjusted: Adjusted for the length of the data vector?
-        soft_assign: Compute the expected mean cosine error if True; Otherwise, False
+        adjusted: Adjusted for the length of the data vector (see ) 
+        type: Compute the expected mean cosine error if True; Otherwise, False
     Returns:
         the averaged expected cosine distance. 0 indicates the same direction;
         1 - orthogonal; 2 - opposite direction

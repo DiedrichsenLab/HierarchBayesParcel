@@ -209,7 +209,6 @@ where C is the part of the normalized log-likelihood that does not depend on :ma
 So in this parameterization in the iid case, :math:`Z=1` and we don't need the negative step. In general, however, we cannot simply set the above derivative to zero and solve it, as the parameter :math:`\theta_w` will also have an influences on :math:`\langle u_{ik} \rangle`.
 
 
-
 Probabilistic multinomial restricted Boltzmann machine
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -456,7 +455,7 @@ Now, we update the parameters :math:`\theta` of the von-Mises mixture in the M-s
 	\tilde{u}_{s,k} &= \sum_{i}^P\langle u_{s,i}^{(k)}\rangle_{q} J_{s,i}
 	\end{align*}
 
-2. In general, given these two estimates, we can updated the v parameter for the van-Mises Fisher distribution as follows:
+2. In general, given these two estimates, we can updated the v parameter for the von-Mises Fisher distribution as follows:
 
 .. math::
 	\begin{align*}
@@ -516,12 +515,12 @@ After model fitting, we need a fair way to quantitatively compare different emis
 Comparing the true :math:`\mathbf{U}` and the inferred :math:`\hat{\mathbf{U}}`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Note that these criteria only have value for simulations, for which we have the true
+Note that these criteria only have value for simulations, for which we have the true parcellation :math:`\mathbf{U}`.
 
-1. the absolute error between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
-*****************************************************************************
+The absolute error between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+**************************************************************************
 
-the first evaluation criterion is to calculate the absolute error between the true parcellation :math:`\mathbf{U}` and the expected :math:`\mathbf{\hat{U}}` which inferred on the training data. It defined as,
+The first evaluation criterion is to calculate the absolute error between the true parcellation :math:`\mathbf{U}` and the expected :math:`\mathbf{\hat{U}}` which inferred on the training data. It defined as,
 
 .. math::
 	\bar{U}_{error}=\frac{\sum_i|\mathbf{u_i}-\langle \mathbf{u}_{i}\rangle_{q}|}{P}
@@ -532,24 +531,24 @@ Note, this calculation of the mean absolute error is subject to the premutation 
 
 
 
-2. Normalized Mutual information (NMI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
-**********************************************************************************************
+Normalized Mutual information (NMI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+*******************************************************************************************
 
-the second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
+The second criteria is the normalized mutual information which examine the actual amount of "mutual information" between two parcellations :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`.  A NMI value closes to 0 indicate two parcellations are largely independent, while values close to 1 indicate significant agreement. It defined as:
 
 .. math::
 	NMI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\sum_{i=1}^{k_\mathbf{u}}\sum_{j=1}^{k_\mathbf{\hat{u}}}\frac{|\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j|}{P}\log (P\frac{||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||}{|\mathbf{u}=i|\cdot|\mathbf{\hat{u}}=j|})}{\sum_{i=1}^{k_\mathbf{u}}\frac{|\mathbf{u}=i|}{P}\log(\frac{|\mathbf{u}=i|}{P})+\sum_{j=1}^{k_{\mathbf{\hat{u}}}}\frac{|\hat{\mathbf{u}}=j|}{P}\log(\frac{|\hat{\mathbf{u}}=j|}{P})}
 
-where :math:`k_{\mathbf{u}}=\{1,2,3,...,k\}` and :math:`k_{\mathbf{\hat{u}}}=\{1,2,3,...,k\}` represents the cluster labels of :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}` respectively. The term:math:`|\mathbf{u}=i|` and :math:`|\hat{\mathbf{u}}=j|` are the number of brain locations that belongs to cluster :math:`k_\mathbf{u}=i` in parcellation :math:`\mathbf{U}` or to cluster :math:`k_\mathbf{\hat{u}}=j` in :math:`\mathbf{\hat{U}}`, in other words, the terms :math:`\frac{|\mathbf{u}=i|}{P}` and :math:`\frac{|\mathbf{\hat{u}}=j|}{P}` represents the probability that a brain location picked at random from :math:`\mathbf{U}` falls into class :math:`k_{\mathbf{u}}=i`, or from :math:`\mathbf{\hat{U}}` falls into class :math:`k_{\mathbf{\hat{u}}}=j`.
+where :math:`k_{\mathbf{u}}=\{1,2,3,...,k\}` and :math:`k_{\mathbf{\hat{u}}}=\{1,2,3,...,k\}` represents the cluster labels of :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}` respectively. The term :math:`|\mathbf{u}=i|` and :math:`|\hat{\mathbf{u}}=j|` are the number of brain locations that belongs to cluster :math:`k_\mathbf{u}=i` in parcellation :math:`\mathbf{U}` or to cluster :math:`k_\mathbf{\hat{u}}=j` in :math:`\mathbf{\hat{U}}`, in other words, the terms :math:`\frac{|\mathbf{u}=i|}{P}` and :math:`\frac{|\mathbf{\hat{u}}=j|}{P}` represents the probability that a brain location picked at random from :math:`\mathbf{U}` falls into class :math:`k_{\mathbf{u}}=i`, or from :math:`\mathbf{\hat{U}}` falls into class :math:`k_{\mathbf{\hat{u}}}=j`.
 
 Similarly, the :math:`||\mathbf{u}=i|\cap|\mathbf{\hat{u}}=j||` means the total number of a brain locations that both falls into classes :math:`k_{\mathbf{u}}=i` and :math:`k_{\mathbf{\hat{u}}}=j`. Note, the NMI calculation would not suffer from the permutation.
 
 
 
-3. Adjusted rand index (ARI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
-************************************************************************************
+Adjusted rand index (ARI) between :math:`\mathbf{U}` and :math:`\hat{\mathbf{U}}`
+*********************************************************************************
 
-the third one is the commonly used adjust rand index to test how similar the two given parcellations are. It defined as:
+The third one is the commonly used adjust rand index to test how similar the two given parcellations are. It defined as:
 
 .. math::
 	ARI(\mathbf{U},\mathbf{\hat{U}})=\frac{2\times(M_{11}M_{00}-M_{10}M_{01})}{(M_{00}+M_{10})(M_{10}+M_{11})+(M_{00}+M_{01})(M_{01}+M_{11})}
@@ -559,59 +558,77 @@ where :math:`M_{11}` corresponds to the number of pairs that are assigned to the
 Intuitively, :math:`M_{00}` and :math:`M_{11}` account for the agreement of parcellations, whereas :math:`M_{10}` and :math:`M_{01}` indicate their disagreement. Note, the ARI calculation would not suffer from the permutation.
 
 
-Evaluation on independent test data (:math:`\mathbf{Y}_{test}`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Prediction error on independent test data (:math:`\mathbf{Y}_{test}`)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-1. Cosine error
-***************
+One way to evaluate parcellation models is to test how well they can predict new test data. In general we have test data :math:`\mathbf{Y}_{test}`, a :math:`N \times P` matrix with *N* measurements (tasks, timepoints) and *P* brain locations (voxels, vertices) for each subject. Therefore, :math:`\mathbf{y}_{i}` is the response profile (a N-long vector) for each brain location :math:`i`.
 
-the first evaluation criterion based on the difference between some observed activity profiles :math:`\mathbf{Y}_{test}` and the predicted mean directions from the model  :math:`\mathbf{v}_k` given some expectation of which voxel belongs to what cluster :math:`\langle \mathbf{u}_i \rangle` . One possibility is to use for each voxel the most likely predicted mean direction.
-
-.. math::
-	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P (1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
-
-where :math:`||\mathbf{y}_i||` is the length of the data at brain location :math:`i`, :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v_k}` with the maximum expectation for that voxel. We then compute the mean cosine distance across all :math:`P` brain locations. We can also compute the  *expected* mean cosine distance under the :math:`q(\mathbf{u}_i)` which defined as below:
+Because fMRI data (task activities or time series) have very different signal to noise levels across different voxels and subjects (and because the model does not necessarily predict the amplitude of responses), a natural evaluation criterion is the cosine error between predicted and observed data.
 
 .. math::
-	\langle\bar{\epsilon}_{cosine}\rangle_q = \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} (1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||})
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||||\mathbf{y}_i||} \right)
 
-where :math:`\hat{u}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
+For deriving a prediction from a probabilistic parcellation model, we have three options:
 
-2. the Adjusted Cosine error
-****************************
-
-A possible problem with the cosine error is that voxel that have very little signal count as much as voxel with a lot of signal. To address this, we can weight each error by the squared length of the data vector:
-
-.. math::
-	\bar{\epsilon}_{Acosine} = \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i^P (||\mathbf{y}_i||^2-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\mathbf{y}_i||\mathbf{y}_i||) \label{ref1}
-
-where :math:`||\mathbf{y}_i||` is the length of the data at brain location :math:`i`, :math:`\mathbf{v}_\underset{k}{\operatorname{argmax}}` represents the :math:`\mathbf{v_k}` with the maximum expectation. We then compute the mean cosine distance across all :math:`P` brain locations. Another option is to calculate the *expected* mean cosine distance under the :math:`q(\mathbf{u}_i)` which defined as below:
+Cosine error using a hard parcellation
+**************************************
+A simple evaluation is to set the prediction of the model to the response profile for the most likely parcel, :math:`\mathbf{v}_{\underset{k}{\operatorname{argmax}}}`. Assuming that the predicted response profiles are already length 1, the cosine error is then:
 
 .. math::
-	\langle\bar{\epsilon}_{Acosine}\rangle_q = \frac{1}{\sum_i^P ||\mathbf{y}_i||^2}\sum_i \sum_k  \hat{u}_i^{(k)} (||\mathbf{y}_i||^2-{\mathbf{v}_k}^{T}\mathbf{y}_i||\mathbf{y}_i||)
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-{\mathbf{v}_\underset{k}{\operatorname{argmax}}}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)
 
-where :math:`\hat{u}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
 
-Proof of the adjusted cosine distance is equivalent to :math:`1-R^2`
-********************************************************************
+Cosine Error for the average prediction
+***************************************
 
-Weighting the error by the length of the vector effectively calculates squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`). For simplicity, we use :math:`\mathbf{v}_k` to represent the most likely predicted mean direction :math:`{\mathbf{v}_\underset{k}{\operatorname{argmax}}}` for each voxel in the following proof. :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k||\mathbf{y}_i||`) is defined as:
+Alternatively, we can set the prediction to the average of the response profiles across all the parcels, weighted by the probability that the voxels belongs to that parcel:
+
+.. math::
+	\hat{\mathbf{y}}_{i} = \sum_k \hat{u}_i^{(k)}\mathbf{v}_k
+
+where :math:`\hat{u}_i^{(k)}` is a probability that brain location *i* belongs to parcel *k*. This probabilistic parcellation should of course be estimated on independent training data.
+
+The entire cosine error is then:
+
+.. math::
+	\bar{\epsilon}_{cosine} = \frac{1}{P}\sum_i^P \left( 1-\frac{ \left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{|| \sum_k \hat{u}_i^{(k)}\mathbf{v}_k||\:||\mathbf{y}_i||} \right)
+
+Expected cosine error
+*********************
+
+Rather than calculating the **cosine error for the average prediction** of the probabilistic model, we can also compute the **average cosine error across all possible predictions**. The expected cosine error is defined as:
+
+.. math::
+	\begin{align*}
+	\langle\bar{\epsilon}_{cosine}\rangle_q &= \frac{1}{P}\sum_i \sum_k \hat{u}_i^{(k)} \left( 1-{\mathbf{v}_k}^{T}\frac{\mathbf{y}_i}{||\mathbf{y}_i||} \right)\\
+	&= \frac{1}{P}\sum_i^P \left( 1-\frac{\left( \sum_k \hat{u}_i^{(k)}\mathbf{v}_k \right)^{T}\mathbf{y}_i}{||\mathbf{y}_i||} \right)
+	\end{align*}
+
+When we compare the second line for the expected cosine error with the expression for cosine error for the average prediction, we see that the prediction term is normalized to unit length
+for the former (i.e. for each voxel :math:`i`, the sum across :math:`N` observations is 1) whereas that is not the case for the latter.
+
+
+Adjusted vs. non-adjusted cosine error
+**************************************
+
+For all three types of cosine error mentioned so far, a possible problem is that a voxel which has very little signal count as much as a voxel with a lot of signal. To address this, we can change how we average the cosine error across different voxels. An interesting choice is to weight each error by the squared length of the data vector:
+
+.. math::
+	\begin{align*}
+	\bar{\epsilon}_{Acosine} &= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P ||\mathbf{y}_i||^2 \left( 1-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i}{||\hat{\mathbf{y}}_i||\,||\mathbf{y}_i||} \right) \\\\
+	&= \frac{1}{\sum_i^P ||\mathbf{y}_i||^2} \sum_i^P  \left( ||\mathbf{y}_i||^2-\frac{\hat{\mathbf{y}}_{i}^{T}\mathbf{y}_i ||\mathbf{y}_i||}{||\hat{\mathbf{y}}_i||} \right)
+	\end{align*}
+
+Weighting the error by the squared length of the vector effectively calculates the squared error between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_k\,||\mathbf{y}_i||`). To show this, we use :math:`\mathbf{v}_i` to denote the predicted mean direction for voxel :math:`i` , normalized to unit length. Therefore, :math:`1-R^2` between :math:`\mathbf{y}_i` and the prediction scaled to the amplitude of the data (:math:`\mathbf{v}_i\,||\mathbf{y}_i||`) is defined as:
 
 .. math::
 	\begin{align*}
 	1-R^2 &= \frac{RSS}{TSS}\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i[(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_k^T\mathbf{v}_k||\mathbf{y}_i||^2)\\
-	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
-	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||)
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i (\mathbf{y}_i-\mathbf{v}_i||\mathbf{y}_i||)^2\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i[(\mathbf{y}_i-\mathbf{v}_i||\mathbf{y}_i||)^T(\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)]\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(\mathbf{y}_i^T\mathbf{y}_i-2\mathbf{y}_i^T\mathbf{v}_k||\mathbf{y}_i||+\mathbf{v}_i^T\mathbf{v}_i||\mathbf{y}_i||^2)\\
+	&=\frac{1}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-2\mathbf{y}_i^T\mathbf{v}_i||\mathbf{y}_i||+||\mathbf{y}_i||^2)\\
+	&=\frac{2}{\sum_i||\mathbf{y}_i||^2}\sum_i(||\mathbf{y}_i||^2-\mathbf{y}_i^T\mathbf{v}_i||\mathbf{y}_i||)
 	\end{align*}
 
-By :math:`\bar{\epsilon}_{Acosine}`, we can see that :math:`1-R^2 = 2\bar{\epsilon}_{Acosine}`, and similarly we can easily proof below equation:
-
-.. math::
-	\begin{align*}
-	\langle\bar{\epsilon}_{MSE}\rangle_q &= \frac{1}{P}\sum_i \sum_k\hat{\mathbf{u}}_i^{(k)} (\mathbf{y}_i-\mathbf{v}_k||\mathbf{y}_i||)^2=2\langle\bar{\epsilon}_{Acosine}\rangle_q
-	\end{align*}
-
-where :math:`\hat{\mathbf{u}}_i^{(k)}` is the inferred expectation on the training data using the fitted model.
+Adjusting for the length of the data vector can be done for any of the previously mentioned types of cosine error, i.e. for the hard-parcellation cosine error, the cosine error for the average prediction, and the expected cosine error.
