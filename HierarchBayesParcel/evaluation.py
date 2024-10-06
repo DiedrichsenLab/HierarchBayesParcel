@@ -12,6 +12,7 @@ Author: dzhi, jdiedrichsen
 import torch as pt
 import numpy as np
 from sklearn import metrics
+import warnings
 
 def pt_nanstd(tensor, dim=None):
     """Compute the standard deviation of tensor along the
@@ -239,21 +240,25 @@ def u_prederr(U, uhat, expectation=True):
         return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
 
-def coserr(Y, V, U, adjusted=False, ):
-    """Compute the cosine distance between the data to the predicted V's
+def cosine_error(Y, V, U, adjusted=False, type='expected'):
+    """Compute the cosine errors between the data to the predicted of the probabilistic model
+    For mathematical details, see https://hierarchbayesparcel.readthedocs.io/en/latest/math.html
 
     Args:
-        Y: the test data, with a shape (num_sub, N, P)
-        V: the predicted mean directions
-        U: the predicted U's from the trained emission model (in multinomial notation)
-        adjusted: Adjusted for the length of the data vector (see ) 
-        type: Compute the expected mean cosine error if True; Otherwise, False
+        Y (pt.tensor): the test data, with a shape (num_sub, N, P) or (N,P) for one subject
+        V (pt.tensor): the predicted mean directions (unit length) per parcel (N, K)
+        U (pt.tensor): the expected U's from the trained emission model (n_subj,K,P) or (K,P) for group model
+        adjusted (bool): Is the weight of each voxel adjusted by the magnitude of the data? If yes,
+            the cosine error is 2(1-R^2)
+        type (str):
+            'hard': Do a hard assignment and use the V from the parcel with max probability
+            'average': Compute the cosine error for the average prediction (across parcels)
+            'expected': Compute the average cosine error across all predictions of the parcels
     Returns:
-        the averaged expected cosine distance. 0 indicates the same direction;
-        1 - orthogonal; 2 - opposite direction
+        Cosine Error (pt.tensor): (num_subj) tensor of cosine errors 0 (same direction) to 2 (opposite direction)
     """
-    # standardise V and data to unit length
-    V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+    # standardise V to unit length - make sure not to change the original V
+    Vn = V / pt.sqrt(pt.sum(V ** 2, dim=0))
 
     # If U and Y are 2-dimensional (1 subject), add the first dimension
     if Y.dim() == 2:
@@ -261,72 +266,49 @@ def coserr(Y, V, U, adjusted=False, ):
     if U.dim() == 2:
         U = U.unsqueeze(0)
 
+    # Get the norm of the data
     Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
     Ynorm = pt.sqrt(Ynorm2)
 
-    if adjusted:
-        # ||Y_i||-(V_k)T(Y_i)
-        cos_distance = Ynorm2 - pt.matmul(V.T, Y * Ynorm)
-    else:
-        # 1-(V_k)T(Y_i/||Y_i||)
-        cos_distance = 1 - pt.matmul(V.T, Y/Ynorm)
-
-    if soft_assign:  # Calculate the expected cosine error
-        cos_distance = pt.sum(cos_distance * U, dim=1)
-    else:
-        # Calculate the argmax U_hat (hard assignments)
+    # Compute the prediction for each voxel under different schemes
+    if type == 'hard':  # Winning parcel
         idx = pt.argmax(U, dim=1, keepdim=True)
         U_max = pt.zeros_like(U).scatter_(1, idx, 1.)
-        cos_distance = pt.sum(cos_distance * U_max, dim=1)
-    if adjusted:
-        return pt.nansum(cos_distance, dim=1)/Ynorm2[:,0,:].nansum(dim=1)
+        Yhat = pt.matmul(Vn, U_max)
+    elif type == 'average': # Average prediction (renormalized)
+        Yhat = pt.matmul(Vn, U)
+        Yhat = Yhat / pt.sqrt(pt.sum(Yhat ** 2, dim=1, keepdim=True))
+    elif type == 'expected':   # Average prediction (not renormalized)
+        Yhat = pt.matmul(Vn, U)
     else:
-        return pt.nanmean(cos_distance, dim=1)
+        raise ValueError("Unknown type of cosine error calculation")
 
+    # Compute the cosine error, if adjusted, weight by the magnitude of the data
+    if adjusted:
+        # ||Y_i||-(V_k)T(Y_i)
+        cos_error_vox = Ynorm2.squeeze(1) - pt.sum(Yhat * (Y * Ynorm),dim=1)
+        cos_error= pt.nansum(cos_error_vox, dim=1)/Ynorm2.squeeze(1).nansum(dim=1)
+    else:
+        # 1-(V_k)T(Y_i/||Y_i||)
+        cos_error_vox = 1 - pt.sum(Yhat * (Y / Ynorm),dim=1)
+        cos_error = pt.nanmean(cos_error_vox, dim=1)
+    return cos_error
+
+def coserr(Y, V, U, adjusted=False, soft_assign=True):
+    """ For backwards compatibility"""
+    warnings.warn('coserr is deprecated, use cosine_error instead', DeprecationWarning)
+    if soft_assign:
+        return cosine_error(Y, V, U, adjusted=adjusted, type='expected')
+    else:
+        return cosine_error(Y, V, U, adjusted=adjusted, type='hard')
 
 def coserr_2(Y, V, U, adjusted=False, soft_assign=True):
-    """Compute the cosine error between the true to the predicted data
-
-    Args:
-        Y: (num_sub, N, P) or (N, P) the test data, with a shape
-        V: (N, K) the predicted mean directions
-        U: (K, P) the predicted U's from the trained emission model
-            (in multinomial notation)
-        adjusted: If True, adjust the cosine error by the length of
-            the data magnitude. Otherwise, return the raw cosine error
-        soft_assign: If True, compute the expected mean cosine error.
-            Otherwise, return the hard assignment error.
-
-    Returns:
-        The averaged adjusted expected cosine error. The result value
-        indicates how well the predicted data matches the true data.
-        A lower value indicates a better match.
-    """
-    # standardise V and data to unit length
-    V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-    U = U.squeeze(dim=0) if U.dim() == 3 else U
-    assert U.dim() == 2, "U must be 2-dimensional of shape (K, P)"
-
-    if soft_assign:  # Calculate the expected mean response
-        V = pt.matmul(V, U)
-    else: # Calculate the hard mean response (the V with max prob)
-        idx = pt.argmax(U, dim=0, keepdim=True)
-        V = pt.matmul(V, pt.zeros_like(U).scatter_(0, idx, 1.))
-    V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
-
-    # If U and Y are 2-dimensional (1 subject), add the first dimension
-    Y = Y.unsqueeze(0) if Y.dim() == 2 else Y
-    Ynorm2 = pt.sum(Y**2, dim=1, keepdim=True)
-    Ynorm = pt.sqrt(Ynorm2)
-
-    if adjusted:
-        # ||Y_i||-(V_k)T(Y_i)||Y_i||
-        cos_distance = Ynorm2 - pt.sum(V * (Y*Ynorm), dim=1)
-        return pt.nansum(cos_distance) / Ynorm2[:, 0, :].nansum(dim=1)
+    """ For backwards compatibility"""
+    warnings.warn('coserr_2 is deprecated, use cosine_error instead', DeprecationWarning)
+    if soft_assign:
+        return cosine_error(Y, V, U, adjusted=adjusted, type='expected')
     else:
-        # 1 - (V_k)T ((Y_i) / ||Y_i||)
-        cos_distance = 1 - pt.sum(V * (Y/Ynorm), dim=1)
-        return pt.nanmean(cos_distance, dim=1)
+        return cosine_error(Y, V, U, adjusted=adjusted, type='hard')
 
 
 def homogeneity(Y, U_hat, soft_assign=False, z_transfer=False, single_return=True):
