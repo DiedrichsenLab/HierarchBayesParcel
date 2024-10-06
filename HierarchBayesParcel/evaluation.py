@@ -926,3 +926,84 @@ def align_models(models, in_place=True):
                 if (hasattr(em, 'uniform_kappa')) and (not em.uniform_kappa):
                     em.kappa = em.kappa[indx]
     return Prob
+
+
+def calc_test_error(M,
+                    tdata,
+                    U_hats,
+                    coserr_type='expected',
+                    coserr_adjusted=True,
+                    refit = 'full'): # this is the original calc_test_error from HBP/FusionModel
+    """Evaluates the prediction (cosine-error) for group or individual parcellations
+    on some new test data. For this evaluation, we need to obtain a V for new test data.
+    The V is learned from N-1 subjects and then used to evaluate the left-out subjects for each parcellation.
+    If refit is:
+        'full': The emission and individual Uhats are fully refit for each fold (arrangement model is fixed)
+        'use_Uhats': Using the individual Uhats, the V is estimated using a single M-step
+    Because the emission model is retrained for each subject (and that can take a bit of time),
+    the function evaluate a whole set of different parcellations (group, noise-floor, individual) in one go.
+
+    Args:
+        M (full model): Full model including emission model for test data.
+        tdata (ndarray): (numsubj x N x P) array of test data
+        U_hats (list): List of strings or tensors, the indi. parcellation
+             3d-pt.tensor: (nsubj x K x P) tensor of individual parcellations
+             2d-pt.tensor: (K x P) tensor of group parcellation
+            'group':   Group-parcellation from arrangement model
+            'floor':   Noise-floor (E-step on left-out subject)
+        refit (str): 'full': Refit the emission model and individual Uhats
+                      'use_Uhats': Use the individual Uhats to derive V
+        coserr_type (str): Type of cosine error (hard,average,expected)
+        coserr_adjusted (bool): Adjusted cosine error?
+    Returns:
+        A num_eval x num_subj matrix of cosine errors
+    """
+    num_subj = tdata.shape[0]
+    subj = np.arange(num_subj)
+    group_parc = M.marginal_prob()
+    pred_err = np.empty((len(U_hats), num_subj))
+    for s in range(num_subj):
+        print(f'Subject:{s}', end=':')
+        tic = time.perf_counter()
+        # initialize the emssion model using all but one subject
+        M.emissions[0].initialize(tdata[subj != s, :, :])
+        # For fitting an emission model without the arrangement model,
+        # we do not need multiple starting values
+        M.initialize()
+        if refit == 'full':
+            M, ll, theta, Uhat = M.fit_em(iter=200,
+                                          tol=0.1,
+                                          fit_emission=True,
+                                          fit_arrangement=False,
+                                          first_evidence=False)
+        elif refit == 'use_Uhats':
+            if U_hats[0].ndim !=3:
+                raise (NameError("When using use_Uhats, the first Uhat needs to be the individual parcellations (nsubj x K x P) "))
+            # Do a single M-step using the individual Uhats
+            M.emissions[0].Mstep(U_hats[subj != s, :, :])
+        else:
+            raise(NameError('refit needs to be either full or use_Uhats'))
+        X = M.emissions[0].X
+        dat = pt.linalg.pinv(X) @ tdata[subj == s, :, :]
+        for i, crit in enumerate(U_hats):
+            if crit == 'group':
+                U = group_parc
+            elif crit == 'floor':
+                # U,ll = M.Estep(Y=pt.tensor(tdata[subj==s,:,:]).unsqueeze(0))
+                M.emissions[0].initialize(tdata[subj == s, :, :])
+                U = pt.softmax(M.emissions[0].Estep(
+                    tdata[subj == s, :, :]), dim=1)
+            elif crit.ndim == 2:
+                U = crit
+            elif crit.ndim == 3:
+                U = crit[subj == s, :, :]
+            else:
+                raise (
+                    NameError("U_hats needs to be 'group','floor',a 2-d or 3d-tensor"))
+            a = ev.cosine_error(dat, M.emissions[0].V, U,
+                          adjusted=coserr_adjusted, type=coserr_type)
+            pred_err[i, s] = a
+        toc = time.perf_counter()
+        print(f"{toc - tic:0.4f}s")
+    return pred_err
+
