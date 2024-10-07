@@ -9,7 +9,6 @@ Author: dzhi, jdiedrichsen
 import numpy as np
 import torch as pt
 import pandas as pd
-import pickle
 from scipy import stats, special
 from torch import log, exp, sqrt
 from HierarchBayesParcel.model import Model
@@ -343,7 +342,7 @@ class MixVMF(EmissionModel):
         self.subject_specific_kappa = subject_specific_kappa
 
         if part_vec is not None:
-            if isinstance(part_vec,(np.ndarray,pt.Tensor)):
+            if isinstance(part_vec,(np.ndarray,pt.Tensor,pd.Series)):
                 self.part_vec = pt.tensor(part_vec, dtype=pt.int)
             else:
                 raise ValueError('Part_vec must be numpy ndarray or torch Tensor')

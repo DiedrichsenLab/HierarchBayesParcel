@@ -13,6 +13,7 @@ import torch as pt
 import numpy as np
 from sklearn import metrics
 import warnings
+import time
 
 def pt_nanstd(tensor, dim=None):
     """Compute the standard deviation of tensor along the
@@ -933,12 +934,13 @@ def calc_test_error(M,
                     U_hats,
                     coserr_type='expected',
                     coserr_adjusted=True,
-                    refit = 'full'): # this is the original calc_test_error from HBP/FusionModel
-    """Evaluates the prediction (cosine-error) for group or individual parcellations
+                    fit_emission = 'full'):
+    """
+    Evaluates the prediction (cosine-error) for group or individual parcellations
     on some new test data. For this evaluation, we need to obtain a V for new test data.
     The V is learned from N-1 subjects and then used to evaluate the left-out subjects for each parcellation.
-    If refit is:
-        'full': The emission and individual Uhats are fully refit for each fold (arrangement model is fixed)
+    If fit_emission is:
+        'full': The emission and individual Uhats are fully fit_emission for each fold (arrangement model is fixed)
         'use_Uhats': Using the individual Uhats, the V is estimated using a single M-step
     Because the emission model is retrained for each subject (and that can take a bit of time),
     the function evaluate a whole set of different parcellations (group, noise-floor, individual) in one go.
@@ -951,7 +953,7 @@ def calc_test_error(M,
              2d-pt.tensor: (K x P) tensor of group parcellation
             'group':   Group-parcellation from arrangement model
             'floor':   Noise-floor (E-step on left-out subject)
-        refit (str): 'full': Refit the emission model and individual Uhats
+        fit_emission (str): 'full': fit the emission model and individual Uhats
                       'use_Uhats': Use the individual Uhats to derive V
         coserr_type (str): Type of cosine error (hard,average,expected)
         coserr_adjusted (bool): Adjusted cosine error?
@@ -970,37 +972,37 @@ def calc_test_error(M,
         # For fitting an emission model without the arrangement model,
         # we do not need multiple starting values
         M.initialize()
-        if refit == 'full':
+        if fit_emission == 'full':
             M, ll, theta, Uhat = M.fit_em(iter=200,
                                           tol=0.1,
                                           fit_emission=True,
                                           fit_arrangement=False,
                                           first_evidence=False)
-        elif refit == 'use_Uhats':
+        elif fit_emission == 'use_Uhats':
             if U_hats[0].ndim !=3:
                 raise (NameError("When using use_Uhats, the first Uhat needs to be the individual parcellations (nsubj x K x P) "))
             # Do a single M-step using the individual Uhats
-            M.emissions[0].Mstep(U_hats[subj != s, :, :])
+            M.emissions[0].Mstep(U_hats[0][subj != s, :, :])
         else:
-            raise(NameError('refit needs to be either full or use_Uhats'))
+            raise(NameError('fit_emission needs to be either full or use_Uhats'))
         X = M.emissions[0].X
         dat = pt.linalg.pinv(X) @ tdata[subj == s, :, :]
-        for i, crit in enumerate(U_hats):
-            if crit == 'group':
+        for i, u in enumerate(U_hats):
+            if u == 'group':
                 U = group_parc
-            elif crit == 'floor':
+            elif u == 'floor':
                 # U,ll = M.Estep(Y=pt.tensor(tdata[subj==s,:,:]).unsqueeze(0))
                 M.emissions[0].initialize(tdata[subj == s, :, :])
                 U = pt.softmax(M.emissions[0].Estep(
                     tdata[subj == s, :, :]), dim=1)
-            elif crit.ndim == 2:
-                U = crit
-            elif crit.ndim == 3:
-                U = crit[subj == s, :, :]
+            elif u.ndim == 2:
+                U = u
+            elif u.ndim == 3:
+                U = u[subj == s, :, :]
             else:
                 raise (
                     NameError("U_hats needs to be 'group','floor',a 2-d or 3d-tensor"))
-            a = ev.cosine_error(dat, M.emissions[0].V, U,
+            a = cosine_error(dat, M.emissions[0].V, U,
                           adjusted=coserr_adjusted, type=coserr_type)
             pred_err[i, s] = a
         toc = time.perf_counter()
