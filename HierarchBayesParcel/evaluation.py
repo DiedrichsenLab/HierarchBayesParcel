@@ -948,7 +948,7 @@ def calc_test_error(M,
     Args:
         M (full model): Full model including emission model for test data.
         tdata (ndarray): (numsubj x N x P) array of test data
-        U_hats (list): List of strings or tensors, the indi. parcellation
+        U_hats (list): List of strings and/or tensors. Each element of the list can be:
              3d-pt.tensor: (nsubj x K x P) tensor of individual parcellations
              2d-pt.tensor: (K x P) tensor of group parcellation
             'group':   Group-parcellation from arrangement model
@@ -958,7 +958,7 @@ def calc_test_error(M,
         coserr_type (str): Type of cosine error (hard,average,expected)
         coserr_adjusted (bool): Adjusted cosine error?
     Returns:
-        A num_eval x num_subj matrix of cosine errors
+        A num_eval x num_subj matrix of cosine errors, 1 row for each element in U_hats
     """
     num_subj = tdata.shape[0]
     subj = np.arange(num_subj)
