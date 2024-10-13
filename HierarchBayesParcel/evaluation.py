@@ -940,7 +940,7 @@ def calc_test_error(M,
     on some new test data. For this evaluation, we need to obtain a V for new test data.
     The V is learned from N-1 subjects and then used to evaluate the left-out subjects for each parcellation.
     If fit_emission is:
-        'full': The emission and individual Uhats are fully fit_emission for each fold (arrangement model is fixed)
+        'full': The emission and individual Uhats are fully refit for each fold (arrangement model is fixed)
         'use_Uhats': Using the individual Uhats, the V is estimated using a single M-step
     Because the emission model is retrained for each subject (and that can take a bit of time),
     the function evaluate a whole set of different parcellations (group, noise-floor, individual) in one go.
