@@ -61,7 +61,7 @@ def test_calc_test_error():
     subjs = np.arange(10)
     atlas, _ = am.get_atlas('MNISymC3')
     # Sample the probabilistic atlas at the specific atlas grayordinates
-    atlas_fname = 'examples/atl-NettekovenSym32_space-MNI152NLin2009cSymC_probseg.nii.gz'
+    atlas_fname = f'/Users/callithrix/code/Python/HierarchBayesParcel/examples/atl-NettekovenSym32_space-MNI152NLin2009cSymC_probseg.nii.gz'
     U = atlas.read_data(atlas_fname)
     U = U.T
     # Build the arrangement model - the parameters are the log-probabilities of the atlas
@@ -98,8 +98,10 @@ def test_calc_test_error():
 
     cos_err1 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=True, fit_emission='full')
     cos_err2 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=True, fit_emission='use_Uhats')
+    cos_err3 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=True, fit_emission='use_Uhats')
     print(cos_err1.mean(axis=1))
     print(cos_err2.mean(axis=1))
+    sb.barplot(data=pd.DataFrame({'full':cos_err1.mean(axis=1),'Uhat':cos_err2.mean(axis=1)}))
     pass
 
 if __name__ == "__main__":
