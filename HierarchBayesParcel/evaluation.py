@@ -241,7 +241,7 @@ def u_prederr(U, uhat, expectation=True):
         return pt.count_nonzero(pt.abs(U-uhat))/U.numel()
 
 
-def cosine_error(Y, V, U, adjusted=False, type='expected'):
+def cosine_error(Y, V, U, adjusted=False, type='expected', voxelwise=False):
     """Compute the cosine errors between the data to the predicted of the probabilistic model
     For mathematical details, see https://hierarchbayesparcel.readthedocs.io/en/latest/math.html
 
@@ -255,8 +255,10 @@ def cosine_error(Y, V, U, adjusted=False, type='expected'):
             'hard': Do a hard assignment and use the V from the parcel with max probability
             'average': Compute the cosine error for the average prediction (across parcels)
             'expected': Compute the average cosine error across all predictions of the parcels
+        voxelwise (bool): If True, return the voxelwise cosine error. Default is False
     Returns:
         Cosine Error (pt.tensor): (num_subj) tensor of cosine errors 0 (same direction) to 2 (opposite direction)
+                                    if voxelwise is True, returns (num_subj, P) tensor of voxelwise cosine errors
     """
     # standardise V to unit length - make sure not to change the original V
     Vn = V / pt.sqrt(pt.sum(V ** 2, dim=0))
@@ -293,7 +295,8 @@ def cosine_error(Y, V, U, adjusted=False, type='expected'):
         # 1-(V_k)T(Y_i/||Y_i||)
         cos_error_vox = 1 - pt.sum(Yhat * (Y / Ynorm),dim=1)
         cos_error = pt.nanmean(cos_error_vox, dim=1)
-    return cos_error
+    
+    return cos_error if not voxelwise else cos_error_vox
 
 def coserr(Y, V, U, adjusted=False, soft_assign=True):
     """ For backwards compatibility"""
@@ -934,7 +937,8 @@ def calc_test_error(M,
                     U_hats,
                     coserr_type='expected',
                     coserr_adjusted=True,
-                    fit_emission = 'full'):
+                    fit_emission = 'full',
+                    return_voxelwise=False):
     """
     Evaluates the prediction (cosine-error) for group or individual parcellations
     on some new test data. For this evaluation, we need to obtain a V for new test data.
@@ -957,13 +961,15 @@ def calc_test_error(M,
                       'use_Uhats': Use the individual Uhats to derive V
         coserr_type (str): Type of cosine error (hard,average,expected)
         coserr_adjusted (bool): Adjusted cosine error?
+        return_voxelwise (bool): Return the voxelwise error. If False, return the mean error across voxels. Default is False
     Returns:
         A num_eval x num_subj matrix of cosine errors, 1 row for each element in U_hats
+        or a num_eval x num_subj x P tensor of voxelwise errors
     """
     num_subj = tdata.shape[0]
     subj = np.arange(num_subj)
     group_parc = M.marginal_prob()
-    pred_err = np.empty((len(U_hats), num_subj))
+    pred_err = np.empty((len(U_hats), num_subj)) if not return_voxelwise else np.empty((len(U_hats), num_subj, tdata.shape[-1]))
     for s in range(num_subj):
         print(f'Subject:{s}', end=':')
         tic = time.perf_counter()
@@ -1003,8 +1009,11 @@ def calc_test_error(M,
                 raise (
                     NameError("U_hats needs to be 'group','floor',a 2-d or 3d-tensor"))
             a = cosine_error(dat, M.emissions[0].V, U,
-                          adjusted=coserr_adjusted, type=coserr_type)
-            pred_err[i, s] = a
+                          adjusted=coserr_adjusted, type=coserr_type, voxelwise=return_voxelwise)
+            if not return_voxelwise:
+                pred_err[i, s] = a
+            else:
+                pred_err[i, s, :] = a
         toc = time.perf_counter()
         print(f"{toc - tic:0.4f}s")
     return pred_err

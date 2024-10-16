@@ -13,6 +13,7 @@ import HierarchBayesParcel.emissions as em
 import HierarchBayesParcel.full_model as fm
 import HierarchBayesParcel.util as ut
 import numpy as np
+import seaborn as sb
 
 # base Dir for function fusion data
 base_dir  = '/Volumes/diedrichsen_data$/data/FunctionalFusion'
@@ -92,16 +93,29 @@ def test_calc_test_error():
     data_test, info_test, _ = ds.get_dataset(dataset='MDTB', base_dir=base_dir,atlas='MNISymC3',
                                              sess='ses-s2',type='CondHalf',subj=subjs)
     # Build an emission model for test data
-    X= ut.indicator(info_test['cond_num'])
+    X = ut.indicator(info_test['cond_num'])
     em_model_test = em.MixVMF(K=K,P=atlas.P, X=X,part_vec=info_test['half'])
     Mt = fm.FullMultiModel(ar_model, [em_model_test])
 
     cos_err1 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=True, fit_emission='full')
     cos_err2 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=True, fit_emission='use_Uhats')
-    cos_err3 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=True, fit_emission='use_Uhats')
+    cos_err3 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='hard',coserr_adjusted=True, fit_emission='use_Uhats')
+    cos_err4 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='expected',coserr_adjusted=True, fit_emission='use_Uhats')
+    cos_err5 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=False, fit_emission='full')
+    cos_err6 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='average',coserr_adjusted=False, fit_emission='use_Uhats')
+    cos_err7 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='hard',coserr_adjusted=False, fit_emission='use_Uhats')
+    cos_err8 = ev.calc_test_error(Mt, data_test, [U_hat,'group'], coserr_type='expected',coserr_adjusted=False, fit_emission='use_Uhats')
     print(cos_err1.mean(axis=1))
     print(cos_err2.mean(axis=1))
-    sb.barplot(data=pd.DataFrame({'full':cos_err1.mean(axis=1),'Uhat':cos_err2.mean(axis=1)}))
+    df = pd.DataFrame({'full':cos_err1.mean(axis=1), 
+                    'Uhat_hard':cos_err3.mean(axis=1), 
+                    'Uhat_average':cos_err2.mean(axis=1),
+                    'Uhat_4expected':cos_err4.mean(axis=1),
+                    'full_unadjusted':cos_err5.mean(axis=1), 
+                    'Uhat_hard_unadjusted':cos_err7.mean(axis=1), 
+                    'Uhat_average_unadjusted':cos_err6.mean(axis=1),
+                    'Uhat_expected_unadjusted':cos_err8.mean(axis=1)})
+    sb.barplot(data=df)
     pass
 
 if __name__ == "__main__":
