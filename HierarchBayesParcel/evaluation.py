@@ -434,7 +434,7 @@ def task_inhomogeneity(Y, U_hat, z_transfer=True, single_return=True):
     if z_transfer:
         # first demean along the voxel dimension
         Y = Y - pt.nanmean(Y, dim=1, keepdim=True)
-        Y = Y / pt.std(Y, dim=1, keepdim=True)
+        Y = Y / pt.std(Y, dim=1, correction=0, keepdim=True)
 
     global_inhomo, N = [], []
     # Calculate the argmax U_hat (hard assignments)
