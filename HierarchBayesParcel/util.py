@@ -128,7 +128,7 @@ def indicator(index_vector, positive=False):
     """
     c_unique = np.unique(index_vector)
     n_unique = c_unique.size
-    rows = np.size(index_vector)
+    rows = index_vector.shape[0]
     if positive:
         c_unique = c_unique[c_unique > 0]
         n_unique = c_unique.size

@@ -244,6 +244,7 @@ class FullMultiModel:
                     emission models from random starting values, as the initial guess
                     will be determined by the intialization of the arrangement model.
                     If a list of bools, it determines this for each emission model seperately.
+                    In this case the first log-likelihood is not valid and set to -inf.
         Returns:
             model (Full Model): fitted model (also updated)
             ll (ndarray): Log-likelihood of full model as function of iteration
@@ -290,7 +291,11 @@ class FullMultiModel:
             pt.cuda.empty_cache()
 
             ll[i, 0] = pt.sum(ll_A)
-            ll[i, 1] = pt.sum(ll_E)
+            # If first iteration and evidence not passed, no loglikelihood is computed
+            if (i== 0) and not all(first_evidence):
+                ll[i, 1] = -pt.inf
+            else:
+                ll[i, 1] = pt.sum(ll_E)
             if pt.isnan(ll[i, :].sum()):
                 raise (NameError('Likelihood returned a NaN'))
             # Check convergence:
@@ -303,7 +308,7 @@ class FullMultiModel:
                 # Check if likelihood decreases more than tolerance
                 if dl<-tol:
                     print(f'Likelihood decreased - terminating on iteration {i}')
-                    # go back to the parameters of i-1 iter 
+                    # go back to the parameters of i-1 iter
                     self.set_params(theta[i-1])
                     break
                 elif dl < tol:
@@ -502,7 +507,7 @@ class FullMultiModel:
                         f'iters used {toc - tic:0.4f} seconds!')
                     pt.cuda.empty_cache()
                     ut.report_cuda_memory()
-                
+
                     # 2. arrangement E-step: negative phase
                     tic = time.perf_counter()
                     if hasattr(self.arrange, 'Eneg'):
@@ -588,7 +593,7 @@ class FullMultiModel:
             theta = pt.tensor(theta, dtype=pt.get_default_dtype())
 
         # set arrangement model params
-        arr_ind = np.concatenate([self.get_param_indices(f'arrange.{p}') 
+        arr_ind = np.concatenate([self.get_param_indices(f'arrange.{p}')
                                   for p in self.arrange.param_list])
         self.arrange.set_params(theta[arr_ind])
 
@@ -758,13 +763,13 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
         train_data (np.ndarray or pt.Tensor):
             Individual localizing data
         cond_vec (list):
-            The condition vectors for each emission model. They contain 
+            The condition vectors for each emission model. They contain
             the unique indices for each unique condition.
         part_vec (list):
-            The partition vectors for each emission model. They contain 
-            the indices of the partitions for each condition. Partitions 
-            refer to what data were used to calculate the condition 
-            estimate. (Ex: Indices of partitions can refer to the 
+            The partition vectors for each emission model. They contain
+            the indices of the partitions for each condition. Partitions
+            refer to what data were used to calculate the condition
+            estimate. (Ex: Indices of partitions can refer to the
             indices of runs or sessions.)
         subj_ind (list):
             The subject indices for each emission model
