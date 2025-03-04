@@ -120,12 +120,32 @@ def dice_coefficient(labels1, labels2, label_matching=True, separate=False,
             return (res, matching_pairs) if return_match else res
 
 
+def soft_dice(labels1, labels2):
+    """ Soft (continuous) version of Dice coefficient
+
+    Args:
+        labels1: the input continuous data array
+        labels2: the reference binary atlas array
+
+    Returns: 
+        cDC: continuous Dice Coefficient
+    
+    Referece:
+        https://arxiv.org/abs/1906.11031
+    """
+    AB = labels1 * labels2
+    c = np.sum(AB)/max(np.size(AB[AB>0]), 1)
+    cDC = 2*(np.sum(AB))/(c*np.sum(labels2) + np.sum(labels1))
+
+    return cDC
+
 def ARI(U, Uhat, sparse=True):
     """Compute the 1 - (adjusted rand index) between the two parcellations
 
     Args:
         U: The true U's
         Uhat: The estimated U's from fitted model
+
     Returns:
         the adjusted rand index score
     """
