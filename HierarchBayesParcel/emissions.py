@@ -59,7 +59,7 @@ class EmissionModel(Model):
         if type(data) is np.ndarray:
             data = pt.tensor(data, dtype=pt.get_default_dtype())
         elif type(data) is pt.Tensor:
-            pass
+            data = data.to(dtype=pt.get_default_dtype())
         else:
             raise ValueError("The input data must be a numpy.array or torch.tensor.")
 
@@ -466,7 +466,7 @@ class MixVMF(EmissionModel):
         LL = pt.empty((self.Y.shape[0], self.K, self.P))
 
         # Calculate log-likelihood
-        YV = pt.matmul(self.V.T, self.Y)
+        YV = pt.matmul(self.V.T, self.Y.to_dense())
         PI = pt.tensor(pt.pi, dtype=pt.get_default_dtype())
         # Normalization constant for the von Mises-Fisher distribution for current Kappa
         logCnK = (self.M/2 - 1)*log(self.kappa) - (self.M/2)*log(2*PI) - \
@@ -501,7 +501,7 @@ class MixVMF(EmissionModel):
         JU = pt.sum(self.num_part * U_hat,dim=2)   # (num_sub, K)
 
         # Calculate YU = \sum_i\sum_k<u_i^k>y_i # (num_sub, N, K)
-        YU = pt.matmul(pt.nan_to_num(self.Y), pt.transpose(U_hat, 1, 2))
+        YU = pt.matmul(pt.nan_to_num(self.Y).to_dense(), pt.transpose(U_hat, 1, 2))
 
         # 1. Updating the V_k
         if 'V' in self.param_list:

@@ -50,12 +50,23 @@ def nmi(U,Uhat):
     return 1-metrics.normalized_mutual_info_score(U, Uhat)
 
 
-def dice_coefficient(labels1, labels2, label_matching=True, separate=False):
+def dice_coefficient(labels1, labels2, label_matching=True, separate=False, 
+                     return_match=False):
     """Compute the Dice coefficient between tow parcellations
 
     Args:
         labels1 (pt.Tensor): a 1d tensor of parcellation 1
         labels2 (pt.Tensor): a 1d tensor of parcellation 2
+        label_matching (bool): If True, an internal label matching
+            is processed to match the labels between the two input 
+            parcellations. Otherwise, no label matching. Default to 
+            True and it is recommended.
+        separate (bool): If True, return the dice coefficient per 
+            netework; Otherwise, return the averaged dice coefficient 
+            across all parcels
+        return_match (bool): If True, return a tuple (dice coefficient, 
+            label matching pair)
+
     Returns:
         the Dice coefficient between the two parcellations
     """
@@ -103,10 +114,10 @@ def dice_coefficient(labels1, labels2, label_matching=True, separate=False):
 
         # Calculate the average Dice coefficient
         if separate:
-            return dice_coef
+            return (dice_coef, matching_pairs) if return_match else dice_coef
         else:
             res = sum(dice_coef) / len(dice_coef) if dice_coef else 0
-            return res
+            return (res, matching_pairs) if return_match else res
 
 
 def ARI(U, Uhat, sparse=True):

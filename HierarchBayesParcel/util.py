@@ -9,7 +9,8 @@ import pickle
 import numpy as np
 import torch as pt
 import pandas as pd
-
+import nibabel as nb 
+from sklearn.cluster import KMeans
 
 def load_group_parcellation(fname, index=None, marginal=False,
                             device=None):
@@ -93,9 +94,11 @@ def report_cuda_memory():
     """Reports the current memory usage of the GPU
     """
     if pt.cuda.is_available():
-        ma = pt.cuda.memory_allocated()/1024/1024
-        mma = pt.cuda.max_memory_allocated()/1024/1024
-        mr = pt.cuda.memory_reserved()/1024/1024
+        current_device = 'cuda:1'
+
+        ma = pt.cuda.memory_allocated(current_device)/1024/1024
+        mma = pt.cuda.max_memory_allocated(current_device)/1024/1024
+        mr = pt.cuda.memory_reserved(current_device)/1024/1024
         print(f'Allocated:{ma:.2f} MB, MaxAlloc:{mma:.2f} MB, Reserved {mr:.2f} MB')
 
 def find_maximum_divisor(N):
@@ -137,3 +140,45 @@ def indicator(index_vector, positive=False):
         indicator_matrix[index_vector == c_unique[i], i] = 1
     return indicator_matrix
 
+
+def make_random_parcellation(num_parcel, surf_file, mask_file):
+    """Randomly make surface cortical parcellation by given number of 
+       parcels using input surf.gii and mask files 
+
+    Args:
+        num_parcel (int): the desired number of parcels
+        surf_file (str): the file path of the surf.gii used to 
+                generate parcellation on
+        mask_file (str): the file path of the mask file for 
+                the surface
+
+    Returns:
+        random parcellation: mask.darrays[0].data is a 1d vector of
+                the random parcellation starting with 1 to num_parcel,
+                label 0 indicates the medial wall
+
+    Usage:
+    >>> surf_file = 'tpl-fs32k_hemi-L_midthickness.surf.gii'
+    >>> mask_file = '/tpl-fs32k_hemi-L_mask.label.gii'
+    >>> rand_par = make_random_parcellation(50, surf_file, mask_file)
+
+    `rand_par` is a random parcellation with 50 parcels that spatially
+    distributed for left hemisphere
+    """
+    # Load surface data / medial wall mask
+    surf = nb.load(surf_file)
+    mask = nb.load(mask_file)
+
+    # Get indices of vertices in medial wall mask 
+    mask_vertices = np.where(mask.darrays[0].data == 1)[0]
+    ### Only calculate k-means on vertices outside the medial wall 
+    vertices = surf.darrays[0].data[mask_vertices,:]
+    # Set k-means params
+    kmeans = KMeans(n_clusters=num_parcel, max_iter=1000, n_init=5)
+    label = kmeans.fit_predict(vertices)
+
+    # Replace medial wall mask values with new label values
+    mask.darrays[0].data[mask_vertices] = label +1
+
+    # Just return the parcellation array
+    return mask.darrays[0].data

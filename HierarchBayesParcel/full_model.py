@@ -401,6 +401,7 @@ class FullMultiModel:
                 for em in fm.emissions:
                     em.random_params()
 
+            tic = time.perf_counter()
             fm, this_ll, theta, _ = fm.fit_em(first_iter, tol=tol,
                                               seperate_ll=False,
                                               fit_emission=fit_emission,
@@ -411,6 +412,9 @@ class FullMultiModel:
                 max_ll = this_ll
                 best_fm = fm
                 best_theta = theta
+            toc = time.perf_counter()
+            print(
+            f'Done fit: n init {i} -- {toc-tic:0.4f} seconds!')
 
         best_fm, ll, theta, U_hat = best_fm.fit_em(iter=iter-first_iter, tol=tol,
                                              seperate_ll=False,
@@ -857,7 +861,7 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                                      fit_emission=fit_emission,
                                      first_evidence=False)
     elif M.arrange.name.startswith('cRBM'):
-        M, ll, theta, U_indiv = M.fit_sml(iter=n_iter, batch_size=10,
+        M, ll, theta, U_indiv = M.fit_sml(iter=n_iter, batch_size=8,
                                           stepsize=0.5,
                                           seperate_ll=False,
                                           fit_arrangement=False,
