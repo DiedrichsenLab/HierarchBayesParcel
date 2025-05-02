@@ -851,6 +851,8 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
 
     M = FullMultiModel(ar_model, em_models)
     M.initialize(train_data, subj_ind=subj_ind)
+    weights = pt.tensor([td.shape[1] for td in train_data])
+    M.ds_weight = (1/weights) / pt.sum(1/weights)
 
     # ---------------------------------------------------------
     # Real training starts here with a frozen arrangement model
@@ -861,7 +863,7 @@ def get_indiv_parcellation(ar_model, atlas, train_data, cond_vec, part_vec,
                                      fit_emission=fit_emission,
                                      first_evidence=False)
     elif M.arrange.name.startswith('cRBM'):
-        M, ll, theta, U_indiv = M.fit_sml(iter=n_iter, batch_size=8,
+        M, ll, theta, U_indiv = M.fit_sml(iter=n_iter, batch_size=10,
                                           stepsize=0.5,
                                           seperate_ll=False,
                                           fit_arrangement=False,

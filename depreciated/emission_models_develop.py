@@ -10,7 +10,7 @@ import pickle
 from scipy import stats, special
 from torch import log, exp, sqrt
 from HierarchBayesParcel.model import Model
-from HierarchBayesParcel.depreciated.AIS_test import rejection_sampling
+from depreciated.AIS_test import rejection_sampling
 
 import HierarchBayesParcel.emissions as em
 

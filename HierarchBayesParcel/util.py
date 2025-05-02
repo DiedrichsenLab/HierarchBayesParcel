@@ -94,7 +94,7 @@ def report_cuda_memory():
     """Reports the current memory usage of the GPU
     """
     if pt.cuda.is_available():
-        current_device = 'cuda:1'
+        current_device = 'cuda'
 
         ma = pt.cuda.memory_allocated(current_device)/1024/1024
         mma = pt.cuda.max_memory_allocated(current_device)/1024/1024
@@ -159,7 +159,7 @@ def make_random_parcellation(num_parcel, surf_file, mask_file):
 
     Usage:
     >>> surf_file = 'tpl-fs32k_hemi-L_midthickness.surf.gii'
-    >>> mask_file = '/tpl-fs32k_hemi-L_mask.label.gii'
+    >>> mask_file = 'tpl-fs32k_hemi-L_mask.label.gii'
     >>> rand_par = make_random_parcellation(50, surf_file, mask_file)
 
     `rand_par` is a random parcellation with 50 parcels that spatially
@@ -169,12 +169,12 @@ def make_random_parcellation(num_parcel, surf_file, mask_file):
     surf = nb.load(surf_file)
     mask = nb.load(mask_file)
 
-    # Get indices of vertices in medial wall mask 
+    # Get indices of vertices in medial wall mask
     mask_vertices = np.where(mask.darrays[0].data == 1)[0]
     ### Only calculate k-means on vertices outside the medial wall 
     vertices = surf.darrays[0].data[mask_vertices,:]
     # Set k-means params
-    kmeans = KMeans(n_clusters=num_parcel, max_iter=1000, n_init=5)
+    kmeans = KMeans(n_clusters=num_parcel, max_iter=500)
     label = kmeans.fit_predict(vertices)
 
     # Replace medial wall mask values with new label values

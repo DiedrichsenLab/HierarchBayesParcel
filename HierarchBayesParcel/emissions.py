@@ -652,7 +652,7 @@ def random_VMF(mu, kappa, size=None):
         von Mises Fisher distribution. 2023. hal-04004568v2
     """
     # parse input parameters
-    n = 1 if size is None else np.product(size)
+    n = 1 if size is None else np.prod(size)
     shape=() if size is None else tuple (np.ravel(size))
     mu = np.asarray(mu)
     mu = mu/np.linalg.norm(mu)

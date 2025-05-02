@@ -493,6 +493,64 @@ def task_inhomogeneity(Y, U_hat, z_transfer=True, single_return=True):
         return pt.nansum((global_inhomo * N) / N.sum(), dim=0)
 
 
+def mean_z_value(Y, U_hat, z_transfer=True, single_return=True):
+    """ Mean z-value across all task contrasts and parcels
+
+    Args:
+        Y: the given task contrast with a shope of (N, P) where
+            N is the number of task contrasts of interest and P
+            is the number of brain locations.
+        U_hat: the given 1-d parcellation, shape (P,)
+        z_transfer: bool, if True, apply r-to-z transformation
+            per each task contrast.
+        single_return: bool, if True, return the weighted average
+            z-value across all parcels
+
+    Returns:
+        z_values: the average z-value either across all parcels or
+            not.
+
+    """
+    # convert data to tensor if not already
+    if type(Y) is np.ndarray:
+        Y = pt.tensor(Y, dtype=pt.get_default_dtype())
+    if type(U_hat) is np.ndarray:
+        U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
+
+    # Setup - remove missing voxels
+    idx_data = pt.all(pt.where(Y.isnan(), False, True),dim=0)
+    idx_par = pt.where(U_hat.isnan(), False, True)
+    idx = pt.logical_and(idx_data, idx_par)
+    Y, U_hat = Y[:, idx], U_hat[idx]
+
+    if z_transfer:
+        # first demean along the voxel dimension
+        Y = Y - pt.nanmean(Y, dim=1, keepdim=True)
+        Y = Y / pt.std(Y, dim=1, correction=0, keepdim=True)
+
+    z_values, N = [], []
+    for parcel in pt.unique(U_hat):
+        # Find the vertex in current parcel
+        in_vertex = pt.where(U_hat == parcel)[0]
+        this_Y = Y[:, in_vertex]
+        n_k = in_vertex.numel()
+        # Compute the average z-value within current parcel
+        this_zvalue = pt.mean(this_Y, dim=1)
+        z_values.append(this_zvalue)
+        N.append(pt.tensor(n_k))
+
+    z_values = pt.stack(z_values)  # (K, num_contrast)
+    N = pt.stack(N).reshape(-1,1)
+    assert pt.all(N >= 0)
+
+    if single_return:
+        # retrun averaged z-values across all parcels
+        return z_values.nanmean(dim=0)
+    else:
+        # return the z-values per parcel
+        return z_values
+
+
 def logpY(emloglik,Uhat):
     """Averaged log of <p(Y|U)>q
     Not sure anymore that this criterion makes a lot of
