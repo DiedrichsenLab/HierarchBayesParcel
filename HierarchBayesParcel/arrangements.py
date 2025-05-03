@@ -21,7 +21,7 @@ class ArrangementModel(Model):
         self.K = K  # Number of states
         self.P = P  # Number of nodes
         self.tmp_list = []
-    
+
     def map_to_full(self,Uhat):
         """ Placeholder
 
@@ -77,9 +77,10 @@ class ArrangeIndependent(ArrangementModel):
     def random_params(self):
         """ Sets prior parameters to random starting values
         """
-        # self.logpi = pt.distributions.normal.Normal(0, 1).sample(self.logpi.shape)
+        self.logpi = pt.distributions.normal.Normal(0, 1).sample(self.logpi.shape)
 
-        self.logpi = pt.distributions.uniform.Uniform(1,100).sample(self.logpi.shape)
+        # This was a hack before, but leads to a very strong group prior
+        # self.logpi = pt.distributions.uniform.Uniform(1,100).sample(self.logpi.shape)
         self.logpi = self.logpi - self.logpi.mean(dim=0)
 
     def Estep(self, emloglik, gather_ss=True):
@@ -298,7 +299,7 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
 
 
 class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
-    """Independent arrangement model without symmetry constraint, 
+    """Independent arrangement model without symmetry constraint,
     but like a symmetric model, it keeps the parcels (and emission models)
     for the left and right hemishere separate. P is the same to the full data,
     K (parcels for arrangement model) K_full (parcels for data)
@@ -306,13 +307,13 @@ class ArrangeIndependentSeparateHem(ArrangeIndependentSymmetric):
     Args:
         K (int):
             Number of different parcels
-        indx_hem (ndarray/tensor): 
+        indx_hem (ndarray/tensor):
             1 x P array of indices for the hemisphere
             -1 - Left; 0 - Midline; 1 - Right
-        spatially_specific (bool):  
+        spatially_specific (bool):
             Use a spatially specific model (default True)
-        remove_redundancy (bool): 
-            Code with K probabilities with K or K-1 parameters? 
+        remove_redundancy (bool):
+            Code with K probabilities with K or K-1 parameters?
     """
 
     def __init__(self, K,
@@ -1816,7 +1817,7 @@ def expand_mn_1d(U, K):
     """
     if type(U) is np.ndarray:
         U = pt.tensor(U, dtype=pt.long)
-        
+
     P = U.shape[0]
     U_return = pt.zeros(K, P)
     U_return[U, pt.arange(P)] = 1
@@ -1836,21 +1837,21 @@ def compress_mn(U):
     return u
 
 def build_arrangement_model(U, prior_type='prob', atlas=None, sym_type='asym',
-                            model_type='independent', Wc=None, theta=None, 
+                            model_type='independent', Wc=None, theta=None,
                             epos_iter=5, num_chain=20):
-    """ Builds an arrangment model based on a set of probability 
+    """ Builds an arrangment model based on a set of probability
 
     Args:
-        U (tensor or ndarray): 
+        U (tensor or ndarray):
             A K x P matrix of group probability
         prior_type (str):
             the type of prior, either 'prob' or 'logpi' (default: 'prob')
             if 'prob', the input is the marginal probability K x P matrix,
             which the columns sum to 1. If 'logpi', the input is the group
             prior in log-space
-        atlas (object): 
+        atlas (object):
             the atlas object for the arrangement model for symmetric models
-        sym_type (str): 
+        sym_type (str):
             the symmetry type of the arrangement model (default: 'asym')
         model_type (str):
             the arrangement model type (default: 'independent')

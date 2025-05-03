@@ -951,7 +951,7 @@ def calc_test_error(M,
 
     Args:
         M (full model): Full model including emission model for test data.
-        tdata (ndarray): (numsubj x N x P) array of test data
+        tdata (ndarray or 3d-pt.tensor): (numsubj x N x P) array or tensor of test data
         U_hats (list): List of strings and/or tensors. Each element of the list can be:
              3d-pt.tensor: (nsubj x K x P) tensor of individual parcellations
              2d-pt.tensor: (K x P) tensor of group parcellation
