@@ -457,9 +457,7 @@ def task_inhomogeneity(Y, U_hat, z_transfer=True, single_return=True):
         U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
     # Setup - remove missing voxels and mean-centering
-    idx_data = pt.all(pt.where(Y.isnan(), False, True),dim=0)
-    idx_par = pt.where(U_hat.isnan(), False, True)
-    idx = pt.logical_and(idx_data, idx_par)
+    idx = pt.where(U_hat.isnan(), False, True)
     Y, U_hat = Y[:, idx], U_hat[idx]
 
     if z_transfer:
@@ -518,9 +516,7 @@ def mean_z_value(Y, U_hat, z_transfer=True, single_return=True):
         U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
     # Setup - remove missing voxels
-    idx_data = pt.all(pt.where(Y.isnan(), False, True),dim=0)
-    idx_par = pt.where(U_hat.isnan(), False, True)
-    idx = pt.logical_and(idx_data, idx_par)
+    idx = pt.where(U_hat.isnan(), False, True)
     Y, U_hat = Y[:, idx], U_hat[idx]
 
     if z_transfer:
@@ -535,7 +531,7 @@ def mean_z_value(Y, U_hat, z_transfer=True, single_return=True):
         this_Y = Y[:, in_vertex]
         n_k = in_vertex.numel()
         # Compute the average z-value within current parcel
-        this_zvalue = pt.mean(this_Y, dim=1)
+        this_zvalue = pt.nanmean(this_Y, dim=1)
         z_values.append(this_zvalue)
         N.append(pt.tensor(n_k))
 
