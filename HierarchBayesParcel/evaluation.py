@@ -516,7 +516,7 @@ def mean_z_value(Y, U_hat, z_transfer=True, single_return=True):
         U_hat = pt.tensor(U_hat, dtype=pt.get_default_dtype())
 
     # Setup - remove missing voxels
-    idx = pt.where(U_hat.isnan(), False, True)
+    idx = pt.where(U_hat.isnan() | (U_hat == 0), False, True)
     Y, U_hat = Y[:, idx], U_hat[idx]
 
     if z_transfer:

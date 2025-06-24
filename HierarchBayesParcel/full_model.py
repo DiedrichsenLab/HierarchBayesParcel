@@ -302,6 +302,7 @@ class FullMultiModel:
             # This is what was here before. It ignores whether likelihood increased or decreased!
             # if i == iter - 1 or ((i > 1) and (np.abs(ll[i, :].sum() - ll[i - 1, :].sum()) < tol)):
             if i == iter - 1:
+                print(f'EM has reached the max iterations {i}')
                 break
             elif i>=1:
                 dl = ll[i,:].sum()-ll[i-1,:].sum() # Change in logliklihood
@@ -312,6 +313,7 @@ class FullMultiModel:
                     self.set_params(theta[i-1])
                     break
                 elif dl < tol:
+                    print(f'Likelihood converged on iteration {i}')
                     break
 
             # Updates the parameters
