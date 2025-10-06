@@ -209,7 +209,7 @@ class FullMultiModel:
             Uhat: the prediction U_hat
             ll: the log-likelihood for arrangement and emission models
         """
-        # Run E-step
+        # Run E-step: returns a K x P matrix of log p(Y|U)
         emloglik = [e.Estep() for e in self.emissions]
 
         # Collect the evidence and broadcast to arrangement mode
