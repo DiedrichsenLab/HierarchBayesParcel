@@ -211,10 +211,10 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         emission space (here it doesn't do anything)
 
         Args:
-            Uhat (ndarray): tensor of estimated arrangement
+            Uhat (ndarray): tensor of estimated arrangement ((num_subj x K x P) or (K x P))
 
         Returns:
-            Uhat (ndarray): tensor of estimated arrangements
+            Uhat (ndarray): tensor of estimated arrangements ((num_subj x K_full x P_full) or (K_full x P_full))
         """
         if Uhat.ndim == 3:
             if self.same_parcels:
@@ -237,10 +237,10 @@ class ArrangeIndependentSymmetric(ArrangeIndependent):
         representation
 
         Args:
-            emloglik (list): List of emission logliklihoods
+            emloglik (list): List of emission logliklihoods (K_full x P_full)
 
         Returns:
-            emloglik_comb (ndarray): ndarray of emission logliklihoods
+            emloglik_comb (ndarray): ndarray of emission logliklihoods ()
         """
         if self.same_parcels:
             emloglik_comb = emloglik[:, :, self.indx_full[0]
