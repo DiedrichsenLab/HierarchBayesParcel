@@ -595,6 +595,142 @@ class MixVMF(EmissionModel):
 
         return Y
 
+class MixVMFNoise(MixVMF):
+    """ MixvMF with an additional noise parcel (uniform on a hypersphere). A bit ugly, but doesn't require chaning code of MixVMF
+    K in this case is the total number of parcels including the noise parcel,
+    I define an additional attribute K_real to be the number of real parcels (excluding the noise parcel).
+    """
+
+    def __init__(self, K=4, N=10, P=20,
+                num_subj=None,
+                X=None,
+                part_vec=None,
+                params=None,
+                parcel_specific_kappa=False,
+                subject_specific_kappa=False,
+                subjects_equal_weight=False
+                ):
+        self.K_real = K - 1
+        # Initialize parent MixVMF with K-1 real parcels so all the Vs and kappas are
+        # initialized for the real parcels only.
+        # The noise parcel will be added in the Estep and Mstep of this class.
+        super().__init__(K=self.K_real, N=N, P=P, num_subj=num_subj, X=X,
+                         part_vec=part_vec, params=params,
+                         parcel_specific_kappa=parcel_specific_kappa,
+                         subject_specific_kappa=subject_specific_kappa,
+                         subjects_equal_weight=subjects_equal_weight)
+        self.K = K
+        self.name = 'VMFNoise'
+
+    def random_params(self):
+        """initilize v and kappa for real parcels only
+        it is true that the __init__ above initlizes the Vs and kappas for real parcels,
+        but in the case of using fitem_ninits for example, random_params is used and since self.K is set to K (including noise parcel)
+        in the __init__, the random_params of MixVMF will initialize K Vs and kappas, which is not what we want.
+        We only want to initialize K-1 real parcels, and leave the noise parcel alone.
+        """
+        # standardise V to unit length
+        V = pt.randn(self.M, self.K_real) # note it's K_real here
+        self.V = V / pt.sqrt(pt.sum(V ** 2, dim=0))
+
+        if self.parcel_specific_kappa and (not self.subject_specific_kappa):
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample((self.K_real,))
+        elif self.subject_specific_kappa and (not self.parcel_specific_kappa):
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample((self.num_subj,))
+        elif self.parcel_specific_kappa and self.subject_specific_kappa:
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample((self.num_subj, self.K_real))
+        else:
+            self.kappa = pt.distributions.uniform.Uniform(10, 400).sample()
+
+    def log_uniform(self):
+        """ since the noise parcel has kappa 0 (uniform on sphere),
+        the likehood is constant and is equal to 1/(surface area of the M-1 sphere):
+        the log-likelihood is constant and equals:
+            log(1/S_M) = log(Γ(M/2)) - (M/2)*log(π) - log(2)
+        S_M = 2π^(M/2) / Γ(M/2) is the surface area of the (M-1)-sphere.
+
+        """
+        M = self.M
+        lgamma = pt.lgamma(pt.tensor(M / 2))
+        PI = pt.tensor(pt.pi)
+        return lgamma - (M / 2) * log(PI) - log(pt.tensor(2))
+    
+    def Estep(self, Y=None, sub=None):
+        """
+        for the real parcels, use the estep from parent MixVMF (with K_real parcels)
+        for the noise parcel, the log-likelihood is constant and equals log(1/S_M)
+        """
+        # temorarily set K back to K_real to use parent Estep
+        self.K = self.K_real
+
+        LL_real = super().Estep(Y=Y, sub=sub)
+        self.K = self.K_real + 1 # set K back to K including noise parcel
+
+        # noise parcel loglikelihood is constant
+        if sub is None:
+            num_part = self.num_part
+        else:
+            num_part = self.num_part[sub]
+        LL_noise = self.log_uniform() * num_part
+
+        return pt.cat([LL_real, LL_noise], dim=1)
+    
+    def Mstep(self, U_hat):
+        """
+        calculate mstep only for the real parcels
+        
+        """
+        self.K = self.K_real
+        super().Mstep(U_hat[:, :self.K_real, :])
+        self.K = self.K_real + 1
+
+    def sample(self, U, signal=None):
+        """
+        sample from parent vmf doesnt handle noise parcel (the noise parcel has no vs or kappa),
+        here for the noise parcel i sample uniformly on the sphere instead of the vmf 
+        """
+
+        if type(U) is np.ndarray:
+            U = pt.tensor(U, dtype=pt.int)
+        elif type(U) is pt.Tensor:
+            U = U.int()
+        else:
+            raise ValueError('The given U must be numpy ndarray or torch Tensor!')
+        
+        # get Us for real parcels
+        noise_mask = (U == self.K_real)
+        U_temp = U.clone()
+        U_temp[noise_mask] = 0
+
+         # Sample voxels of real parcels using parent MixVMF
+        self.K = self.K_real
+        Y = super().sample(U_temp, signal=signal)
+        self.K = self.K_real + 1
+
+        # same parition specific logic as parent
+        if self.part_vec is None:
+            num_parts = 1
+            ind = [pt.arange(self.N)]
+        else:
+            parts = pt.unique(self.part_vec)
+            num_parts = len(parts)
+            ind = [self.part_vec == parts[j] for j in range(num_parts)]
+
+        # overwrite the voxels of noise parcel with uniform samples on sphere
+        for s in range(U.shape[0]):
+            voxels = pt.nonzero(noise_mask[s]).view(-1)
+            n_noise = len(voxels)
+            # sample uniform directions and split across partitions
+            uniform = pt.randn(n_noise * num_parts, self.M)
+            uniform = uniform / pt.norm(uniform, dim=1, keepdim=True)
+            uniform = uniform.view(num_parts, n_noise, -1)
+            y_full = pt.vstack([pt.matmul(self.X[ind[j], :], uniform[j].T)
+                                for j in range(num_parts)])
+            Y[s, :, voxels] = y_full
+
+        return Y
+
+
 
 ####################################################################
 ## Belows are the helper functions for the emission models        ##
