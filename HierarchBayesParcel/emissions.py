@@ -720,6 +720,8 @@ class MixVMFNoise(MixVMF):
         for s in range(U.shape[0]):
             voxels = pt.nonzero(noise_mask[s]).view(-1)
             n_noise = len(voxels)
+            if n_noise == 0:
+               continue
             # sample uniform directions and split across partitions
             uniform = pt.randn(n_noise * num_parts, self.M)
             uniform = uniform / pt.norm(uniform, dim=1, keepdim=True)
