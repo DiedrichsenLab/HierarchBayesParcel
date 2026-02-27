@@ -93,15 +93,6 @@ class FullMultiModel:
         if hasattr(self, 'self_ind'):
             delattr(self, 'self_ind')
 
-    def offload_data(self):
-        """Move emission data (Y) to CPU to free GPU memory.
-        Data is shuttled back to GPU per emission during fit_em.
-        """
-        for e in self.emissions:
-            if hasattr(e, 'Y') and e.Y.is_cuda:
-                e._Y_cpu = e.Y.cpu()
-                e.Y = e._Y_cpu
-
     def random_params(self, init_arrangement=True,
                       init_emission=True):
         """Sets all arrangement and emission model parameters to random values
@@ -279,14 +270,10 @@ class FullMultiModel:
             theta[i, :] = self.get_params()
 
             # Get the (approximate) posterior p(U|Y)
-            # Accumulate evidence incrementally, shuttling data to GPU per emission
+            # Accumulate evidence incrementally to avoid storing all into ram
             emloglik_comb = pt.zeros(self.nsubj, self.K, self.P)
             for j, e in enumerate(self.emissions):
-                if hasattr(e, '_Y_cpu'):
-                    e.Y = e._Y_cpu.cuda()
                 eml = e.Estep()
-                if hasattr(e, '_Y_cpu'):
-                    e.Y = e._Y_cpu
                 if i == 0 and not first_evidence[j]:
                     eml[:, :, :] = 0
                 emloglik_comb[self.subj_ind[j]] += eml * self.ds_weight[j]
@@ -328,11 +315,7 @@ class FullMultiModel:
                 self.arrange.Mstep()
             for em, Us in enumerate(self.distribute_evidence(Uhat)):
                 if fit_emission[em]:
-                    if hasattr(self.emissions[em], '_Y_cpu'):
-                        self.emissions[em].Y = self.emissions[em]._Y_cpu.cuda()
                     self.emissions[em].Mstep(Us)
-                    if hasattr(self.emissions[em], '_Y_cpu'):
-                        self.emissions[em].Y = self.emissions[em]._Y_cpu
 
             pt.cuda.empty_cache()
 
