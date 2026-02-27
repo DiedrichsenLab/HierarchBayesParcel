@@ -293,18 +293,30 @@ class FullMultiModel:
                 del eml
             pt.cuda.empty_cache()
 
-            Uhat, ll_A = self.arrange.Estep(emloglik_comb)
-            # Compute the expected complete logliklihood
-            ll_E = pt.sum(Uhat * emloglik_comb, dim=(1, 2))
-            del emloglik_comb
+            logpi = self.arrange.logpi
+            lpi = pt.nan_to_num(pt.log(pt.softmax(logpi, dim=0)), neginf=0)
+            emloglik_comb += logpi  # in-place, now log_joint
+            ll_A_val = 0.0
+            ll_E_val = 0.0
+            B = 20
+            for s in range(0, self.nsubj, B):
+                e = min(s + B, self.nsubj)
+                chunk = emloglik_comb[s:e]
+                u = pt.softmax(chunk, dim=1)
+                ll_A_val += pt.sum(u * lpi).item()
+                ll_E_val += pt.sum(u * (chunk - logpi)).item()
+                emloglik_comb[s:e] = u
+                del u
+            Uhat = emloglik_comb
+            self.arrange.estep_Uhat = Uhat
             pt.cuda.empty_cache()
 
-            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 0] = ll_A_val
             # If first iteration and evidence not passed, no loglikelihood is computed
             if (i== 0) and not all(first_evidence):
                 ll[i, 1] = -pt.inf
             else:
-                ll[i, 1] = pt.sum(ll_E)
+                ll[i, 1] = ll_E_val
             if pt.isnan(ll[i, :].sum()):
                 raise (NameError('Likelihood returned a NaN'))
             # Check convergence:
