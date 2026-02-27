@@ -270,18 +270,14 @@ class FullMultiModel:
             theta[i, :] = self.get_params()
 
             # Get the (approximate) posterior p(U|Y)
-            # emloglik = [e.Estep() for e in self.emissions]
-            # Pass emlogliks immediately to collect evidence function,
-            # rather than save a local variable `emloglik` to waste memory
-            # If first iteration, only pass the desired emission models (pretraining)
-            emloglik_c = [e.Estep() for e in self.emissions]
-            pt.cuda.empty_cache()
-            if i == 0:
-                for j, emLL in enumerate(emloglik_c):
-                    if not first_evidence[j]:
-                        emLL[:, :, :] = 0
-            emloglik_comb = self.collect_evidence(emloglik_c)  # Combine subjects
-            del emloglik_c
+            # Accumulate evidence incrementally to avoid storing all into ram
+            emloglik_comb = pt.zeros(self.nsubj, self.K, self.P)
+            for j, e in enumerate(self.emissions):
+                eml = e.Estep()
+                if i == 0 and not first_evidence[j]:
+                    eml[:, :, :] = 0
+                emloglik_comb[self.subj_ind[j]] += eml * self.ds_weight[j]
+                del eml
             pt.cuda.empty_cache()
 
             Uhat, ll_A = self.arrange.Estep(emloglik_comb)
