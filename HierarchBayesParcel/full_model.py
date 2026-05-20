@@ -233,7 +233,7 @@ class FullMultiModel:
         Args:
             iter (int): Maximal number of iterations (def:30)
             tol (double): Tolerance on overall likelihood (def: 0.01)
-            seperate_ll (bool): Return arrangement and emission LL separetely
+            seperate_ll (bool): Return arrangement and emission LL separately
             fit_emission (list / array of bools): If True, fit emission model.
                     Otherwise, freeze it
             fit_arrangement: If True, fit the arrangement model.
@@ -290,12 +290,12 @@ class FullMultiModel:
             del emloglik_comb
             pt.cuda.empty_cache()
 
-            ll[i, 0] = pt.sum(ll_A)
+            ll[i, 0] = pt.sum(ll_A) # Sum of the arrangement likelihood 
             # If first iteration and evidence not passed, no loglikelihood is computed
             if (i== 0) and not all(first_evidence):
                 ll[i, 1] = -pt.inf
             else:
-                ll[i, 1] = pt.sum(ll_E)
+                ll[i, 1] = pt.sum(ll_E) # Sum of the emission likelihood 
             if pt.isnan(ll[i, :].sum()):
                 raise (NameError('Likelihood returned a NaN'))
             # Check convergence:
